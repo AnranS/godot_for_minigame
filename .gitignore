@@ -1,0 +1,16 @@
+# Godot editor cache
+.godot/
+
+# Godot auto-generated import files
+*.import
+
+# Export presets (may contain local paths)
+export_presets.cfg
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Build output
+/build/
+/dist/
