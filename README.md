@@ -173,7 +173,7 @@ addons/godot_mini_game/
 
 - **Godot 4.x** (tested 4.3 – 4.6)
 - **WeChat DevTools** or **Douyin DevTools**
-- `brotli` CLI for custom template builds (`brew install brotli`)
+- **Node.js** (recommended, built-in Brotli compression) or `brotli` CLI (`brew install brotli`)
 
 ## Contributing
 

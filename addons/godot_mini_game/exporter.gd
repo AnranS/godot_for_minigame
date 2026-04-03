@@ -427,49 +427,92 @@ func _brotli_compress(src_path: String, dst_path: String) -> void:
 	var global_src := ProjectSettings.globalize_path(src_path)
 	var global_dst := ProjectSettings.globalize_path(dst_path)
 
-	# Try to find brotli binary
-	var brotli_bin := _find_brotli()
-	if brotli_bin.is_empty():
-		_log("  [color=yellow]⚠ 未找到 brotli 命令，跳过压缩 (将使用未压缩的 .wasm)[/color]")
-		_log("  [color=yellow]  安装方法: brew install brotli (macOS) / apt install brotli (Linux)[/color]")
+	if not FileAccess.file_exists(src_path):
+		_log("  [color=yellow]⚠ 源文件不存在: %s[/color]" % src_path)
 		return
 
 	_log("  正在 Brotli 压缩 godot.wasm ...")
-	var output := []
-	var exit_code := OS.execute(brotli_bin, [
-		"--quality=11", "--force", "--output=%s" % global_dst, global_src
-	], output, true)
 
-	if exit_code == 0 and FileAccess.file_exists(dst_path):
-		var src_size := FileAccess.open(src_path, FileAccess.READ).get_length()
-		var dst_size := FileAccess.open(dst_path, FileAccess.READ).get_length()
-		var ratio := dst_size * 100.0 / src_size if src_size > 0 else 0.0
-		_log("  Brotli 压缩完成: %.1f MB → %.1f MB (%.0f%%)" % [
-			src_size / 1048576.0, dst_size / 1048576.0, ratio])
-		DirAccess.remove_absolute(global_src)
-		_log("  已删除原始 .wasm，仅保留 .wasm.br")
-	else:
-		_log("  [color=yellow]⚠ Brotli 压缩失败 (exit=%d)，保留未压缩的 .wasm[/color]" % exit_code)
+	if _brotli_via_node(global_src, global_dst):
+		_finish_brotli(src_path, dst_path, "Node.js zlib")
+		return
+
+	if _brotli_via_cli(global_src, global_dst):
+		_finish_brotli(src_path, dst_path, "brotli CLI")
+		return
+
+	_log("  [color=yellow]⚠ 未找到可用的 Brotli 压缩后端，跳过压缩 (将使用未压缩的 .wasm)[/color]")
+	_log("  [color=yellow]  推荐: 安装 Node.js (https://nodejs.org) 即可自动使用内置 Brotli[/color]")
+	_log("  [color=yellow]  或者: brew install brotli (macOS) / apt install brotli (Linux)[/color]")
+
+
+func _brotli_via_node(src: String, dst: String) -> bool:
+	var node_bin := _find_executable("node")
+	if node_bin.is_empty():
+		return false
+	var js_code := (
+		"const fs=require('fs'),zlib=require('zlib');"
+		+ "try{const d=fs.readFileSync(process.argv[1]);"
+		+ "const c=zlib.brotliCompressSync(d,"
+		+ "{params:{[zlib.constants.BROTLI_PARAM_QUALITY]:11}});"
+		+ "fs.writeFileSync(process.argv[2],c)}"
+		+ "catch(e){console.error(e.message);process.exit(1)}"
+	)
+	var output: Array = []
+	var exit_code := OS.execute(node_bin, ["-e", js_code, src, dst], output, true)
+	if exit_code != 0:
 		for line in output:
-			_log("    %s" % str(line))
+			_log("    node: %s" % str(line).strip_edges())
+	return exit_code == 0 and FileAccess.file_exists(dst)
 
 
-func _find_brotli() -> String:
-	# Common locations for brotli binary
-	var candidates := [
-		"/opt/homebrew/bin/brotli",
-		"/usr/local/bin/brotli",
-		"/usr/bin/brotli",
-	]
-	for path in candidates:
-		if FileAccess.file_exists(path):
-			return path
-	# Try PATH via `which`
-	var output := []
-	if OS.execute("which", ["brotli"], output, true) == 0:
+func _brotli_via_cli(src: String, dst: String) -> bool:
+	var bin := _find_executable("brotli")
+	if bin.is_empty():
+		return false
+	var output: Array = []
+	var exit_code := OS.execute(bin, [
+		"--quality=11", "--force", "--output=%s" % dst, src
+	], output, true)
+	return exit_code == 0 and FileAccess.file_exists(dst)
+
+
+func _finish_brotli(src_path: String, dst_path: String, backend: String) -> void:
+	var src_file := FileAccess.open(src_path, FileAccess.READ)
+	var dst_file := FileAccess.open(dst_path, FileAccess.READ)
+	if src_file and dst_file:
+		var src_size := src_file.get_length()
+		var dst_size := dst_file.get_length()
+		var ratio := dst_size * 100.0 / src_size if src_size > 0 else 0.0
+		_log("  Brotli 压缩完成 [%s]: %.1f MB → %.1f MB (%.0f%%)" % [
+			backend, src_size / 1048576.0, dst_size / 1048576.0, ratio])
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(src_path))
+	_log("  已删除原始 .wasm，仅保留 .wasm.br")
+
+
+func _find_executable(name: String) -> String:
+	var known_paths: Dictionary = {
+		"node": [
+			"/usr/local/bin/node",
+			"/opt/homebrew/bin/node",
+			"/usr/bin/node",
+		],
+		"brotli": [
+			"/opt/homebrew/bin/brotli",
+			"/usr/local/bin/brotli",
+			"/usr/bin/brotli",
+		],
+	}
+	if known_paths.has(name):
+		for p: String in known_paths[name]:
+			if FileAccess.file_exists(p):
+				return p
+	var which_cmd := "where" if OS.get_name() == "Windows" else "which"
+	var output: Array = []
+	if OS.execute(which_cmd, [name], output, true) == 0:
 		var result := str(output[0]).strip_edges()
 		if not result.is_empty():
-			return result
+			return result.split("\n")[0].strip_edges()
 	return ""
 
 
