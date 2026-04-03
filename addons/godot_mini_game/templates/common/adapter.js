@@ -20,7 +20,7 @@ console.log("[Adapter] GameGlobal.canvas 存在:", !!_global.canvas, "类型:", 
 // Use the runtime's pre-created canvas if available (this is the one the loader
 // and Godot engine will actually render to). Only create a new one as fallback.
 const _mainCanvas = _global.canvas || _api.createCanvas();
-const _winInfo = _api.getWindowInfo();
+const _winInfo = (_api.getWindowInfo || _api.getSystemInfoSync).call(_api);
 const _dpr = _winInfo.pixelRatio;
 _mainCanvas.width = _winInfo.windowWidth * _dpr;
 _mainCanvas.height = _winInfo.windowHeight * _dpr;
@@ -491,14 +491,116 @@ class _AudioParam {
 }
 
 // Try to get a native Web Audio Context from the platform
+// WeChat: wx.createWebAudioContext()   Douyin: tt.getAudioContext()
 let _nativeWebAudio = null;
 try {
   if (typeof _api.createWebAudioContext === "function") {
     _nativeWebAudio = _api.createWebAudioContext();
-    console.log("[Adapter] ✓ 平台原生 WebAudioContext 可用, sampleRate:", _nativeWebAudio.sampleRate);
+    console.log("[Adapter] ✓ WebAudioContext (createWebAudioContext), sampleRate:", _nativeWebAudio.sampleRate, "state:", _nativeWebAudio.state);
+  } else if (typeof _api.getAudioContext === "function") {
+    _nativeWebAudio = _api.getAudioContext();
+    console.log("[Adapter] ✓ AudioContext (getAudioContext), sampleRate:", _nativeWebAudio.sampleRate, "state:", _nativeWebAudio.state);
+  } else {
+    console.warn("[Adapter] 平台无 WebAudio API，音频将使用 InnerAudioContext 回退");
   }
 } catch (e) {
-  console.warn("[Adapter] 平台 WebAudioContext 不可用:", e.message);
+  console.warn("[Adapter] WebAudioContext 创建失败:", e.message);
+}
+
+// Auto-resume suspended AudioContext on first user touch (autoplay policy).
+// Both WeChat and Douyin may start the context in "suspended" state.
+let _audioResumed = false;
+function _tryResumeAudio() {
+  if (_audioResumed || !_nativeWebAudio) return;
+  if (_nativeWebAudio.state === "suspended" || _nativeWebAudio.state === "interrupted") {
+    console.log("[Adapter] AudioContext state:", _nativeWebAudio.state, "→ resuming on user gesture");
+    try {
+      _nativeWebAudio.resume().then(function () {
+        console.log("[Adapter] ✓ AudioContext resumed, state:", _nativeWebAudio.state);
+        _audioResumed = true;
+      }).catch(function (e) {
+        console.warn("[Adapter] AudioContext resume failed:", e.message);
+      });
+    } catch (e) {
+      console.warn("[Adapter] AudioContext resume error:", e.message);
+    }
+  } else {
+    _audioResumed = true;
+  }
+}
+
+// ── InnerAudioContext fallback (Douyin and platforms without WebAudio) ──
+// When createWebAudioContext is unavailable, use InnerAudioContext to play audio.
+// decodeAudioData saves raw audio bytes to a temp file; BufferSourceNode.start()
+// creates an InnerAudioContext pointing to that file.
+const _fs = (_api === wx) ? wx.getFileSystemManager() : (typeof tt !== "undefined" ? tt.getFileSystemManager() : null);
+const _userDataPath = (typeof wx !== "undefined" ? wx.env?.USER_DATA_PATH : null) ||
+                      (typeof tt !== "undefined" ? tt.env?.USER_DATA_PATH : null) || "";
+let _audioTempIdx = 0;
+
+function _saveAudioTemp(arrayBuffer) {
+  if (!_fs || !_userDataPath) return null;
+  const idx = _audioTempIdx++;
+  const path = _userDataPath + "/audio_tmp_" + idx + ".bin";
+  try {
+    _fs.writeFileSync(path, arrayBuffer, "binary");
+    return path;
+  } catch (e) {
+    console.warn("[Audio] failed to write temp audio:", e.message);
+    return null;
+  }
+}
+
+function _createInnerPlayer(filePath, loop, volume) {
+  if (!filePath || typeof _api.createInnerAudioContext !== "function") return null;
+  try {
+    const player = _api.createInnerAudioContext();
+    player.src = filePath;
+    player.loop = !!loop;
+    player.volume = volume != null ? volume : 1;
+    return player;
+  } catch (e) {
+    console.warn("[Audio] InnerAudioContext create failed:", e.message);
+    return null;
+  }
+}
+
+// Patch native AudioNode for mini-game compatibility:
+// 1. connect() must return destination (Web Audio spec, WeChat returns undefined)
+// 2. addEventListener/removeEventListener may be missing on native WebAudio nodes;
+//    Godot's WASM calls node.addEventListener("ended", cb) on BufferSourceNodes.
+function _patchAudioNode(node) {
+  if (!node) return node;
+  if (typeof node.connect === "function") {
+    const _origConnect = node.connect.bind(node);
+    node.connect = function (dest) {
+      _origConnect.apply(null, arguments);
+      return dest;
+    };
+  }
+  if (typeof node.addEventListener !== "function") {
+    const _nodeListeners = {};
+    node.addEventListener = function (type, fn) {
+      if (!_nodeListeners[type]) _nodeListeners[type] = [];
+      _nodeListeners[type].push(fn);
+      // Bridge to on* setter for common events (e.g. "ended" → onended)
+      const prop = "on" + type;
+      if (prop in node) {
+        node[prop] = function (evt) {
+          const list = _nodeListeners[type];
+          if (list) list.forEach(function (f) { try { f(evt); } catch (_) {} });
+        };
+      }
+    };
+    node.removeEventListener = function (type, fn) {
+      const list = _nodeListeners[type];
+      if (list) { const i = list.indexOf(fn); if (i !== -1) list.splice(i, 1); }
+    };
+  }
+  if (typeof node.disconnect !== "function") {
+    node.disconnect = function () {};
+  }
+  return node;
 }
 
 class _AudioContext {
@@ -511,7 +613,7 @@ class _AudioContext {
       this.state = ctx.state || "running";
       this.baseLatency = ctx.baseLatency || 0.01;
       this.outputLatency = ctx.outputLatency || 0.01;
-      this.destination = ctx.destination;
+      this.destination = _patchAudioNode(ctx.destination);
       this.listener = ctx.listener;
       // Provide a stub audioWorklet so godot.js can call addModule() without crashing.
       // The actual AudioWorkletNode constructor is our global stub that safely no-ops.
@@ -536,9 +638,9 @@ class _AudioContext {
     };
     this.audioWorklet = { addModule: () => Promise.resolve() };
   }
-  createGain()             { return this._native ? this._native.createGain() : (() => { const n = new _AudioNode(); n.gain = new _AudioParam(1); return n; })(); }
-  createChannelSplitter(c) { return this._native ? this._native.createChannelSplitter(c) : new _AudioNode(); }
-  createChannelMerger(c)   { return this._native ? this._native.createChannelMerger(c) : new _AudioNode(); }
+  createGain()             { return this._native ? _patchAudioNode(this._native.createGain()) : (() => { const n = new _AudioNode(); n.gain = new _AudioParam(1); return n; })(); }
+  createChannelSplitter(c) { return this._native ? _patchAudioNode(this._native.createChannelSplitter(c)) : new _AudioNode(); }
+  createChannelMerger(c)   { return this._native ? _patchAudioNode(this._native.createChannelMerger(c)) : new _AudioNode(); }
   createBuffer(channels, length, sampleRate) {
     if (this._native) return this._native.createBuffer(channels, length, sampleRate);
     const bufs = []; for (let i = 0; i < channels; i++) bufs.push(new Float32Array(length));
@@ -549,26 +651,54 @@ class _AudioContext {
     };
   }
   createBufferSource() {
-    if (this._native) return this._native.createBufferSource();
+    if (this._native) return _patchAudioNode(this._native.createBufferSource());
     const n = new _AudioNode();
     n.buffer = null; n.loop = false; n.loopStart = 0; n.loopEnd = 0;
     n.playbackRate = new _AudioParam(1); n.detune = new _AudioParam(0);
-    n.start = () => {}; n.stop = () => { if (n.onended) setTimeout(n.onended, 0); }; n.onended = null;
+    n._player = null;
+    n.start = function () {
+      if (n.buffer && n.buffer._tempPath) {
+        const vol = (n._gainNode && n._gainNode.gain) ? n._gainNode.gain.value : 1;
+        n._player = _createInnerPlayer(n.buffer._tempPath, n.loop, vol);
+        if (n._player) {
+          n._player.onEnded(function () { if (n.onended) n.onended(); });
+          n._player.onError(function (e) { console.warn("[Audio] playback error:", e.errMsg); });
+          n._player.play();
+        }
+      }
+    };
+    n.stop = function () {
+      if (n._player) { try { n._player.stop(); n._player.destroy(); } catch (_) {} n._player = null; }
+      if (n.onended) setTimeout(n.onended, 0);
+    };
+    n.onended = null;
+    const _origConnect = n.connect;
+    n.connect = function (dest) {
+      if (dest && dest.gain) n._gainNode = dest;
+      return _origConnect.call(n, dest);
+    };
     return n;
   }
-  createOscillator()          { if (this._native) return this._native.createOscillator(); const n = new _AudioNode(); n.frequency = new _AudioParam(440); n.detune = new _AudioParam(0); n.type = "sine"; n.start = () => {}; n.stop = () => {}; return n; }
-  createScriptProcessor(a,b,c){ if (this._native) return this._native.createScriptProcessor(a,b,c); const n = new _AudioNode(); n.onaudioprocess = null; n.bufferSize = 4096; return n; }
-  createAnalyser()            { if (this._native) return this._native.createAnalyser(); const n = new _AudioNode(); n.fftSize = 2048; n.frequencyBinCount = 1024; n.getByteFrequencyData = () => {}; n.getFloatFrequencyData = () => {}; n.getByteTimeDomainData = () => {}; n.getFloatTimeDomainData = () => {}; return n; }
-  createBiquadFilter()        { if (this._native) return this._native.createBiquadFilter(); const n = new _AudioNode(); n.frequency = new _AudioParam(350); n.Q = new _AudioParam(1); n.gain = new _AudioParam(0); n.detune = new _AudioParam(0); n.type = "lowpass"; return n; }
-  createDynamicsCompressor()  { if (this._native) return this._native.createDynamicsCompressor(); const n = new _AudioNode(); n.threshold = new _AudioParam(-24); n.knee = new _AudioParam(30); n.ratio = new _AudioParam(12); n.attack = new _AudioParam(0.003); n.release = new _AudioParam(0.25); n.reduction = 0; return n; }
-  createConvolver()           { if (this._native) return this._native.createConvolver(); const n = new _AudioNode(); n.buffer = null; n.normalize = true; return n; }
-  createPanner()              { if (this._native) return this._native.createPanner(); return new _AudioNode(); }
-  createStereoPanner()        { if (this._native) return this._native.createStereoPanner(); const n = new _AudioNode(); n.pan = new _AudioParam(0); return n; }
-  createDelay(max)            { if (this._native) return this._native.createDelay(max); const n = new _AudioNode(); n.delayTime = new _AudioParam(0); return n; }
-  createWaveShaper()          { if (this._native) return this._native.createWaveShaper(); const n = new _AudioNode(); n.curve = null; n.oversample = "none"; return n; }
+  createOscillator()          { if (this._native) return _patchAudioNode(this._native.createOscillator()); const n = new _AudioNode(); n.frequency = new _AudioParam(440); n.detune = new _AudioParam(0); n.type = "sine"; n.start = () => {}; n.stop = () => {}; return n; }
+  createScriptProcessor(a,b,c){ if (this._native) return _patchAudioNode(this._native.createScriptProcessor(a,b,c)); const n = new _AudioNode(); n.onaudioprocess = null; n.bufferSize = 4096; return n; }
+  createAnalyser()            { if (this._native) return _patchAudioNode(this._native.createAnalyser()); const n = new _AudioNode(); n.fftSize = 2048; n.frequencyBinCount = 1024; n.getByteFrequencyData = () => {}; n.getFloatFrequencyData = () => {}; n.getByteTimeDomainData = () => {}; n.getFloatTimeDomainData = () => {}; return n; }
+  createBiquadFilter()        { if (this._native) return _patchAudioNode(this._native.createBiquadFilter()); const n = new _AudioNode(); n.frequency = new _AudioParam(350); n.Q = new _AudioParam(1); n.gain = new _AudioParam(0); n.detune = new _AudioParam(0); n.type = "lowpass"; return n; }
+  createDynamicsCompressor()  { if (this._native) return _patchAudioNode(this._native.createDynamicsCompressor()); const n = new _AudioNode(); n.threshold = new _AudioParam(-24); n.knee = new _AudioParam(30); n.ratio = new _AudioParam(12); n.attack = new _AudioParam(0.003); n.release = new _AudioParam(0.25); n.reduction = 0; return n; }
+  createConvolver()           { if (this._native) return _patchAudioNode(this._native.createConvolver()); const n = new _AudioNode(); n.buffer = null; n.normalize = true; return n; }
+  createPanner()              { if (this._native) return _patchAudioNode(this._native.createPanner()); return new _AudioNode(); }
+  createStereoPanner()        { if (this._native) return _patchAudioNode(this._native.createStereoPanner()); const n = new _AudioNode(); n.pan = new _AudioParam(0); return n; }
+  createDelay(max)            { if (this._native) return _patchAudioNode(this._native.createDelay(max)); const n = new _AudioNode(); n.delayTime = new _AudioParam(0); return n; }
+  createWaveShaper()          { if (this._native) return _patchAudioNode(this._native.createWaveShaper()); const n = new _AudioNode(); n.curve = null; n.oversample = "none"; return n; }
   decodeAudioData(data, success, error) {
     if (this._native) return this._native.decodeAudioData(data, success, error);
-    const buf = this.createBuffer(2, 1, this.sampleRate);
+    // Fallback: save raw audio to temp file for InnerAudioContext playback
+    const tempPath = _saveAudioTemp(data);
+    const sampleRate = this.sampleRate;
+    const buf = this.createBuffer(2, 1, sampleRate);
+    if (tempPath) {
+      buf._tempPath = tempPath;
+      console.log("[Audio] decoded to temp:", tempPath, "size:", data.byteLength);
+    }
     if (success) { setTimeout(() => success(buf), 0); return; }
     return Promise.resolve(buf);
   }
@@ -725,7 +855,8 @@ function _toPointerEvt(type, t) {
 let _touchDebugCount = 0;
 _api.onTouchStart((r) => {
   const t = r.changedTouches[0]; if (!t) return;
-  if (_touchDebugCount < 5) { console.log("[Touch] START", t.clientX?.toFixed(0), t.clientY?.toFixed(0), "listeners:", Object.keys(_eventListeners).filter(k => _eventListeners[k]?.length).join(",")); _touchDebugCount++; }
+  _tryResumeAudio();
+  if (_touchDebugCount < 5) { console.log("[Touch] START", t.clientX?.toFixed(0), t.clientY?.toFixed(0), "audio:", _nativeWebAudio ? _nativeWebAudio.state : "stub", "listeners:", Object.keys(_eventListeners).filter(k => _eventListeners[k]?.length).join(",")); _touchDebugCount++; }
   _dispatchEvent("pointerdown", _toPointerEvt("pointerdown", t));
   _dispatchEvent("mousedown", _toMouseEvt("mousedown", t));
   _dispatchEvent("touchstart", _toTouchEvt("touchstart", r));
@@ -748,10 +879,12 @@ _api.onTouchCancel((r) => {
 });
 
 // ── Window resize ─────────────────────────────────────────────────
-_api.onWindowResize((r) => {
-  _window.innerWidth = r.windowWidth; _window.innerHeight = r.windowHeight;
-  _dispatchEvent("resize", { type: "resize" });
-});
+if (typeof _api.onWindowResize === "function") {
+  _api.onWindowResize((r) => {
+    _window.innerWidth = r.windowWidth; _window.innerHeight = r.windowHeight;
+    _dispatchEvent("resize", { type: "resize" });
+  });
+}
 
 // ── Inject into global scope ──────────────────────────────────────
 // `canvas` is pre-created by the mini game runtime as a read-only global.
@@ -843,33 +976,53 @@ try {
 // Emscripten glue code does: fetch(wasm) → ArrayBuffer → WebAssembly.instantiate(buf).
 // We monkey-patch .instantiate so ArrayBuffer args are replaced with a file path.
 (function () {
-  const _wasmPath = "engine/godot.wasm";
+  const _wasmCandidates = ["engine/godot.wasm.br", "engine/godot.wasm"];
   const _natives = [
     typeof WXWebAssembly !== "undefined" ? WXWebAssembly : null,
     typeof TTWebAssembly !== "undefined" ? TTWebAssembly : null,
   ].filter(Boolean);
 
+  // Save original instantiate references BEFORE patching
+  const _wasmRef = _natives[0];
+  const _origInstMap = new Map();
+  for (const n of _natives) { if (n && n.instantiate) _origInstMap.set(n, n.instantiate); }
+
+  function _tryLoad(native, candidates, imports, idx) {
+    if (idx >= candidates.length) {
+      return Promise.reject(new Error(
+        "[WASM] all candidates failed: " + candidates.join(", ") +
+        ". If you see CompileError, your WASM likely uses wasm-eh which is unsupported on real devices. " +
+        "Import a mini-game compatible template via the Godot export dock."
+      ));
+    }
+    var orig = _origInstMap.get(native);
+    var path = candidates[idx];
+    console.log("[WASM] loading:", path);
+    return orig.call(native, path, imports).catch(function (e) {
+      console.warn("[WASM] " + path + " failed:", e.name, e.message || String(e));
+      return _tryLoad(native, candidates, imports, idx + 1);
+    });
+  }
+
   for (const native of _natives) {
-    const _origInstantiate = native.instantiate;
-    if (!_origInstantiate) continue;
+    if (!_origInstMap.has(native)) continue;
+    const _orig = _origInstMap.get(native);
 
     native.instantiate = function (source, imports) {
       if (typeof source === "string") {
-        return _origInstantiate.call(native, source, imports);
+        return _orig.call(native, source, imports);
       }
-      return _origInstantiate.call(native, _wasmPath, imports);
+      return _tryLoad(native, _wasmCandidates, imports, 0);
     };
   }
 
-  // Build a full WebAssembly shim with error constructors and instantiateStreaming
-  const _wasmRef = _natives[0];
   if (_wasmRef) {
     const shim = {};
     for (const key of Object.getOwnPropertyNames(_wasmRef)) {
       try { shim[key] = _wasmRef[key]; } catch (_) {}
     }
     shim.instantiateStreaming = function (_response, imports) {
-      return _wasmRef.instantiate(_wasmPath, imports);
+      return _tryLoad(_wasmRef, _wasmCandidates, imports, 0);
     };
     // Ensure error constructors exist (WXWebAssembly may not provide them)
     const _stdWasm = typeof WebAssembly !== "undefined" ? WebAssembly : null;

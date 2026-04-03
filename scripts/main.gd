@@ -83,18 +83,18 @@ func _build_sdk_tests() -> void:
 	_add_section("Rewarded Ad", [
 		["Create", _test_create_rewarded_ad],
 		["Show", _test_show_rewarded_ad],
-	])
+	], "Requires real ad unit ID + real device")
 
 	_add_section("Banner Ad", [
 		["Create", _test_create_banner_ad],
 		["Show", _test_show_banner_ad],
 		["Hide", _test_hide_banner_ad],
-	])
+	], "Requires real ad unit ID + real device")
 
 	_add_section("Interstitial Ad", [
 		["Create", _test_create_interstitial_ad],
 		["Show", _test_show_interstitial_ad],
-	])
+	], "Requires real ad unit ID + real device")
 
 	_add_section("Payment", [
 		["Pay", _test_payment],
@@ -140,12 +140,12 @@ func _build_sdk_tests() -> void:
 	])
 
 
-func _add_section(title: String, buttons: Array) -> void:
+func _add_section(title: String, buttons: Array, hint: String = "") -> void:
 	var section := VBoxContainer.new()
 	section.add_theme_constant_override("separation", 6)
 
 	var header := Label.new()
-	header.text = title
+	header.text = title if hint.is_empty() else "%s  (%s)" % [title, hint]
 	header.add_theme_font_size_override("font_size", 18)
 	header.add_theme_color_override("font_color", Color(0.3, 0.75, 1.0))
 	section.add_child(header)
@@ -209,6 +209,14 @@ func _connect_sdk_signals() -> void:
 			_set_result("Auth / Login", "UserInfo: %s" % info.left(120))
 		else:
 			_set_result("Auth / Login", "UserInfo failed: %s" % err))
+
+	sdk.ad_created.connect(func(ad_type: String, ok: bool, err: String):
+		var names := {"rewarded": "Rewarded Ad", "banner": "Banner Ad", "interstitial": "Interstitial Ad"}
+		var section: String = names.get(ad_type, ad_type)
+		if ok:
+			_set_result(section, "Created OK")
+		else:
+			_set_result(section, "Create failed: %s" % err))
 
 	sdk.rewarded_ad_result.connect(func(ended: bool, err: String):
 		_set_result("Rewarded Ad", "Ended: %s, err: %s" % [ended, err]))
@@ -323,8 +331,8 @@ func _test_hide_share_menu() -> void:
 func _test_create_rewarded_ad() -> void:
 	var sdk := _get_sdk()
 	if not sdk: _set_result("Rewarded Ad", "SDK N/A"); return
+	_set_result("Rewarded Ad", "Creating... (DevTools may show framework errors with test IDs)")
 	sdk.create_rewarded_ad("adunit-test-rewarded-001")
-	_set_result("Rewarded Ad", "Created (test id)")
 
 func _test_show_rewarded_ad() -> void:
 	var sdk := _get_sdk()
@@ -337,8 +345,8 @@ func _test_show_rewarded_ad() -> void:
 func _test_create_banner_ad() -> void:
 	var sdk := _get_sdk()
 	if not sdk: _set_result("Banner Ad", "SDK N/A"); return
+	_set_result("Banner Ad", "Creating... (DevTools may show framework errors with test IDs)")
 	sdk.create_banner_ad("adunit-test-banner-001")
-	_set_result("Banner Ad", "Created (test id)")
 
 func _test_show_banner_ad() -> void:
 	var sdk := _get_sdk()
@@ -357,8 +365,8 @@ func _test_hide_banner_ad() -> void:
 func _test_create_interstitial_ad() -> void:
 	var sdk := _get_sdk()
 	if not sdk: _set_result("Interstitial Ad", "SDK N/A"); return
+	_set_result("Interstitial Ad", "Creating... (DevTools may show framework errors with test IDs)")
 	sdk.create_interstitial_ad("adunit-test-interstitial-001")
-	_set_result("Interstitial Ad", "Created (test id)")
 
 func _test_show_interstitial_ad() -> void:
 	var sdk := _get_sdk()

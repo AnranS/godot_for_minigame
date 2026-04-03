@@ -14,6 +14,10 @@ var editor_plugin: EditorPlugin
 @onready var export_btn: Button = $ExportBtn
 @onready var status_label: RichTextLabel = $StatusLabel
 @onready var folder_dialog: FileDialog = $FolderDialog
+@onready var template_status: RichTextLabel = $TemplateStatus
+@onready var import_btn: Button = $TemplateRow/ImportBtn
+@onready var refresh_btn: Button = $TemplateRow/RefreshBtn
+@onready var template_file_dialog: FileDialog = $TemplateFileDialog
 
 
 func _ready() -> void:
@@ -26,10 +30,14 @@ func _ready() -> void:
 	orientation_option.add_item("横屏 (landscape)", 1)
 
 	_refresh_presets()
+	_refresh_template_status()
 
 	browse_btn.pressed.connect(_on_browse)
 	export_btn.pressed.connect(_on_export)
 	folder_dialog.dir_selected.connect(_on_dir_selected)
+	import_btn.pressed.connect(_on_import_template)
+	refresh_btn.pressed.connect(_refresh_template_status)
+	template_file_dialog.file_selected.connect(_on_template_file_selected)
 
 	_log("[b]小游戏导出插件已就绪[/b]")
 
@@ -48,6 +56,42 @@ func _refresh_presets() -> void:
 			if preset_name != "":
 				preset_option.add_item(preset_name, idx)
 				idx += 1
+
+
+func _refresh_template_status() -> void:
+	if not template_status:
+		return
+	var ver_key := Exporter.get_godot_version_key()
+	var status := Exporter.get_template_status()
+	template_status.clear()
+	match status.source:
+		"addon":
+			template_status.append_text("[color=green]✓ 兼容模板就绪[/color] (自定义, Godot %s)" % ver_key)
+		"bundled":
+			template_status.append_text("[color=green]✓ 兼容模板就绪[/color] (内置, Godot %s)" % ver_key)
+		"store":
+			template_status.append_text("[color=green]✓ 兼容模板就绪[/color] (模板库, Godot %s)" % ver_key)
+		"standard":
+			template_status.append_text("[color=yellow]⚠ 仅标准模板[/color] (Godot %s)\n模拟器可用，真机可能不兼容" % ver_key)
+		_:
+			template_status.append_text("[color=red]✗ 未找到引擎模板[/color] (Godot %s)" % ver_key)
+
+
+func _on_import_template() -> void:
+	template_file_dialog.popup_centered()
+
+
+func _on_template_file_selected(path: String) -> void:
+	_log("[color=cyan]正在导入引擎模板: %s[/color]" % path.get_file())
+	var exporter := Exporter.new()
+	exporter.log_callback = _log
+	var err := exporter.import_template_zip(path)
+	if err == OK:
+		_log("[color=green][b]模板导入成功！[/b][/color]")
+		_show_toast("导入成功", "引擎模板已导入到:\n%s" % Exporter.get_template_store_dir())
+	else:
+		_log("[color=red]模板导入失败[/color]")
+	_refresh_template_status()
 
 
 func _on_browse() -> void:

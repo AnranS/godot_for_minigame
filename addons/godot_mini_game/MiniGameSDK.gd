@@ -12,6 +12,7 @@ signal login_completed(code: String, error: String)
 signal session_checked(valid: bool, error: String)
 signal user_info_received(info_json: String, error: String)
 
+signal ad_created(ad_type: String, success: bool, error: String)
 signal rewarded_ad_result(is_ended: bool, error: String)
 signal interstitial_ad_result(success: bool, error: String)
 
@@ -146,8 +147,15 @@ func hide_share_menu() -> void:
 # ── Rewarded Video Ad ─────────────────────────────────────────────
 
 func create_rewarded_ad(ad_unit_id: String) -> void:
-	if _sdk:
-		_sdk.createRewardedAd(ad_unit_id)
+	if not _sdk:
+		ad_created.emit("rewarded", false, "Not in mini-game environment")
+		return
+	var cb := JavaScriptBridge.create_callback(func(args: Array):
+		ad_created.emit("rewarded",
+			bool(args[0]) if args.size() > 0 else false,
+			str(args[1]) if args.size() > 1 else ""))
+	_cbs["create_rewarded"] = cb
+	_sdk.createRewardedAd(ad_unit_id, cb)
 
 
 func show_rewarded_ad() -> void:
@@ -168,8 +176,15 @@ func _on_rewarded_ad(args: Array) -> void:
 # ── Banner Ad ─────────────────────────────────────────────────────
 
 func create_banner_ad(ad_unit_id: String) -> void:
-	if _sdk:
-		_sdk.createBannerAd(ad_unit_id)
+	if not _sdk:
+		ad_created.emit("banner", false, "Not in mini-game environment")
+		return
+	var cb := JavaScriptBridge.create_callback(func(args: Array):
+		ad_created.emit("banner",
+			bool(args[0]) if args.size() > 0 else false,
+			str(args[1]) if args.size() > 1 else ""))
+	_cbs["create_banner"] = cb
+	_sdk.createBannerAd(ad_unit_id, cb)
 
 
 func show_banner_ad() -> void:
@@ -190,8 +205,15 @@ func destroy_banner_ad() -> void:
 # ── Interstitial Ad ───────────────────────────────────────────────
 
 func create_interstitial_ad(ad_unit_id: String) -> void:
-	if _sdk:
-		_sdk.createInterstitialAd(ad_unit_id)
+	if not _sdk:
+		ad_created.emit("interstitial", false, "Not in mini-game environment")
+		return
+	var cb := JavaScriptBridge.create_callback(func(args: Array):
+		ad_created.emit("interstitial",
+			bool(args[0]) if args.size() > 0 else false,
+			str(args[1]) if args.size() > 1 else ""))
+	_cbs["create_interstitial"] = cb
+	_sdk.createInterstitialAd(ad_unit_id, cb)
 
 
 func show_interstitial_ad() -> void:

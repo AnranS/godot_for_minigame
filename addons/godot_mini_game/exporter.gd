@@ -4,14 +4,136 @@ extends RefCounted
 ##   1. Export .pck via --export-pack (no Web template needed)
 ##   2. Obtain engine files (godot.js + godot.wasm) from:
 ##      a) user-provided custom files in addon dir  (highest priority)
-##      b) installed Godot Web export template zip   (auto-extract)
+##      b) version-matched template from local template store
+##      c) installed Godot Web export template zip   (fallback, simulator only)
 ##   3. Copy JS runtime templates
 ##   4. Generate platform config files
 
 const ADDON_ROOT := "res://addons/godot_mini_game/"
 const TEMPLATES  := "res://addons/godot_mini_game/templates/"
+const ENGINE_DIR := "res://addons/godot_mini_game/engine/"
 
 var log_callback: Callable
+
+
+# ─── Template store ────────────────────────────────────────────────
+
+static func get_godot_version_key() -> String:
+	var v := Engine.get_version_info()
+	return "%d.%d" % [v.major, v.minor]
+
+static func get_template_store_dir() -> String:
+	return OS.get_config_dir().path_join("godot_mini_game/templates/" + get_godot_version_key())
+
+static func get_template_status() -> Dictionary:
+	## Returns { "source": String, "has_js": bool, "has_wasm": bool, "ready": bool }
+	var result := { "source": "none", "has_js": false, "has_wasm": false, "ready": false }
+
+	# Check user-provided in addon root (manual override)
+	var addon_js := FileAccess.file_exists(ADDON_ROOT + "godot.js")
+	var addon_wasm := FileAccess.file_exists(ADDON_ROOT + "godot.wasm.br") or FileAccess.file_exists(ADDON_ROOT + "godot.wasm")
+	if addon_js and addon_wasm:
+		result = { "source": "addon", "has_js": true, "has_wasm": true, "ready": true }
+		return result
+
+	# Check bundled engine in addon engine/ dir
+	var bundled_js := FileAccess.file_exists(ENGINE_DIR + "godot.js")
+	var bundled_wasm := FileAccess.file_exists(ENGINE_DIR + "godot.wasm.br") or FileAccess.file_exists(ENGINE_DIR + "godot.wasm")
+	if bundled_js and bundled_wasm:
+		result = { "source": "bundled", "has_js": true, "has_wasm": true, "ready": true }
+		return result
+
+	# Check template store
+	var store := get_template_store_dir()
+	var store_js := FileAccess.file_exists(store.path_join("godot.js"))
+	var store_wasm := FileAccess.file_exists(store.path_join("godot.wasm.br")) or FileAccess.file_exists(store.path_join("godot.wasm"))
+	if store_js and store_wasm:
+		result = { "source": "store", "has_js": true, "has_wasm": true, "ready": true }
+		return result
+
+	# Check standard Godot web export template
+	var v := Engine.get_version_info()
+	var ver_str := "%d.%d.%d.%s" % [v.major, v.minor, v.patch, v.status]
+	var template_base := OS.get_config_dir().path_join("Godot/export_templates/" + ver_str)
+	for candidate in ["web_nothreads_release.zip", "web_nothreads_debug.zip", "web_release.zip", "web_debug.zip"]:
+		if FileAccess.file_exists(template_base.path_join(candidate)):
+			result = { "source": "standard", "has_js": true, "has_wasm": true, "ready": true }
+			return result
+
+	return result
+
+
+func import_template_zip(zip_path: String) -> Error:
+	var reader := ZIPReader.new()
+	if reader.open(zip_path) != OK:
+		_log("[color=red]无法打开 ZIP: %s[/color]" % zip_path)
+		return ERR_CANT_OPEN
+
+	var found_js := ""
+	var found_wasm_br := ""
+	var found_wasm := ""
+
+	for f in reader.get_files():
+		var basename := f.get_file()
+		if basename == "godot.js" and found_js.is_empty():
+			found_js = f
+		elif basename == "godot.wasm.br" and found_wasm_br.is_empty():
+			found_wasm_br = f
+		elif basename == "godot.wasm" and not basename.ends_with(".br") and found_wasm.is_empty():
+			found_wasm = f
+
+	if found_js.is_empty():
+		reader.close()
+		_log("[color=red]ZIP 中未找到 godot.js[/color]")
+		return ERR_FILE_NOT_FOUND
+
+	if found_wasm_br.is_empty() and found_wasm.is_empty():
+		reader.close()
+		_log("[color=red]ZIP 中未找到 godot.wasm 或 godot.wasm.br[/color]")
+		return ERR_FILE_NOT_FOUND
+
+	var store_dir := get_template_store_dir()
+	var global_store := ProjectSettings.globalize_path(store_dir) if store_dir.begins_with("res://") else store_dir
+	DirAccess.make_dir_recursive_absolute(global_store)
+
+	# Extract godot.js
+	var js_data := reader.read_file(found_js)
+	var js_path := global_store.path_join("godot.js")
+	var js_file := FileAccess.open(js_path, FileAccess.WRITE)
+	if js_file:
+		js_file.store_buffer(js_data)
+		js_file.close()
+	_log("  提取 godot.js (%d bytes)" % js_data.size())
+
+	# Extract wasm
+	if not found_wasm_br.is_empty():
+		var br_data := reader.read_file(found_wasm_br)
+		var br_file := FileAccess.open(global_store.path_join("godot.wasm.br"), FileAccess.WRITE)
+		if br_file:
+			br_file.store_buffer(br_data)
+			br_file.close()
+		_log("  提取 godot.wasm.br (%.1f MB)" % [br_data.size() / 1048576.0])
+	elif not found_wasm.is_empty():
+		var wasm_data := reader.read_file(found_wasm)
+		var wasm_path := global_store.path_join("godot.wasm")
+		var wasm_file := FileAccess.open(wasm_path, FileAccess.WRITE)
+		if wasm_file:
+			wasm_file.store_buffer(wasm_data)
+			wasm_file.close()
+		_log("  提取 godot.wasm (%.1f MB)" % [wasm_data.size() / 1048576.0])
+		_brotli_compress(wasm_path, global_store.path_join("godot.wasm.br"))
+
+	reader.close()
+
+	# Write version marker
+	var ver_file := FileAccess.open(global_store.path_join("version.txt"), FileAccess.WRITE)
+	if ver_file:
+		var v := Engine.get_version_info()
+		ver_file.store_string("%d.%d.%d.%s" % [v.major, v.minor, v.patch, v.status])
+		ver_file.close()
+
+	_log("[color=green]模板已导入到: %s[/color]" % global_store)
+	return OK
 
 
 # ─── Public entry point ────────────────────────────────────────────
@@ -26,7 +148,7 @@ func export_mini_game(
 	_log("平台: %s | AppID: %s | 方向: %s" % [platform, appid, orientation])
 	_log("输出目录: %s" % output_dir)
 
-	for sub in ["engine", "js/libs", "js/worker", "images", "subpacks"]:
+	for sub in ["engine", "js/libs", "images", "subpacks"]:
 		DirAccess.make_dir_recursive_absolute(output_dir.path_join(sub))
 
 	# Step 1: Export .pck (lightweight, does not require export templates)
@@ -125,21 +247,21 @@ func _obtain_engine_files(output_dir: String) -> Error:
 	if got_js and got_wasm:
 		return OK
 
-	# Something is missing — give clear instructions
 	if not got_js:
 		_log("[color=red]缺少 godot.js (Emscripten 胶水代码)[/color]")
 	if not got_wasm:
 		_log("[color=red]缺少 godot.wasm[/color]")
 	_log("[color=yellow]请执行以下操作之一：[/color]")
-	_log("[color=yellow]  1. 安装 Web 导出模板: Godot 菜单 → Editor → Manage Export Templates → Download and Install[/color]")
+	_log("[color=yellow]  1. 在导出面板中点击「导入引擎模板」导入兼容的 .zip 模板[/color]")
 	_log("[color=yellow]  2. 手动将 godot.js 和 godot.wasm(.br) 放入 addons/godot_mini_game/ 目录[/color]")
+	_log("[color=yellow]  3. 安装 Web 导出模板 (仅模拟器可用): Godot → Editor → Manage Export Templates[/color]")
 	return ERR_FILE_NOT_FOUND
 
 
 func _obtain_godot_js(output_dir: String) -> bool:
 	var dst := output_dir.path_join("js/libs/godot.js")
 
-	# Priority 1: user-provided custom godot.js in addon dir
+	# Priority 1: user-provided custom godot.js in addon root
 	var custom := ADDON_ROOT + "godot.js"
 	if FileAccess.file_exists(custom):
 		_copy_file(custom, dst)
@@ -147,11 +269,28 @@ func _obtain_godot_js(output_dir: String) -> bool:
 		_patch_godot_js(dst)
 		return true
 
-	# Priority 2: extract from installed Web export template zip
+	# Priority 2: bundled engine in addon engine/ dir
+	var bundled := ENGINE_DIR + "godot.js"
+	if FileAccess.file_exists(bundled):
+		_copy_file(bundled, dst)
+		_log("  已使用内置 godot.js (engine/)")
+		_patch_godot_js(dst)
+		return true
+
+	# Priority 3: version-matched template from local store
+	var store_js := get_template_store_dir().path_join("godot.js")
+	if FileAccess.file_exists(store_js):
+		_copy_file(store_js, dst)
+		_log("  已使用模板库 godot.js (Godot %s)" % get_godot_version_key())
+		_patch_godot_js(dst)
+		return true
+
+	# Priority 4 (fallback): extract from installed Web export template zip
 	var data := _read_from_template_zip(".js")
 	if data.size() > 0:
 		_write_buffer(dst, data)
-		_log("  从 Web 导出模板提取 godot.js")
+		_log("  从标准 Web 导出模板提取 godot.js")
+		_log("[color=yellow]  ⚠ 标准模板使用 wasm-eh，真机可能不兼容。建议导入小游戏兼容模板。[/color]")
 		_patch_godot_js(dst)
 		return true
 
@@ -228,26 +367,110 @@ func _patch_godot_js(path: String) -> void:
 
 
 func _obtain_godot_wasm(output_dir: String) -> bool:
-	# Priority 1: user-provided custom wasm
+	var wasm_path := output_dir.path_join("engine/godot.wasm")
+	var br_path := output_dir.path_join("engine/godot.wasm.br")
+
+	# Priority 1: user-provided in addon root (manual override)
 	var custom_br := ADDON_ROOT + "godot.wasm.br"
-	var custom_raw := ADDON_ROOT + "godot.wasm"
 	if FileAccess.file_exists(custom_br):
-		_copy_file(custom_br, output_dir.path_join("engine/godot.wasm.br"))
+		_copy_file(custom_br, br_path)
 		_log("  已使用自定义 godot.wasm.br (来自插件目录)")
 		return true
+	var custom_raw := ADDON_ROOT + "godot.wasm"
 	if FileAccess.file_exists(custom_raw):
-		_copy_file(custom_raw, output_dir.path_join("engine/godot.wasm"))
+		_copy_file(custom_raw, wasm_path)
 		_log("  已使用自定义 godot.wasm (来自插件目录)")
+		_brotli_compress(wasm_path, br_path)
 		return true
 
-	# Priority 2: extract from installed Web export template zip
+	# Priority 2: bundled engine in addon engine/ dir
+	var bundled_br := ENGINE_DIR + "godot.wasm.br"
+	if FileAccess.file_exists(bundled_br):
+		_copy_file(bundled_br, br_path)
+		_log("  已使用内置 godot.wasm.br (engine/)")
+		return true
+	var bundled_raw := ENGINE_DIR + "godot.wasm"
+	if FileAccess.file_exists(bundled_raw):
+		_copy_file(bundled_raw, wasm_path)
+		_log("  已使用内置 godot.wasm (engine/)")
+		_brotli_compress(wasm_path, br_path)
+		return true
+
+	# Priority 3: version-matched template from local store
+	var store_dir := get_template_store_dir()
+	var store_br := store_dir.path_join("godot.wasm.br")
+	var store_raw := store_dir.path_join("godot.wasm")
+	if FileAccess.file_exists(store_br):
+		_copy_file(store_br, br_path)
+		_log("  已使用模板库 godot.wasm.br (Godot %s)" % get_godot_version_key())
+		return true
+	if FileAccess.file_exists(store_raw):
+		_copy_file(store_raw, wasm_path)
+		_log("  已使用模板库 godot.wasm (Godot %s)" % get_godot_version_key())
+		_brotli_compress(wasm_path, br_path)
+		return true
+
+	# Priority 4 (fallback): extract from installed Web export template zip → compress
 	var data := _read_from_template_zip(".wasm")
 	if data.size() > 0:
-		_write_buffer(output_dir.path_join("engine/godot.wasm"), data)
-		_log("  从 Web 导出模板提取 godot.wasm")
+		_write_buffer(wasm_path, data)
+		_log("  从标准 Web 导出模板提取 godot.wasm (%.1f MB)" % [data.size() / 1048576.0])
+		_log("[color=yellow]  ⚠ 标准 WASM 使用 wasm-eh 异常处理，真机上 WXWebAssembly 可能报 CompileError。[/color]")
+		_log("[color=yellow]  ⚠ 建议通过导出面板「导入引擎模板」导入兼容真机的模板。[/color]")
+		_brotli_compress(wasm_path, br_path)
 		return true
 
 	return false
+
+
+func _brotli_compress(src_path: String, dst_path: String) -> void:
+	var global_src := ProjectSettings.globalize_path(src_path)
+	var global_dst := ProjectSettings.globalize_path(dst_path)
+
+	# Try to find brotli binary
+	var brotli_bin := _find_brotli()
+	if brotli_bin.is_empty():
+		_log("  [color=yellow]⚠ 未找到 brotli 命令，跳过压缩 (将使用未压缩的 .wasm)[/color]")
+		_log("  [color=yellow]  安装方法: brew install brotli (macOS) / apt install brotli (Linux)[/color]")
+		return
+
+	_log("  正在 Brotli 压缩 godot.wasm ...")
+	var output := []
+	var exit_code := OS.execute(brotli_bin, [
+		"--quality=11", "--force", "--output=%s" % global_dst, global_src
+	], output, true)
+
+	if exit_code == 0 and FileAccess.file_exists(dst_path):
+		var src_size := FileAccess.open(src_path, FileAccess.READ).get_length()
+		var dst_size := FileAccess.open(dst_path, FileAccess.READ).get_length()
+		var ratio := dst_size * 100.0 / src_size if src_size > 0 else 0.0
+		_log("  Brotli 压缩完成: %.1f MB → %.1f MB (%.0f%%)" % [
+			src_size / 1048576.0, dst_size / 1048576.0, ratio])
+		DirAccess.remove_absolute(global_src)
+		_log("  已删除原始 .wasm，仅保留 .wasm.br")
+	else:
+		_log("  [color=yellow]⚠ Brotli 压缩失败 (exit=%d)，保留未压缩的 .wasm[/color]" % exit_code)
+		for line in output:
+			_log("    %s" % str(line))
+
+
+func _find_brotli() -> String:
+	# Common locations for brotli binary
+	var candidates := [
+		"/opt/homebrew/bin/brotli",
+		"/usr/local/bin/brotli",
+		"/usr/bin/brotli",
+	]
+	for path in candidates:
+		if FileAccess.file_exists(path):
+			return path
+	# Try PATH via `which`
+	var output := []
+	if OS.execute("which", ["brotli"], output, true) == 0:
+		var result := str(output[0]).strip_edges()
+		if not result.is_empty():
+			return result
+	return ""
 
 
 func _read_from_template_zip(extension: String) -> PackedByteArray:
@@ -297,7 +520,6 @@ func _copy_common_templates(output_dir: String) -> void:
 		"fetch.js":                         "fetch.js",
 		"js/libs/sdk.js":                   "js/libs/sdk.js",
 		"js/loader.js":                     "js/loader.js",
-		"js/worker/position_reporting.js":  "js/worker/position_reporting.js",
 	}
 	for src_rel in mappings:
 		var src_path: String = common + src_rel
@@ -391,19 +613,24 @@ func _generate_placeholder_images(output_dir: String) -> void:
 	var images_dir := output_dir.path_join("images")
 	DirAccess.make_dir_recursive_absolute(images_dir)
 
-	for fname in ["logo.png", "background.png"]:
-		var path := images_dir.path_join(fname)
-		if FileAccess.file_exists(path):
-			continue
+	var logo_dst := images_dir.path_join("logo.png")
+	if not FileAccess.file_exists(logo_dst):
+		var bundled := TEMPLATES + "common/images/logo.png"
+		if FileAccess.file_exists(bundled):
+			_copy_file(bundled, logo_dst)
+			_log("  已复制 Godot 图标 → logo.png")
+		else:
+			var img := Image.create(128, 128, false, Image.FORMAT_RGBA8)
+			img.fill(Color(0.278, 0.549, 0.749))
+			img.save_png(ProjectSettings.globalize_path(logo_dst))
+			_log("  生成占位 logo.png")
+
+	var bg_dst := images_dir.path_join("background.png")
+	if not FileAccess.file_exists(bg_dst):
 		var img := Image.create(128, 128, false, Image.FORMAT_RGBA8)
-		img.fill(Color(0.157, 0.173, 0.204))  # #282c34
-		if fname == "logo.png":
-			# Draw a simple Godot-blue square in the center
-			for x in range(32, 96):
-				for y in range(32, 96):
-					img.set_pixel(x, y, Color(0.278, 0.549, 0.749))  # #478CBF
-		img.save_png(path)
-		_log("  生成占位图: %s" % fname)
+		img.fill(Color(0.157, 0.173, 0.204))
+		img.save_png(ProjectSettings.globalize_path(bg_dst))
+		_log("  生成占位 background.png")
 
 
 func _write_buffer(path: String, data: PackedByteArray) -> void:

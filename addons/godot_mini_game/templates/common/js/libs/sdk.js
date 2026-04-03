@@ -100,53 +100,69 @@ class GodotSDK {
 
   // ── Rewarded Video Ad ──────────────────────────────────────────
 
-  createRewardedAd(adId) {
-    if (this._rewardedAd) { try { this._rewardedAd.destroy(); } catch (_) {} }
-    this._rewardedAd = _api.createRewardedVideoAd({ adUnitId: adId });
-    this._rewardedAd.onError((err) => console.error("[SDK] RewardedAd error:", err));
+  createRewardedAd(adId, callback) {
+    try {
+      if (this._rewardedAd) { try { this._rewardedAd.destroy(); } catch (_) {} }
+      if (!_api.createRewardedVideoAd) { if (callback) callback(false, "createRewardedVideoAd not supported"); return; }
+      this._rewardedAd = _api.createRewardedVideoAd({ adUnitId: adId });
+      this._rewardedAd.onError((err) => console.warn("[SDK] RewardedAd error:", err));
+      if (callback) callback(true, "");
+    } catch (e) { console.warn("[SDK] createRewardedAd:", e); if (callback) callback(false, e.errMsg || String(e)); }
   }
 
   showRewardedAd(callback) {
     if (!this._rewardedAd) { callback(false, "No rewarded ad created. Call createRewardedAd first."); return; }
-    const ad = this._rewardedAd;
-    const onClose = (res) => {
-      ad.offClose(onClose);
-      callback(!!(res && res.isEnded), "");
-    };
-    ad.onClose(onClose);
-    ad.show().catch(() => ad.load().then(() => ad.show()))
-      .catch((err) => { ad.offClose(onClose); callback(false, err.errMsg || String(err)); });
+    try {
+      const ad = this._rewardedAd;
+      const onClose = (res) => {
+        ad.offClose(onClose);
+        callback(!!(res && res.isEnded), "");
+      };
+      ad.onClose(onClose);
+      ad.show().catch(() => ad.load().then(() => ad.show()))
+        .catch((err) => { ad.offClose(onClose); callback(false, err.errMsg || String(err)); });
+    } catch (e) { callback(false, e.errMsg || String(e)); }
   }
 
   // ── Banner Ad ──────────────────────────────────────────────────
 
-  createBannerAd(adId) {
-    if (this._bannerAd) { try { this._bannerAd.destroy(); } catch (_) {} }
-    const info = _api.getWindowInfo ? _api.getWindowInfo() : _api.getSystemInfoSync();
-    this._bannerAd = _api.createBannerAd({
-      adUnitId: adId,
-      style: { left: 0, top: (info.windowHeight || info.screenHeight) - 100, width: info.windowWidth || info.screenWidth },
-    });
-    this._bannerAd.onError((err) => console.error("[SDK] BannerAd error:", err));
+  createBannerAd(adId, callback) {
+    try {
+      if (this._bannerAd) { try { this._bannerAd.destroy(); } catch (_) {} }
+      if (!_api.createBannerAd) { if (callback) callback(false, "createBannerAd not supported"); return; }
+      const info = _api.getWindowInfo ? _api.getWindowInfo() : _api.getSystemInfoSync();
+      this._bannerAd = _api.createBannerAd({
+        adUnitId: adId,
+        style: { left: 0, top: (info.windowHeight || info.screenHeight) - 100, width: info.windowWidth || info.screenWidth },
+      });
+      this._bannerAd.onError((err) => console.warn("[SDK] BannerAd error:", err));
+      if (callback) callback(true, "");
+    } catch (e) { console.warn("[SDK] createBannerAd:", e); if (callback) callback(false, e.errMsg || String(e)); }
   }
 
-  showBannerAd() { if (this._bannerAd) this._bannerAd.show(); }
-  hideBannerAd() { if (this._bannerAd) this._bannerAd.hide(); }
-  destroyBannerAd() { if (this._bannerAd) { this._bannerAd.destroy(); this._bannerAd = null; } }
+  showBannerAd() { try { if (this._bannerAd) this._bannerAd.show(); } catch (e) { console.warn("[SDK] showBannerAd:", e); } }
+  hideBannerAd() { try { if (this._bannerAd) this._bannerAd.hide(); } catch (e) { console.warn("[SDK] hideBannerAd:", e); } }
+  destroyBannerAd() { try { if (this._bannerAd) { this._bannerAd.destroy(); this._bannerAd = null; } } catch (e) { console.warn("[SDK] destroyBannerAd:", e); } }
 
   // ── Interstitial Ad ────────────────────────────────────────────
 
-  createInterstitialAd(adId) {
-    if (this._interstitialAd) { try { this._interstitialAd.destroy(); } catch (_) {} }
-    this._interstitialAd = _api.createInterstitialAd({ adUnitId: adId });
-    this._interstitialAd.onError((err) => console.error("[SDK] InterstitialAd error:", err));
+  createInterstitialAd(adId, callback) {
+    try {
+      if (this._interstitialAd) { try { this._interstitialAd.destroy(); } catch (_) {} }
+      if (!_api.createInterstitialAd) { if (callback) callback(false, "createInterstitialAd not supported"); return; }
+      this._interstitialAd = _api.createInterstitialAd({ adUnitId: adId });
+      this._interstitialAd.onError((err) => console.warn("[SDK] InterstitialAd error:", err));
+      if (callback) callback(true, "");
+    } catch (e) { console.warn("[SDK] createInterstitialAd:", e); if (callback) callback(false, e.errMsg || String(e)); }
   }
 
   showInterstitialAd(callback) {
     if (!this._interstitialAd) { callback(false, "No interstitial ad created."); return; }
-    this._interstitialAd.show()
-      .then(() => callback(true, ""))
-      .catch((err) => callback(false, err.errMsg || String(err)));
+    try {
+      this._interstitialAd.show()
+        .then(() => callback(true, ""))
+        .catch((err) => callback(false, err.errMsg || String(err)));
+    } catch (e) { callback(false, e.errMsg || String(e)); }
   }
 
   // ── Payment ────────────────────────────────────────────────────

@@ -62,7 +62,7 @@ console.log("[Loader] canvas.addEventListener:", typeof _canvas.addEventListener
 class Loader {
   constructor(config) {
     this.config = { ...LoaderConfig, ...config };
-    const info = _api.getWindowInfo();
+    const info = (_api.getWindowInfo || _api.getSystemInfoSync).call(_api);
     const dpr = info.pixelRatio;
     this.progress = 0;
 
@@ -85,10 +85,13 @@ class Loader {
     this.cleanWebgl = clean;
   }
 
-  loadSubpackages() {
-    return new Promise((resolve, reject) => {
-      _api.loadSubpackage({ name: "engine", success: () => { this._step(); resolve(); }, fail: reject });
+  async loadSubpackages() {
+    console.log("[Loader] await loadSubpackage('engine')...");
+    await new Promise((resolve, reject) => {
+      _api.loadSubpackage({ name: "engine", success: resolve, fail: reject });
     });
+    console.log("[Loader] await loadSubpackage('engine') done");
+    this._step();
   }
 
   _step() {
@@ -161,59 +164,58 @@ class Loader {
     gl.drawArrays(gl.TRIANGLES, 0, 6);
   }
 
-  load() {
-    console.log("[Loader] ▶ 开始加载流程");
-    const loadImg = (img) => new Promise((resolve) => { img.onload = resolve; img.onerror = () => resolve(); });
-    console.log("[Loader] 1/6 加载图片资源...");
-    Promise.all([loadImg(this.bgImage), loadImg(this.logoImage)])
-      .then(() => {
-        console.log("[Loader] 2/6 图片加载完成，开始加载引擎子包...");
-        this._step();
-        return this.loadSubpackages();
-      })
-      .then(() => {
-        console.log("[Loader] 3/6 子包加载完成，初始化引擎...");
-        this._step();
-        const _Engine = GameGlobal.Engine || (typeof Engine !== "undefined" ? Engine : null);
-        console.log("[Loader]     Engine 类:", _Engine ? "已找到" : "未找到!");
-        if (!_Engine) throw new Error("Engine not found – godot.js may not have loaded correctly");
-        const engine = new _Engine();
-        GameGlobal.engine = engine;
-        godotSdk.set_engine(engine);
+  async load() {
+    try {
+      console.log("[Loader] ▶ 开始加载流程");
+      const loadImg = (img) => new Promise((resolve) => { img.onload = resolve; img.onerror = () => resolve(); });
 
-        console.log("[Loader] 4/6 调用 engine.startGame()...");
-        console.log("[Loader]     canvas:", _canvas ? `${_canvas.width}x${_canvas.height}` : "null");
-        const ctx = _canvas.getContext("webgl2");
-        console.log("[Loader]     WebGL2 context:", ctx ? "OK" : "FAILED (null)");
-        if (ctx) {
-          console.log("[Loader]     GL_RENDERER:", ctx.getParameter?.(ctx.RENDERER));
-          console.log("[Loader]     GL_VERSION:", ctx.getParameter?.(ctx.VERSION));
-        }
+      console.log("[Loader] 1/6 加载图片资源...");
+      await Promise.all([loadImg(this.bgImage), loadImg(this.logoImage)]);
 
-        return engine.startGame({
-          canvas: _canvas,
-          executable: "engine/godot",
-          mainPack: "engine/godot.zip",
-          args: [],
-        });
-      })
-      .then(() => {
-        console.log("[Loader] 5/6 engine.startGame() 完成，设置文件同步...");
-        if (typeof engine !== "undefined" && engine.config && engine.config.persistentPaths) {
-          engine.config.persistentPaths.forEach(p => godotSdk.copyLocalToFS(p));
-        }
-        setInterval(() => {
-          godotSdk.syncfs(null, err => { if (err) console.error("[sync]", err); });
-        }, 5000);
-        this.logoImage = null;
-        this.loadingCtx.clearRect(0, 0, this.loadingCanvas.width, this.loadingCanvas.height);
-        this.cleanWebgl();
-        console.log("[Loader] 6/6 ✓ 加载完成，游戏已启动");
-      })
-      .catch(err => {
-        console.error("[Loader] ✗ 加载失败:", err);
-        if (err && err.stack) console.error("[Loader] Stack:", err.stack);
+      console.log("[Loader] 2/6 图片加载完成，开始加载引擎子包...");
+      this._step();
+      await this.loadSubpackages();
+
+      console.log("[Loader] 3/6 子包加载完成，初始化引擎...");
+      this._step();
+      const _Engine = GameGlobal.Engine || (typeof Engine !== "undefined" ? Engine : null);
+      console.log("[Loader]     Engine 类:", _Engine ? "已找到" : "未找到!");
+      if (!_Engine) throw new Error("Engine not found – godot.js may not have loaded correctly");
+      const engine = new _Engine();
+      GameGlobal.engine = engine;
+      godotSdk.set_engine(engine);
+
+      console.log("[Loader] 4/6 调用 engine.startGame()...");
+      console.log("[Loader]     canvas:", _canvas ? `${_canvas.width}x${_canvas.height}` : "null");
+      const ctx = _canvas.getContext("webgl2");
+      console.log("[Loader]     WebGL2 context:", ctx ? "OK" : "FAILED (null)");
+      if (ctx) {
+        console.log("[Loader]     GL_RENDERER:", ctx.getParameter?.(ctx.RENDERER));
+        console.log("[Loader]     GL_VERSION:", ctx.getParameter?.(ctx.VERSION));
+      }
+
+      await engine.startGame({
+        canvas: _canvas,
+        executable: "engine/godot",
+        mainPack: "engine/godot.zip",
+        args: [],
       });
+
+      console.log("[Loader] 5/6 engine.startGame() 完成，设置文件同步...");
+      if (typeof engine !== "undefined" && engine.config && engine.config.persistentPaths) {
+        engine.config.persistentPaths.forEach(p => godotSdk.copyLocalToFS(p));
+      }
+      setInterval(() => {
+        godotSdk.syncfs(null, err => { if (err) console.error("[sync]", err); });
+      }, 5000);
+      this.logoImage = null;
+      this.loadingCtx.clearRect(0, 0, this.loadingCanvas.width, this.loadingCanvas.height);
+      this.cleanWebgl();
+      console.log("[Loader] 6/6 ✓ 加载完成，游戏已启动");
+    } catch (err) {
+      console.error("[Loader] ✗ 加载失败:", err);
+      if (err && err.stack) console.error("[Loader] Stack:", err.stack);
+    }
   }
 }
 

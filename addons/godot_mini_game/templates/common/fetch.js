@@ -167,6 +167,13 @@ function _readLocalFile(url) {
 }
 
 function Fetch(url, options = {}) {
+  // .wasm files are loaded directly by WXWebAssembly.instantiate (by path),
+  // not through fetch. Return a stub response so Emscripten's glue code
+  // proceeds to instantiateStreaming/instantiate where our shim takes over.
+  if (typeof url === "string" && url.endsWith(".wasm")) {
+    return Promise.resolve(new Response(new ArrayBuffer(0), { status: 200, statusText: "OK", url }));
+  }
+
   if (_isLocalPath(url)) {
     return _readLocalFile(url).then(data => {
       return new Response(data, { status: 200, statusText: "OK", url });

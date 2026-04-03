@@ -50,6 +50,31 @@ text = "..."
 
 [node name="Sep2" type="HSeparator" parent="."]
 
+[node name="TemplateLabel" type="Label" parent="."]
+text = "引擎模板"
+
+[node name="TemplateStatus" type="RichTextLabel" parent="."]
+custom_minimum_size = Vector2(0, 40)
+bbcode_enabled = true
+fit_content = true
+scroll_active = false
+
+[node name="TemplateRow" type="HBoxContainer" parent="."]
+
+[node name="ImportBtn" type="Button" parent="TemplateRow"]
+size_flags_horizontal = 3
+text = "导入引擎模板..."
+
+[node name="RefreshBtn" type="Button" parent="TemplateRow"]
+text = "刷新"
+
+[node name="TemplateHint" type="Label" parent="."]
+autowrap_mode = 2
+theme_override_font_sizes/font_size = 11
+text = "需要小游戏兼容模板才能在真机运行。可从 godot-love-wechat Releases 下载，或自行编译。"
+
+[node name="Sep3" type="HSeparator" parent="."]
+
 [node name="ExportBtn" type="Button" parent="."]
 custom_minimum_size = Vector2(0, 40)
 text = "导出小游戏"
@@ -64,3 +89,10 @@ title = "选择输出目录"
 size = Vector2i(600, 400)
 access = 2
 file_mode = 2
+
+[node name="TemplateFileDialog" type="FileDialog" parent="."]
+title = "选择引擎模板 ZIP"
+size = Vector2i(600, 400)
+access = 2
+file_mode = 0
+filters = PackedStringArray("*.zip ; ZIP 文件")

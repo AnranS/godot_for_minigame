@@ -3,6 +3,5 @@
   "subpackages": [
     { "root": "engine/", "name": "engine" },
     { "root": "subpacks/", "name": "subpacks" }
-  ],
-  "workers": "js/worker"
+  ]
 }

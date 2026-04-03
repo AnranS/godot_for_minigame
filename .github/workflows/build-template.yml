@@ -1,0 +1,152 @@
+name: Build Mini-Game WASM Template
+
+on:
+  workflow_dispatch:
+    inputs:
+      godot_version:
+        description: "Godot version tag (e.g. 4.4.1-stable)"
+        required: true
+        type: string
+      godot_branch:
+        description: "Godot branch/tag to checkout (e.g. 4.4.1-stable)"
+        required: true
+        type: string
+      emscripten_version:
+        description: "Emscripten version (leave empty for auto-detect from Godot)"
+        required: false
+        type: string
+        default: ""
+      build_profile:
+        description: "Build profile"
+        required: true
+        type: choice
+        options:
+          - "2d_full"
+          - "2d_tiny"
+          - "3d_full"
+        default: "2d_full"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout this repo
+        uses: actions/checkout@v4
+
+      - name: Checkout Godot source
+        uses: actions/checkout@v4
+        with:
+          repository: godotengine/godot
+          ref: ${{ inputs.godot_branch }}
+          path: godot-src
+
+      - name: Detect Emscripten version
+        id: emver
+        run: |
+          if [ -n "${{ inputs.emscripten_version }}" ]; then
+            echo "version=${{ inputs.emscripten_version }}" >> "$GITHUB_OUTPUT"
+          else
+            # Try to detect from Godot's platform/web/detect.py
+            VER=$(grep -oP 'emscripten_version\s*=\s*"(\K[^"]+)' godot-src/platform/web/detect.py || echo "")
+            if [ -z "$VER" ]; then
+              # Fallback: check misc/ci/requirements.txt
+              VER=$(grep -oP 'emsdk==\K[\d.]+' godot-src/misc/ci/requirements.txt 2>/dev/null || echo "3.1.64")
+            fi
+            echo "version=$VER" >> "$GITHUB_OUTPUT"
+          fi
+          echo "Emscripten version: $(cat "$GITHUB_OUTPUT" | grep version | cut -d= -f2)"
+
+      - name: Set up Emscripten
+        uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: ${{ steps.emver.outputs.version }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install SCons
+        run: pip install scons
+
+      - name: Build Godot WASM (mini-game compatible)
+        working-directory: godot-src
+        run: |
+          # Key flags for mini-game compatibility:
+          #   use_exceptions=yes     -> -fexceptions (JS-based, NOT -fwasm-exceptions)
+          #   threads=no             -> single-threaded (mini-game requirement)
+          #   dlink_enabled=no       -> no dynamic linking
+          #   module_webrtc_enabled=no, module_webxr_enabled=no -> strip unused modules
+          scons platform=web target=template_release \
+            arch=wasm32 \
+            optimize=size \
+            use_exceptions=yes \
+            threads=no \
+            dlink_enabled=no \
+            module_webrtc_enabled=no \
+            module_webxr_enabled=no \
+            module_openxr_enabled=no \
+            javascript_eval=no \
+            -j$(nproc)
+
+      - name: Locate build artifacts
+        id: artifacts
+        run: |
+          cd godot-src/bin
+          JS_FILE=$(ls godot.web.template_release.wasm32.nothreads.js 2>/dev/null || ls godot.web.template_release.wasm32.js 2>/dev/null || ls *.js | head -1)
+          WASM_FILE=$(ls godot.web.template_release.wasm32.nothreads.wasm 2>/dev/null || ls godot.web.template_release.wasm32.wasm 2>/dev/null || ls *.wasm | head -1)
+          echo "js=$JS_FILE" >> "$GITHUB_OUTPUT"
+          echo "wasm=$WASM_FILE" >> "$GITHUB_OUTPUT"
+          echo "Found JS: $JS_FILE ($(du -h $JS_FILE | cut -f1))"
+          echo "Found WASM: $WASM_FILE ($(du -h $WASM_FILE | cut -f1))"
+
+      - name: Install Brotli
+        run: sudo apt-get install -y brotli
+
+      - name: Compress WASM with Brotli
+        run: |
+          cd godot-src/bin
+          brotli --quality=11 --force --output=godot.wasm.br "${{ steps.artifacts.outputs.wasm }}"
+          echo "Original: $(du -h ${{ steps.artifacts.outputs.wasm }} | cut -f1)"
+          echo "Compressed: $(du -h godot.wasm.br | cut -f1)"
+
+      - name: Package template
+        run: |
+          mkdir -p template-package
+          cp "godot-src/bin/${{ steps.artifacts.outputs.js }}" template-package/godot.js
+          cp godot-src/bin/godot.wasm.br template-package/godot.wasm.br
+          echo "${{ inputs.godot_version }}" > template-package/version.txt
+
+          cd template-package
+          zip -9 "../minigame.${{ inputs.build_profile }}_${{ inputs.godot_version }}.zip" \
+            godot.js godot.wasm.br version.txt
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: "minigame-template-${{ inputs.build_profile }}-${{ inputs.godot_version }}"
+          path: "minigame.${{ inputs.build_profile }}_${{ inputs.godot_version }}.zip"
+
+      - name: Create or update release
+        if: github.event_name == 'workflow_dispatch'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: "template-${{ inputs.godot_version }}"
+          name: "Mini-Game Template for Godot ${{ inputs.godot_version }}"
+          body: |
+            Pre-compiled mini-game compatible WASM template for Godot ${{ inputs.godot_version }}.
+
+            **Changes from standard Godot web export:**
+            - Uses `-fexceptions` (JS-based) instead of `-fwasm-exceptions` for WXWebAssembly compatibility
+            - Single-threaded (`threads=no`)
+            - Stripped modules: WebRTC, WebXR, OpenXR, JavaScript eval
+
+            **Usage:**
+            1. Download the `.zip` file
+            2. In Godot, open the Mini-Game Export dock
+            3. Click "Import Engine Template" and select the downloaded zip
+          files: "minigame.${{ inputs.build_profile }}_${{ inputs.godot_version }}.zip"
+          draft: false
+          prerelease: false
