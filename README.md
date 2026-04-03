@@ -1,75 +1,80 @@
-# Godot Mini Game
+<p align="center">
+  <img src="assets/banner.svg" alt="Godot Mini Game" width="720"/>
+</p>
 
-A Godot 4.x editor plugin that exports Godot games to **WeChat** and **Douyin (TikTok) Mini Games** with one click.
+<p align="center">
+  <strong>One-click export from Godot to WeChat & Douyin mini-games</strong>
+</p>
 
-Ships with a pre-compiled mini-game compatible engine template (Godot 4.6) — install, export, done.
+<p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT License"/></a>
+  <img src="https://img.shields.io/badge/Godot-4.x-478cbf?logo=godotengine&logoColor=white" alt="Godot 4.x"/>
+  <img src="https://img.shields.io/badge/WeChat-Mini%20Game-07c160?logo=wechat&logoColor=white" alt="WeChat"/>
+  <img src="https://img.shields.io/badge/Douyin-Mini%20Game-111?logo=tiktok&logoColor=white" alt="Douyin"/>
+</p>
 
-## Features
+---
 
-- **One-click export** from an editor dock panel
-- **Platform adapter** bridging Emscripten to mini-game runtimes (Canvas, WebGL, Audio, Input, FS)
-- **Bundled engine template** compiled without WASM SIMD / exception-handling tags, ready for real devices
-- **Unified SDK** — 13 native API modules exposed to GDScript via signals
-- **WeChat + Douyin** support from a single codebase
+A Godot 4.x editor plugin that converts your game into a **WeChat** or **Douyin (TikTok) Mini Game** ready for submission. Ships with a pre-compiled engine template — install the plugin, click export, open in DevTools.
+
+## Highlights
+
+- **Zero config** — bundled engine template works out of the box, no Emscripten setup needed
+- **One-click export** — editor dock panel handles everything: `.pck`, engine files, JS adapters, platform configs
+- **Real-device ready** — engine compiled without WASM SIMD / exception tags that crash `WXWebAssembly`
+- **13 native APIs** — auth, ads, payment, storage, share, vibration, keyboard, clipboard, network, and more
+- **Dual platform** — WeChat + Douyin from a single codebase
 
 ## Quick Start
 
-### 1. Install the plugin
+### 1. Install
 
-Copy `addons/godot_mini_game/` into your Godot project:
+Download the [latest release](../../releases) and extract into your project root:
 
 ```
 your_project/
   addons/
-    godot_mini_game/   ← copy this folder
-  ...
+    godot_mini_game/   ← extracted here
 ```
 
-Then enable it in **Project > Project Settings > Plugins > Godot Mini Game Export**.
+Or clone this repo and copy the `addons/godot_mini_game/` folder.
 
-### 2. Create a Web export preset
+### 2. Enable
 
-Go to **Project > Export**, add a **Web** preset. Name it anything (e.g. "Web").
-You do **not** need to download the standard Web export template — the plugin ships its own engine.
+**Project > Project Settings > Plugins** — enable **Godot Mini Game Export**.
 
-### 3. Export
+### 3. Create a Web export preset
 
-1. Open the **Mini Game Export** dock (appears at the bottom of the editor).
-2. Select platform (WeChat / Douyin), enter your App ID, choose orientation.
-3. Pick the Web preset and output directory.
-4. Click **Export**.
+**Project > Export** — add a **Web** preset (any name). No need to download standard export templates.
 
-Open the output folder in WeChat DevTools or Douyin DevTools.
+### 4. Export
 
-## SDK Usage
+Open the **Mini Game Export** dock at the bottom of the editor:
 
-The plugin registers a `MiniGameSDK` autoload singleton automatically.
-All async results are delivered via signals. Methods are safe no-ops outside mini-game environments.
+1. Choose platform (WeChat / Douyin)
+2. Enter App ID, pick orientation
+3. Select your Web preset and output directory
+4. Click **Export**
 
-### Basic Example
+Open the output folder in **WeChat DevTools** or **Douyin DevTools**.
 
-```gdscript
-func _ready():
-    MiniGameSDK.login_completed.connect(_on_login)
-    MiniGameSDK.login()
+## SDK API
 
-func _on_login(code: String, error: String):
-    if error.is_empty():
-        print("Login code: ", code)
-```
-
-### Storage (synchronous)
+The plugin registers `MiniGameSDK` as an autoload. All async results come through signals.
+Methods are safe no-ops outside mini-game environments — develop and test normally in the editor.
 
 ```gdscript
+# Login
+MiniGameSDK.login_completed.connect(func(code, err):
+    if err.is_empty(): print("code: ", code)
+)
+MiniGameSDK.login()
+
+# Storage (synchronous)
 MiniGameSDK.storage_set("level", "5")
 var level = MiniGameSDK.storage_get("level", "1")
-MiniGameSDK.storage_remove("level")
-MiniGameSDK.storage_clear()
-```
 
-### Ads
-
-```gdscript
+# Rewarded Ad
 MiniGameSDK.ad_created.connect(func(type, ok, err):
     if ok: MiniGameSDK.show_rewarded_ad()
 )
@@ -77,83 +82,113 @@ MiniGameSDK.rewarded_ad_result.connect(func(completed, err):
     if completed: give_reward()
 )
 MiniGameSDK.create_rewarded_ad("your-ad-unit-id")
+
+# Toast / Vibration
+MiniGameSDK.show_toast("Hello!", "success")
+MiniGameSDK.vibrate_short("medium")
 ```
 
-### All API
+<details>
+<summary><strong>Full API Reference</strong></summary>
 
-| Module | Methods | Signals |
-|--------|---------|---------|
-| **Auth** | `login()`, `check_session()`, `get_user_info()` | `login_completed`, `session_checked`, `user_info_received` |
-| **Storage** | `storage_set()`, `storage_get()`, `storage_remove()`, `storage_clear()`, `storage_info()` | — |
-| **Share** | `share_app()`, `show_share_menu()`, `hide_share_menu()` | — |
-| **Rewarded Ad** | `create_rewarded_ad()`, `show_rewarded_ad()` | `ad_created`, `rewarded_ad_result` |
-| **Banner Ad** | `create_banner_ad()`, `show_banner_ad()`, `hide_banner_ad()`, `destroy_banner_ad()` | `ad_created` |
-| **Interstitial Ad** | `create_interstitial_ad()`, `show_interstitial_ad()` | `ad_created`, `interstitial_ad_result` |
-| **Payment** | `request_payment()` | `payment_result` |
-| **Vibration** | `vibrate_short()`, `vibrate_long()` | — |
-| **Keyboard** | `show_keyboard()`, `hide_keyboard()` | `keyboard_event` |
-| **Clipboard** | `set_clipboard()`, `get_clipboard()` | `clipboard_received` |
-| **Network** | `http_request()` | `http_response` |
-| **System** | `get_system_info()`, `get_launch_options()`, `get_window_info()` | — |
-| **UI** | `show_toast()`, `show_modal()`, `show_loading()`, `hide_loading()` | `modal_result` |
-| **Lifecycle** | — | `app_shown`, `app_hidden`, `app_error` |
+### Signals
+
+| Signal | Parameters |
+|--------|-----------|
+| `login_completed` | `code: String, error: String` |
+| `session_checked` | `valid: bool, error: String` |
+| `user_info_received` | `info_json: String, error: String` |
+| `ad_created` | `ad_type: String, success: bool, error: String` |
+| `rewarded_ad_result` | `is_ended: bool, error: String` |
+| `interstitial_ad_result` | `success: bool, error: String` |
+| `payment_result` | `success: bool, error: String` |
+| `keyboard_event` | `event_type: String, value: String` |
+| `http_response` | `status_code: int, data: String, error: String` |
+| `clipboard_received` | `data: String, error: String` |
+| `modal_result` | `confirmed: bool` |
+| `app_shown` | `options_json: String` |
+| `app_hidden` | — |
+| `app_error` | `message: String` |
+
+### Methods
+
+| Category | Methods |
+|----------|---------|
+| **Auth** | `login()` `check_session()` `get_user_info()` |
+| **Storage** | `storage_set(key, val)` `storage_get(key, default)` `storage_remove(key)` `storage_clear()` `storage_info()` |
+| **Share** | `share_app(title, image_url, query)` `show_share_menu()` `hide_share_menu()` |
+| **Rewarded Ad** | `create_rewarded_ad(id)` `show_rewarded_ad()` |
+| **Banner Ad** | `create_banner_ad(id)` `show_banner_ad()` `hide_banner_ad()` `destroy_banner_ad()` |
+| **Interstitial** | `create_interstitial_ad(id)` `show_interstitial_ad()` |
+| **Payment** | `request_payment(params)` |
+| **Vibration** | `vibrate_short(type)` `vibrate_long()` |
+| **Keyboard** | `show_keyboard(default_value, max_length, multiple)` `hide_keyboard()` |
+| **Clipboard** | `set_clipboard(data)` `get_clipboard()` |
+| **Network** | `http_request(url, method, data, headers)` |
+| **System** | `get_system_info()` `get_launch_options()` `get_window_info()` `get_menu_button_rect()` |
+| **UI** | `show_toast(title, icon, duration)` `show_modal(title, content)` `show_loading(title)` `hide_loading()` |
+| **Screen** | `set_keep_screen_on(keep_on)` |
+
+</details>
 
 ## Engine Template
 
-The plugin bundles a pre-compiled engine template in `addons/godot_mini_game/engine/`.
-It is built from Godot 4.6.1 with the following flags for mini-game compatibility:
+The plugin bundles a pre-compiled engine in `addons/godot_mini_game/engine/` (Godot 4.6.1, ~6 MB compressed).
 
-- `wasm_simd=no` — WXWebAssembly does not support SIMD
-- `SUPPORT_LONGJMP='emscripten'` — avoids WASM Tag section
-- `threads=no` — mini-game runtimes are single-threaded
+**Why a custom template?** Standard Godot web exports use WASM features (SIMD, exception-handling tags) that `WXWebAssembly` on real devices doesn't support. The bundled template is compiled with:
+
+- `wasm_simd=no`
+- `SUPPORT_LONGJMP='emscripten'` (avoids WASM Tag section)
+- `threads=no`
 
 ### Template resolution order
 
-1. User-provided `godot.js` + `godot.wasm.br` in `addons/godot_mini_game/` (manual override)
-2. Bundled engine in `addons/godot_mini_game/engine/`
-3. Imported template in `~/.config/godot_mini_game/templates/{version}/`
-4. Standard Godot Web export template (DevTools only, will warn)
+| Priority | Source | Notes |
+|----------|--------|-------|
+| 1 | `addons/godot_mini_game/godot.js` + `godot.wasm.br` | Manual override |
+| 2 | `addons/godot_mini_game/engine/` | Bundled (default) |
+| 3 | `~/.config/godot_mini_game/templates/{version}/` | Imported via dock |
+| 4 | Standard Godot Web export template | DevTools only, warns |
 
-### Building your own template
-
-If you need a template for a different Godot version:
+### Building for a different Godot version
 
 ```bash
+# Local build (~5 min on Apple Silicon)
 ./scripts/build_wasm_template.sh 4.x.x-stable
+
+# Then import the zip via the dock's "Import Engine Template" button
 ```
 
-This clones Godot, sets up Emscripten, compiles with compatible flags, and packages a `.zip`.
-Import the zip via the dock's **"Import Engine Template"** button.
-
-You can also use the GitHub Actions workflow (`.github/workflows/build-template.yml`).
+Or use the GitHub Actions workflow: **Actions > Build Mini-Game WASM Template**.
 
 ## Project Structure
 
 ```
 addons/godot_mini_game/
-├── plugin.cfg / plugin.gd            Editor plugin entry point
-├── export_dock.gd / .tscn            Export UI dock panel
-├── exporter.gd                       Export pipeline (pck, engine, patches)
-├── MiniGameSDK.gd                    GDScript SDK autoload
-├── engine/                            Bundled engine template
-│   ├── godot.js
-│   ├── godot.wasm.br
-│   └── version.txt
+├── plugin.cfg / plugin.gd          # Editor plugin entry
+├── export_dock.gd / .tscn          # Export UI dock
+├── exporter.gd                     # Export pipeline
+├── MiniGameSDK.gd                  # GDScript SDK autoload
+├── engine/                          # Bundled engine (godot.js + godot.wasm.br)
 └── templates/
     ├── common/
-    │   ├── adapter.js                 DOM/BOM/Canvas/Audio/Input polyfills
-    │   ├── fetch.js                   Fetch API polyfill
-    │   ├── js/libs/sdk.js             JS ↔ GDScript bridge
-    │   └── js/loader.js               Engine loader + loading screen
-    ├── wechat/                        WeChat game.js + configs
-    └── douyin/                        Douyin game.js + configs
+    │   ├── adapter.js               # DOM/BOM/Canvas/Audio/Input polyfills
+    │   ├── fetch.js                 # Fetch API polyfill
+    │   ├── js/libs/sdk.js           # JS ↔ GDScript bridge
+    │   └── js/loader.js             # Engine loader + loading screen
+    ├── wechat/                      # WeChat configs
+    └── douyin/                      # Douyin configs
 ```
 
 ## Requirements
 
-- Godot 4.x (tested 4.3 – 4.6)
-- WeChat DevTools or Douyin DevTools
-- `brotli` CLI recommended for custom template builds (`brew install brotli`)
+- **Godot 4.x** (tested 4.3 – 4.6)
+- **WeChat DevTools** or **Douyin DevTools**
+- `brotli` CLI for custom template builds (`brew install brotli`)
+
+## Contributing
+
+Issues and PRs welcome. For custom engine template builds, see `scripts/build_wasm_template.sh`.
 
 ## License
 
