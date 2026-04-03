@@ -1,16 +1,5 @@
 <p align="center">
-  <img src="assets/banner.svg" alt="Godot Mini Game" width="720"/>
-</p>
-
-<p align="center">
-  <strong>One-click export from Godot to WeChat & Douyin mini-games</strong>
-</p>
-
-<p align="center">
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT License"/></a>
-  <img src="https://img.shields.io/badge/Godot-4.x-478cbf?logo=godotengine&logoColor=white" alt="Godot 4.x"/>
-  <img src="https://img.shields.io/badge/WeChat-Mini%20Game-07c160?logo=wechat&logoColor=white" alt="WeChat"/>
-  <img src="https://img.shields.io/badge/Douyin-Mini%20Game-111?logo=tiktok&logoColor=white" alt="Douyin"/>
+  <img src="assets/banner.svg" width="840" alt="Godot Mini Game — Export to WeChat & Douyin"/>
 </p>
 
 ---
