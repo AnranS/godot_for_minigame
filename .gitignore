@@ -18,3 +18,7 @@ Thumbs.db
 /build/
 /dist/
 /build_wasm/
+
+# Bundled engine binary (tracked via Git LFS or manual commit)
+# Uncomment if you want to exclude from regular git:
+# addons/godot_mini_game/engine/godot.wasm.br

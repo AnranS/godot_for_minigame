@@ -1,0 +1,49 @@
+name: Release Plugin
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read version from plugin.cfg
+        id: version
+        run: |
+          VERSION=$(grep 'version=' addons/godot_mini_game/plugin.cfg | head -1 | cut -d'"' -f2)
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Package plugin
+        run: |
+          mkdir -p dist
+          TEMP=$(mktemp -d)
+          mkdir -p "$TEMP/addons"
+          cp -r addons/godot_mini_game "$TEMP/addons/"
+          find "$TEMP" -name "*.uid" -delete
+          find "$TEMP" -name ".DS_Store" -delete
+          find "$TEMP" -name "*.import" -delete
+          cd "$TEMP"
+          zip -r -9 "$GITHUB_WORKSPACE/dist/godot_mini_game_v${{ steps.version.outputs.version }}.zip" addons/
+          ls -lh "$GITHUB_WORKSPACE/dist/"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "v${{ steps.version.outputs.version }}"
+          body: |
+            ## Godot Mini Game Plugin v${{ steps.version.outputs.version }}
+
+            ### Installation
+            1. Download `godot_mini_game_v${{ steps.version.outputs.version }}.zip`
+            2. Extract into your Godot project root
+            3. Enable the plugin in Project Settings > Plugins
+
+            Includes bundled engine template for Godot 4.6 (mini-game compatible).
+          files: |
+            dist/godot_mini_game_v${{ steps.version.outputs.version }}.zip
