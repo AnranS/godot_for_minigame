@@ -164,7 +164,8 @@ addons/godot_mini_game/
     │   ├── adapter.js               # DOM/BOM/Canvas/Audio/Input polyfills
     │   ├── fetch.js                 # Fetch API polyfill
     │   ├── js/libs/sdk.js           # JS ↔ GDScript bridge
-    │   └── js/loader.js             # Engine loader + loading screen
+    │   ├── js/loader.js             # Engine loader + loading screen
+    │   └── js/worker/               # Worker scripts required by WeChat game.json
     ├── wechat/                      # WeChat configs
     └── douyin/                      # Douyin configs
 ```

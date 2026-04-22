@@ -148,7 +148,7 @@ func export_mini_game(
 	_log("平台: %s | AppID: %s | 方向: %s" % [platform, appid, orientation])
 	_log("输出目录: %s" % output_dir)
 
-	for sub in ["engine", "js/libs", "images", "subpacks"]:
+	for sub in ["engine", "js/libs", "js/worker", "images", "subpacks"]:
 		DirAccess.make_dir_recursive_absolute(output_dir.path_join(sub))
 
 	# Step 1: Export .pck (lightweight, does not require export templates)
@@ -563,6 +563,7 @@ func _copy_common_templates(output_dir: String) -> void:
 		"fetch.js":                         "fetch.js",
 		"js/libs/sdk.js":                   "js/libs/sdk.js",
 		"js/loader.js":                     "js/loader.js",
+		"js/worker/position_reporting.js":  "js/worker/position_reporting.js",
 	}
 	for src_rel in mappings:
 		var src_path: String = common + src_rel
