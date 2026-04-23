@@ -2,6 +2,10 @@
   <img src="assets/banner.svg" width="840" alt="Godot Mini Game — Export to WeChat & Douyin"/>
 </p>
 
+<p align="center">
+  <strong>English</strong> · <a href="README_zh.md">简体中文</a>
+</p>
+
 ---
 
 A Godot 4.x editor plugin that converts your game into a **WeChat** or **Douyin (TikTok) Mini Game** ready for submission. Ships with a pre-compiled engine template — install the plugin, click export, open in DevTools.
@@ -175,6 +179,11 @@ addons/godot_mini_game/
 - **Godot 4.x** (tested 4.3 – 4.6)
 - **WeChat DevTools** or **Douyin DevTools**
 - **Node.js** (recommended, built-in Brotli compression) or `brotli` CLI (`brew install brotli`)
+
+## Documentation
+
+- [Usage guide](docs/USAGE.md) — detailed walkthrough of the dock, SDK, subpackages, troubleshooting, and custom engine builds.
+- [使用文档（中文）](docs/USAGE_zh.md)
 
 ## Contributing
 
