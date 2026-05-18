@@ -123,7 +123,12 @@ else
     echo "  Install: brew install brotli"
 fi
 
-echo "${GODOT_TAG}" > "${OUTPUT_DIR}/version.txt"
+# Write version.txt in the same format Engine.get_version_info() produces in
+# GDScript: "major.minor.patch.status" (dot-separated). The importer in
+# exporter.gd::import_template_zip reads this file to decide which per-version
+# template store directory to use, and inconsistent separators would split
+# 4.6.1-stable and 4.6.1.stable into two different bins.
+echo "${GODOT_TAG//-/.}" > "${OUTPUT_DIR}/version.txt"
 
 cd "${OUTPUT_DIR}"
 zip -9 "../minigame_template_${GODOT_TAG}.zip" godot.js godot.wasm.br version.txt 2>/dev/null || \

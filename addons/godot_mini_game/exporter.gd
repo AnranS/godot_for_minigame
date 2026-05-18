@@ -1,17 +1,28 @@
 @tool
 extends RefCounted
 ## Core export logic:
-##   1. Export .pck via --export-pack (no Web template needed)
-##   2. Obtain engine files (godot.js + godot.wasm) from:
+##   1. Clean previous managed artifacts in the output directory
+##   2. Export .pck via --export-pack (no Web template needed)
+##   3. Obtain engine files (godot.js + godot.wasm) from:
 ##      a) user-provided custom files in addon dir  (highest priority)
 ##      b) version-matched template from local template store
 ##      c) installed Godot Web export template zip   (fallback, simulator only)
-##   3. Copy JS runtime templates
-##   4. Generate platform config files
+##   4. Copy JS runtime templates
+##   5. Generate platform config files
 
 const ADDON_ROOT := "res://addons/godot_mini_game/"
 const TEMPLATES  := "res://addons/godot_mini_game/templates/"
 const ENGINE_DIR := "res://addons/godot_mini_game/engine/"
+
+## File / directory names this exporter owns inside the user's output dir.
+## On every export we wipe these so re-exports never inherit stale artifacts
+## from a failed run, a platform switch, or a downgraded engine template.
+## Anything not in these lists (e.g. user-kept files) is left alone.
+const MANAGED_FILES: PackedStringArray = [
+	"adapter.js", "fetch.js", "game.js", "game.json",
+	"project.config.json", "project.private.config.json",
+]
+const MANAGED_DIRS: PackedStringArray = ["engine", "images", "js", "subpacks"]
 
 var log_callback: Callable
 
@@ -63,6 +74,10 @@ static func get_template_status() -> Dictionary:
 	return result
 
 
+## Imports a mini-game compatible engine template zip into the per-version
+## template store. The destination directory is keyed by the ZIP's *own*
+## version.txt when present, so users can install a 4.6 template from a 4.3
+## editor without it being misfiled under `templates/4.3/`.
 func import_template_zip(zip_path: String) -> Error:
 	var reader := ZIPReader.new()
 	if reader.open(zip_path) != OK:
@@ -72,6 +87,7 @@ func import_template_zip(zip_path: String) -> Error:
 	var found_js := ""
 	var found_wasm_br := ""
 	var found_wasm := ""
+	var found_version_file := ""
 
 	for f in reader.get_files():
 		var basename := f.get_file()
@@ -81,6 +97,8 @@ func import_template_zip(zip_path: String) -> Error:
 			found_wasm_br = f
 		elif basename == "godot.wasm" and not basename.ends_with(".br") and found_wasm.is_empty():
 			found_wasm = f
+		elif basename == "version.txt" and found_version_file.is_empty():
+			found_version_file = f
 
 	if found_js.is_empty():
 		reader.close()
@@ -92,11 +110,22 @@ func import_template_zip(zip_path: String) -> Error:
 		_log("[color=red]ZIP 中未找到 godot.wasm 或 godot.wasm.br[/color]")
 		return ERR_FILE_NOT_FOUND
 
-	var store_dir := get_template_store_dir()
+	var zip_version := ""
+	if not found_version_file.is_empty():
+		zip_version = reader.read_file(found_version_file).get_string_from_utf8().strip_edges()
+
+	var version_key := _version_key_from_string(zip_version)
+	var editor_key := get_godot_version_key()
+	if version_key.is_empty():
+		version_key = editor_key
+		_log("  [color=yellow]⚠ ZIP 内无 version.txt，按当前编辑器版本 (%s) 归档[/color]" % editor_key)
+	elif version_key != editor_key:
+		_log("  [color=yellow]⚠ ZIP 版本 (%s) 与当前编辑器 (%s) 不匹配 — 按 ZIP 版本归档，需要切换编辑器版本才能使用[/color]" % [version_key, editor_key])
+
+	var store_dir := OS.get_config_dir().path_join("godot_mini_game/templates/" + version_key)
 	var global_store := ProjectSettings.globalize_path(store_dir) if store_dir.begins_with("res://") else store_dir
 	DirAccess.make_dir_recursive_absolute(global_store)
 
-	# Extract godot.js
 	var js_data := reader.read_file(found_js)
 	var js_path := global_store.path_join("godot.js")
 	var js_file := FileAccess.open(js_path, FileAccess.WRITE)
@@ -105,7 +134,7 @@ func import_template_zip(zip_path: String) -> Error:
 		js_file.close()
 	_log("  提取 godot.js (%d bytes)" % js_data.size())
 
-	# Extract wasm
+	var compress_ok := true
 	if not found_wasm_br.is_empty():
 		var br_data := reader.read_file(found_wasm_br)
 		var br_file := FileAccess.open(global_store.path_join("godot.wasm.br"), FileAccess.WRITE)
@@ -121,19 +150,36 @@ func import_template_zip(zip_path: String) -> Error:
 			wasm_file.store_buffer(wasm_data)
 			wasm_file.close()
 		_log("  提取 godot.wasm (%.1f MB)" % [wasm_data.size() / 1048576.0])
-		_brotli_compress(wasm_path, global_store.path_join("godot.wasm.br"))
+		compress_ok = _brotli_compress(wasm_path, global_store.path_join("godot.wasm.br"))
 
 	reader.close()
 
-	# Write version marker
 	var ver_file := FileAccess.open(global_store.path_join("version.txt"), FileAccess.WRITE)
 	if ver_file:
-		var v := Engine.get_version_info()
-		ver_file.store_string("%d.%d.%d.%s" % [v.major, v.minor, v.patch, v.status])
+		ver_file.store_string(zip_version if not zip_version.is_empty() else _editor_version_string())
 		ver_file.close()
 
+	if not compress_ok:
+		_log("[color=yellow]模板已导入但缺少 .wasm.br；后续导出会失败，请先安装 Node.js 或 brotli CLI[/color]")
 	_log("[color=green]模板已导入到: %s[/color]" % global_store)
 	return OK
+
+
+## Extracts the `major.minor` key from strings like "4.6.1-stable" or "4.6.1.stable".
+static func _version_key_from_string(s: String) -> String:
+	if s.is_empty():
+		return ""
+	var parts := s.replace("-", ".").split(".")
+	if parts.size() < 2:
+		return ""
+	if not parts[0].is_valid_int() or not parts[1].is_valid_int():
+		return ""
+	return "%s.%s" % [parts[0], parts[1]]
+
+
+static func _editor_version_string() -> String:
+	var v := Engine.get_version_info()
+	return "%d.%d.%d.%s" % [v.major, v.minor, v.patch, v.status]
 
 
 # ─── Public entry point ────────────────────────────────────────────
@@ -148,12 +194,15 @@ func export_mini_game(
 	_log("平台: %s | AppID: %s | 方向: %s" % [platform, appid, orientation])
 	_log("输出目录: %s" % output_dir)
 
+	# Step 0: wipe stale managed artifacts so we never inherit a half-failed run.
+	_cleanup_managed_outputs(output_dir)
+
 	for sub in ["engine", "js/libs", "js/worker", "images", "subpacks"]:
 		DirAccess.make_dir_recursive_absolute(output_dir.path_join(sub))
 
 	# Step 1: Export .pck (lightweight, does not require export templates)
 	_log("步骤 1/5: 导出资源包 (.pck) ...")
-	var err := _export_pck(preset_name, output_dir.path_join("engine/godot.zip"))
+	var err := await _export_pck(preset_name, output_dir.path_join("engine/godot.zip"))
 	if err != OK:
 		_log("[color=red]导出 PCK 失败: %s[/color]" % error_string(err))
 		return err
@@ -172,24 +221,69 @@ func export_mini_game(
 	_log("步骤 4/5: 生成平台配置 (%s) ..." % platform)
 	_copy_platform_templates(platform, output_dir, appid, orientation)
 
-	# Step 5: Create placeholder files for subpackage structure & images
+	# Step 5: Create placeholder files for the subpackage structure declared in game.json.
+	# Both /engine and /subpacks are listed under "subpackages" in game.json; WeChat
+	# expects every subpackage root to be a real (possibly empty) directory containing
+	# at least one file, otherwise the bundler complains. A zero-byte game.js satisfies
+	# that without bloating the package.
 	_log("步骤 5/5: 创建占位文件 ...")
 	_write_text(output_dir.path_join("engine/game.js"), "")
 	_write_text(output_dir.path_join("subpacks/game.js"), "")
 
-	# Copy audio worklet files (Godot's audio system loads these via audioWorklet.addModule)
-	_copy_file(TEMPLATES + "common/engine/godot.audio.worklet.js",
-		output_dir.path_join("engine/godot.audio.worklet.js"))
-	_copy_file(TEMPLATES + "common/engine/godot.audio.position.worklet.js",
-		output_dir.path_join("engine/godot.audio.position.worklet.js"))
 	_generate_placeholder_images(output_dir)
 
 	_log("[color=green]导出完成！[/color]")
 	return OK
 
 
+## Wipes only the files / directories we own. Anything else the user dropped
+## into `output_dir` (scripts, notes, custom assets) is left untouched.
+func _cleanup_managed_outputs(output_dir: String) -> void:
+	for f in MANAGED_FILES:
+		var p := output_dir.path_join(f)
+		if FileAccess.file_exists(p):
+			DirAccess.remove_absolute(ProjectSettings.globalize_path(p))
+	for d in MANAGED_DIRS:
+		var p := output_dir.path_join(d)
+		var global := ProjectSettings.globalize_path(p)
+		if DirAccess.dir_exists_absolute(global):
+			_rm_rf(global)
+
+
+## Recursive directory delete. Stays inside the directory we were given —
+## DirAccess refuses to escape, so this can't accidentally walk up.
+func _rm_rf(global_path: String) -> void:
+	var da := DirAccess.open(global_path)
+	if not da:
+		return
+	da.list_dir_begin()
+	var entry := da.get_next()
+	while entry != "":
+		var child := global_path.path_join(entry)
+		if da.current_is_dir():
+			_rm_rf(child)
+		else:
+			DirAccess.remove_absolute(child)
+		entry = da.get_next()
+	da.list_dir_end()
+	DirAccess.remove_absolute(global_path)
+
+
 # ─── Step 1: Export PCK ────────────────────────────────────────────
 
+## Spawns a separate headless Godot process to write the `.pck` and awaits
+## its completion without freezing the editor.
+##
+## Previous implementation called `OS.execute(..., true)` which blocks the
+## main thread; large projects pinned the editor for tens of seconds at a
+## time. `OS.create_process` returns immediately and we poll via SceneTree
+## timer, yielding to the editor so the dock stays responsive.
+##
+## Trade-off: `OS.create_process` does not capture stdout/stderr, so the
+## sub-process Godot's warnings are lost. In return we get a non-blocking
+## UI and a heartbeat log every second. If a deeper failure investigation
+## is needed, run the command from a terminal manually — the log line
+## "执行: <cmd>" prints the full invocation.
 func _export_pck(preset_name: String, pck_path: String) -> Error:
 	var godot_path := OS.get_executable_path()
 	var project_path := ProjectSettings.globalize_path("res://")
@@ -206,36 +300,78 @@ func _export_pck(preset_name: String, pck_path: String) -> Error:
 
 	_log("  执行: %s %s" % [godot_path, " ".join(args)])
 
-	var output := []
-	var exit_code := OS.execute(godot_path, args, output, true)
+	var pid := OS.create_process(godot_path, args)
+	if pid <= 0:
+		_log("  [color=red]无法启动 Godot 子进程[/color]")
+		return ERR_CANT_FORK
 
+	var tree: SceneTree = Engine.get_main_loop() as SceneTree
+	var elapsed_ms: int = 0
+	var POLL_MS := 250
+	while OS.is_process_running(pid):
+		if tree:
+			await tree.create_timer(POLL_MS / 1000.0).timeout
+		else:
+			OS.delay_msec(POLL_MS)
+		elapsed_ms += POLL_MS
+		if elapsed_ms % 4000 == 0:
+			_log("  ...导出中 (%ds)" % (elapsed_ms / 1000))
+
+	var exit_code := OS.get_process_exit_code(pid)
 	if exit_code != 0:
-		for line in output:
-			_log("  [color=yellow]%s[/color]" % str(line))
+		_log("  [color=red]导出 PCK 失败 (exit=%d)，请在终端手动重跑命令查看详细错误[/color]" % exit_code)
 		return ERR_COMPILATION_FAILED
 
 	if not FileAccess.file_exists(pck_path):
 		_log("  [color=red]PCK 文件未生成[/color]")
 		return ERR_FILE_NOT_FOUND
 
-	_log("  PCK 已导出 → engine/godot.zip")
+	_log("  PCK 已导出 → engine/godot.zip (耗时 %.1fs)" % (elapsed_ms / 1000.0))
 	return OK
 
 
+## Forces the chosen preset to ship every resource.
+##
+## SIDE EFFECT: this modifies the user's `export_presets.cfg` in place.
+## We only rewrite it when the values actually need to change, and we always
+## leave a `export_presets.cfg.bak` next to the original so the user can
+## diff/revert. The previous behaviour silently dirtied the file on every
+## single export — that broke version control.
 func _ensure_preset_exports_all(preset_name: String) -> void:
+	const PRESETS_PATH := "res://export_presets.cfg"
+	const BACKUP_PATH := "res://export_presets.cfg.bak"
+
 	var cfg := ConfigFile.new()
-	if cfg.load("res://export_presets.cfg") != OK:
+	if cfg.load(PRESETS_PATH) != OK:
 		return
+
 	for section in cfg.get_sections():
 		if not section.begins_with("preset."):
 			continue
 		var name: String = cfg.get_value(section, "name", "")
-		if name == preset_name:
-			cfg.set_value(section, "export_filter", "all_resources")
-			if cfg.has_section_key(section, "export_files"):
-				cfg.erase_section_key(section, "export_files")
-			cfg.save("res://export_presets.cfg")
+		if name != preset_name:
+			continue
+
+		var current_filter: String = cfg.get_value(section, "export_filter", "")
+		var has_files: bool = cfg.has_section_key(section, "export_files")
+		if current_filter == "all_resources" and not has_files:
 			return
+
+		var backup_src := FileAccess.open(PRESETS_PATH, FileAccess.READ)
+		if backup_src:
+			var backup_dst := FileAccess.open(BACKUP_PATH, FileAccess.WRITE)
+			if backup_dst:
+				backup_dst.store_buffer(backup_src.get_buffer(backup_src.get_length()))
+				backup_dst.close()
+			backup_src.close()
+
+		cfg.set_value(section, "export_filter", "all_resources")
+		if has_files:
+			cfg.erase_section_key(section, "export_files")
+		cfg.save(PRESETS_PATH)
+
+		_log("  [color=yellow]⚠ 已修改预设 \"%s\" 的 export_filter=all_resources（备份: export_presets.cfg.bak）[/color]" % preset_name)
+		return
 
 
 # ─── Step 2: Obtain engine files ──────────────────────────────────
@@ -380,8 +516,7 @@ func _obtain_godot_wasm(output_dir: String) -> bool:
 	if FileAccess.file_exists(custom_raw):
 		_copy_file(custom_raw, wasm_path)
 		_log("  已使用自定义 godot.wasm (来自插件目录)")
-		_brotli_compress(wasm_path, br_path)
-		return true
+		return _brotli_compress(wasm_path, br_path)
 
 	# Priority 2: bundled engine in addon engine/ dir
 	var bundled_br := ENGINE_DIR + "godot.wasm.br"
@@ -393,8 +528,7 @@ func _obtain_godot_wasm(output_dir: String) -> bool:
 	if FileAccess.file_exists(bundled_raw):
 		_copy_file(bundled_raw, wasm_path)
 		_log("  已使用内置 godot.wasm (engine/)")
-		_brotli_compress(wasm_path, br_path)
-		return true
+		return _brotli_compress(wasm_path, br_path)
 
 	# Priority 3: version-matched template from local store
 	var store_dir := get_template_store_dir()
@@ -407,8 +541,7 @@ func _obtain_godot_wasm(output_dir: String) -> bool:
 	if FileAccess.file_exists(store_raw):
 		_copy_file(store_raw, wasm_path)
 		_log("  已使用模板库 godot.wasm (Godot %s)" % get_godot_version_key())
-		_brotli_compress(wasm_path, br_path)
-		return true
+		return _brotli_compress(wasm_path, br_path)
 
 	# Priority 4 (fallback): extract from installed Web export template zip → compress
 	var data := _read_from_template_zip(".wasm")
@@ -417,33 +550,36 @@ func _obtain_godot_wasm(output_dir: String) -> bool:
 		_log("  从标准 Web 导出模板提取 godot.wasm (%.1f MB)" % [data.size() / 1048576.0])
 		_log("[color=yellow]  ⚠ 标准 WASM 使用 wasm-eh 异常处理，真机上 WXWebAssembly 可能报 CompileError。[/color]")
 		_log("[color=yellow]  ⚠ 建议通过导出面板「导入引擎模板」导入兼容真机的模板。[/color]")
-		_brotli_compress(wasm_path, br_path)
-		return true
+		return _brotli_compress(wasm_path, br_path)
 
 	return false
 
 
-func _brotli_compress(src_path: String, dst_path: String) -> void:
+## Returns true only when `dst_path` exists and is a valid Brotli stream.
+## Previous behaviour returned silently on failure, leaving callers to think
+## the wasm was compressed when in fact only the raw .wasm survived.
+func _brotli_compress(src_path: String, dst_path: String) -> bool:
 	var global_src := ProjectSettings.globalize_path(src_path)
 	var global_dst := ProjectSettings.globalize_path(dst_path)
 
 	if not FileAccess.file_exists(src_path):
 		_log("  [color=yellow]⚠ 源文件不存在: %s[/color]" % src_path)
-		return
+		return false
 
 	_log("  正在 Brotli 压缩 godot.wasm ...")
 
 	if _brotli_via_node(global_src, global_dst):
 		_finish_brotli(src_path, dst_path, "Node.js zlib")
-		return
+		return true
 
 	if _brotli_via_cli(global_src, global_dst):
 		_finish_brotli(src_path, dst_path, "brotli CLI")
-		return
+		return true
 
-	_log("  [color=yellow]⚠ 未找到可用的 Brotli 压缩后端，跳过压缩 (将使用未压缩的 .wasm)[/color]")
+	_log("  [color=red]✗ 未找到可用的 Brotli 压缩后端，无法生成 .wasm.br[/color]")
 	_log("  [color=yellow]  推荐: 安装 Node.js (https://nodejs.org) 即可自动使用内置 Brotli[/color]")
 	_log("  [color=yellow]  或者: brew install brotli (macOS) / apt install brotli (Linux)[/color]")
+	return false
 
 
 func _brotli_via_node(src: String, dst: String) -> bool:
@@ -490,26 +626,34 @@ func _finish_brotli(src_path: String, dst_path: String, backend: String) -> void
 	_log("  已删除原始 .wasm，仅保留 .wasm.br")
 
 
+## Searches well-known install paths first, then falls back to `which` / `where`.
+## Hardcoded paths are a perf optimisation (avoids spawning a subprocess on the
+## happy path) and a reliability boost for Godot run from Finder/Explorer where
+## PATH is often empty.
 func _find_executable(name: String) -> String:
 	var known_paths: Dictionary = {
 		"node": [
 			"/usr/local/bin/node",
 			"/opt/homebrew/bin/node",
 			"/usr/bin/node",
+			"C:/Program Files/nodejs/node.exe",
+			"C:/Program Files (x86)/nodejs/node.exe",
 		],
 		"brotli": [
 			"/opt/homebrew/bin/brotli",
 			"/usr/local/bin/brotli",
 			"/usr/bin/brotli",
+			"C:/Program Files/brotli/brotli.exe",
 		],
 	}
 	if known_paths.has(name):
 		for p: String in known_paths[name]:
 			if FileAccess.file_exists(p):
 				return p
+	# nvm-windows / scoop / fnm install into per-user paths; fall back to PATH lookup.
 	var which_cmd := "where" if OS.get_name() == "Windows" else "which"
 	var output: Array = []
-	if OS.execute(which_cmd, [name], output, true) == 0:
+	if OS.execute(which_cmd, [name], output, true) == 0 and output.size() > 0:
 		var result := str(output[0]).strip_edges()
 		if not result.is_empty():
 			return result.split("\n")[0].strip_edges()

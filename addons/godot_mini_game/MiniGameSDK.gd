@@ -4,7 +4,8 @@ extends Node
 ## Add as an autoload (singleton) named "MiniGameSDK".
 ## All async results are delivered via signals.
 ## Synchronous methods (storage, vibration, etc.) return immediately.
-## In non-mini-game environments every method is a safe no-op.
+## Outside a mini-game runtime every method is a safe fallback (no crash,
+## signal emitted with an error string, getters return defaults).
 
 # ── Signals ────────────────────────────────────────────────────────
 
@@ -32,8 +33,19 @@ signal app_error(message: String)
 
 # ── State ──────────────────────────────────────────────────────────
 
-var _sdk = null  # JavaScriptObject
-var _cbs := {}   # prevent GC of JavaScriptBridge callbacks
+const NOT_IN_RUNTIME := "Not in mini-game environment"
+
+var _sdk: JavaScriptObject = null
+
+# Callbacks must be kept alive on the GDScript side, otherwise the
+# JavaScriptBridge garbage-collects them and the JS side fires into
+# nothing. We give each callback a unique id and store it in `_cbs`.
+# One-shot callbacks (login, payment, ad, modal, ...) erase themselves
+# from `_cbs` after first invocation, so concurrent calls don't overwrite
+# each other and we don't leak forever. Persistent callbacks (lifecycle
+# events: onAppShow / onAppHide / onAppError) stay for the SDK's lifetime.
+var _cbs: Dictionary = {}
+var _cb_counter: int = 0
 
 ## True when running inside a mini-game runtime with the JS SDK available.
 var is_mini_game: bool:
@@ -48,6 +60,53 @@ func _ready() -> void:
 		_setup_lifecycle()
 
 
+# ── Internal helpers ──────────────────────────────────────────────
+
+## Wraps `handler` so that JS can invoke it exactly once. The wrapper
+## removes itself from `_cbs` after firing, which is what lets the
+## JavaScriptBridge eventually release it.
+func _track_oneshot(handler: Callable) -> JavaScriptObject:
+	var id := _cb_counter
+	_cb_counter += 1
+	var cb := JavaScriptBridge.create_callback(func(args: Array) -> void:
+		_cbs.erase(id)
+		handler.call(args))
+	_cbs[id] = cb
+	return cb
+
+
+## Wraps a long-lived `handler` (e.g. lifecycle hooks fired many times).
+## Kept alive for the SDK's lifetime.
+func _track_persistent(handler: Callable) -> JavaScriptObject:
+	var id := _cb_counter
+	_cb_counter += 1
+	var cb := JavaScriptBridge.create_callback(handler)
+	_cbs[id] = cb
+	return cb
+
+
+## str() but null-safe. `str(null)` returns "<null>" in GDScript 4,
+## which downstream `error.is_empty()` checks would misread as a
+## non-empty error message.
+static func _s(v: Variant) -> String:
+	return "" if v == null else str(v)
+
+
+## bool() but null-safe.
+static func _b(v: Variant) -> bool:
+	return false if v == null else bool(v)
+
+
+## int() but null-safe.
+static func _i(v: Variant) -> int:
+	if v == null:
+		return 0
+	if v is int or v is float or v is bool:
+		return int(v)
+	var s := str(v)
+	return s.to_int() if s.is_valid_int() else 0
+
+
 # ── Storage (synchronous) ─────────────────────────────────────────
 
 func storage_set(key: String, value: String) -> void:
@@ -58,8 +117,15 @@ func storage_set(key: String, value: String) -> void:
 func storage_get(key: String, default_value: String = "") -> String:
 	if not _sdk:
 		return default_value
-	var result = _sdk.storageGet(key, default_value)
-	return str(result) if result != null else default_value
+	var result: Variant = _sdk.storageGet(key, default_value)
+	if result == null:
+		return default_value
+	var s := str(result)
+	# Defensive: JS bridges occasionally surface JS `undefined` as the
+	# literal string "undefined". Treat it as missing.
+	if s == "undefined" or s == "<null>":
+		return default_value
+	return s
 
 
 func storage_remove(key: String) -> void:
@@ -72,59 +138,57 @@ func storage_clear() -> void:
 		_sdk.storageClear()
 
 
-## Returns JSON: {"keys":[], "size":0, "limit":0}
-func storage_info() -> String:
+## Returns { "keys": Array[String], "size": int, "limit": int }
+## or an empty Dictionary outside the mini-game runtime.
+func storage_info() -> Dictionary:
 	if not _sdk:
-		return "{}"
-	var result = _sdk.storageGetAll()
-	return str(result) if result != null else "{}"
+		return {}
+	var json_str: Variant = _sdk.storageGetAll()
+	if json_str == null:
+		return {}
+	var parsed: Variant = JSON.parse_string(str(json_str))
+	return parsed if parsed is Dictionary else {}
 
 
 # ── Auth / Login ──────────────────────────────────────────────────
 
 func login() -> void:
 	if not _sdk:
-		login_completed.emit("", "Not in mini-game environment")
+		login_completed.emit("", NOT_IN_RUNTIME)
 		return
-	var cb := JavaScriptBridge.create_callback(_on_login)
-	_cbs["login"] = cb
-	_sdk.login(cb)
+	_sdk.login(_track_oneshot(_on_login))
 
 
 func _on_login(args: Array) -> void:
 	login_completed.emit(
-		str(args[0]) if args.size() > 0 else "",
-		str(args[1]) if args.size() > 1 else "")
+		_s(args[0]) if args.size() > 0 else "",
+		_s(args[1]) if args.size() > 1 else "")
 
 
 func check_session() -> void:
 	if not _sdk:
-		session_checked.emit(false, "Not in mini-game environment")
+		session_checked.emit(false, NOT_IN_RUNTIME)
 		return
-	var cb := JavaScriptBridge.create_callback(_on_check_session)
-	_cbs["check_session"] = cb
-	_sdk.checkSession(cb)
+	_sdk.checkSession(_track_oneshot(_on_check_session))
 
 
 func _on_check_session(args: Array) -> void:
 	session_checked.emit(
-		bool(args[0]) if args.size() > 0 else false,
-		str(args[1]) if args.size() > 1 else "")
+		_b(args[0]) if args.size() > 0 else false,
+		_s(args[1]) if args.size() > 1 else "")
 
 
 func get_user_info() -> void:
 	if not _sdk:
-		user_info_received.emit("", "Not in mini-game environment")
+		user_info_received.emit("", NOT_IN_RUNTIME)
 		return
-	var cb := JavaScriptBridge.create_callback(_on_user_info)
-	_cbs["user_info"] = cb
-	_sdk.getUserInfo(cb)
+	_sdk.getUserInfo(_track_oneshot(_on_user_info))
 
 
 func _on_user_info(args: Array) -> void:
 	user_info_received.emit(
-		str(args[0]) if args.size() > 0 else "",
-		str(args[1]) if args.size() > 1 else "")
+		_s(args[0]) if args.size() > 0 else "",
+		_s(args[1]) if args.size() > 1 else "")
 
 
 # ── Share ─────────────────────────────────────────────────────────
@@ -148,43 +212,31 @@ func hide_share_menu() -> void:
 
 func create_rewarded_ad(ad_unit_id: String) -> void:
 	if not _sdk:
-		ad_created.emit("rewarded", false, "Not in mini-game environment")
+		ad_created.emit("rewarded", false, NOT_IN_RUNTIME)
 		return
-	var cb := JavaScriptBridge.create_callback(func(args: Array):
-		ad_created.emit("rewarded",
-			bool(args[0]) if args.size() > 0 else false,
-			str(args[1]) if args.size() > 1 else ""))
-	_cbs["create_rewarded"] = cb
-	_sdk.createRewardedAd(ad_unit_id, cb)
+	_sdk.createRewardedAd(ad_unit_id, _track_oneshot(_on_ad_created.bind("rewarded")))
 
 
 func show_rewarded_ad() -> void:
 	if not _sdk:
-		rewarded_ad_result.emit(false, "Not in mini-game environment")
+		rewarded_ad_result.emit(false, NOT_IN_RUNTIME)
 		return
-	var cb := JavaScriptBridge.create_callback(_on_rewarded_ad)
-	_cbs["rewarded_ad"] = cb
-	_sdk.showRewardedAd(cb)
+	_sdk.showRewardedAd(_track_oneshot(_on_rewarded_ad))
 
 
 func _on_rewarded_ad(args: Array) -> void:
 	rewarded_ad_result.emit(
-		bool(args[0]) if args.size() > 0 else false,
-		str(args[1]) if args.size() > 1 else "")
+		_b(args[0]) if args.size() > 0 else false,
+		_s(args[1]) if args.size() > 1 else "")
 
 
 # ── Banner Ad ─────────────────────────────────────────────────────
 
 func create_banner_ad(ad_unit_id: String) -> void:
 	if not _sdk:
-		ad_created.emit("banner", false, "Not in mini-game environment")
+		ad_created.emit("banner", false, NOT_IN_RUNTIME)
 		return
-	var cb := JavaScriptBridge.create_callback(func(args: Array):
-		ad_created.emit("banner",
-			bool(args[0]) if args.size() > 0 else false,
-			str(args[1]) if args.size() > 1 else ""))
-	_cbs["create_banner"] = cb
-	_sdk.createBannerAd(ad_unit_id, cb)
+	_sdk.createBannerAd(ad_unit_id, _track_oneshot(_on_ad_created.bind("banner")))
 
 
 func show_banner_ad() -> void:
@@ -206,46 +258,46 @@ func destroy_banner_ad() -> void:
 
 func create_interstitial_ad(ad_unit_id: String) -> void:
 	if not _sdk:
-		ad_created.emit("interstitial", false, "Not in mini-game environment")
+		ad_created.emit("interstitial", false, NOT_IN_RUNTIME)
 		return
-	var cb := JavaScriptBridge.create_callback(func(args: Array):
-		ad_created.emit("interstitial",
-			bool(args[0]) if args.size() > 0 else false,
-			str(args[1]) if args.size() > 1 else ""))
-	_cbs["create_interstitial"] = cb
-	_sdk.createInterstitialAd(ad_unit_id, cb)
+	_sdk.createInterstitialAd(ad_unit_id, _track_oneshot(_on_ad_created.bind("interstitial")))
 
 
 func show_interstitial_ad() -> void:
 	if not _sdk:
-		interstitial_ad_result.emit(false, "Not in mini-game environment")
+		interstitial_ad_result.emit(false, NOT_IN_RUNTIME)
 		return
-	var cb := JavaScriptBridge.create_callback(_on_interstitial_ad)
-	_cbs["interstitial_ad"] = cb
-	_sdk.showInterstitialAd(cb)
+	_sdk.showInterstitialAd(_track_oneshot(_on_interstitial_ad))
 
 
 func _on_interstitial_ad(args: Array) -> void:
 	interstitial_ad_result.emit(
-		bool(args[0]) if args.size() > 0 else false,
-		str(args[1]) if args.size() > 1 else "")
+		_b(args[0]) if args.size() > 0 else false,
+		_s(args[1]) if args.size() > 1 else "")
+
+
+## Shared handler for the three ad-create flows. `ad_type` is bound
+## by the caller so we can route to a single ad_created signal.
+func _on_ad_created(args: Array, ad_type: String) -> void:
+	ad_created.emit(
+		ad_type,
+		_b(args[0]) if args.size() > 0 else false,
+		_s(args[1]) if args.size() > 1 else "")
 
 
 # ── Payment ───────────────────────────────────────────────────────
 
 func request_payment(params: Dictionary) -> void:
 	if not _sdk:
-		payment_result.emit(false, "Not in mini-game environment")
+		payment_result.emit(false, NOT_IN_RUNTIME)
 		return
-	var cb := JavaScriptBridge.create_callback(_on_payment)
-	_cbs["payment"] = cb
-	_sdk.requestPayment(JSON.stringify(params), cb)
+	_sdk.requestPayment(JSON.stringify(params), _track_oneshot(_on_payment))
 
 
 func _on_payment(args: Array) -> void:
 	payment_result.emit(
-		bool(args[0]) if args.size() > 0 else false,
-		str(args[1]) if args.size() > 1 else "")
+		_b(args[0]) if args.size() > 0 else false,
+		_s(args[1]) if args.size() > 1 else "")
 
 
 # ── Vibration ─────────────────────────────────────────────────────
@@ -266,15 +318,15 @@ func vibrate_long() -> void:
 func show_keyboard(default_value: String = "", max_length: int = 140, multiple: bool = false) -> void:
 	if not _sdk:
 		return
-	var cb := JavaScriptBridge.create_callback(_on_keyboard)
-	_cbs["keyboard"] = cb
-	_sdk.showKeyboard(default_value, max_length, multiple, cb)
+	# Keyboard fires multiple events (input/confirm/complete) so it is
+	# tracked as persistent — the JS side decides when to stop emitting.
+	_sdk.showKeyboard(default_value, max_length, multiple, _track_persistent(_on_keyboard))
 
 
 func _on_keyboard(args: Array) -> void:
 	keyboard_event.emit(
-		str(args[0]) if args.size() > 0 else "",
-		str(args[1]) if args.size() > 1 else "")
+		_s(args[0]) if args.size() > 0 else "",
+		_s(args[1]) if args.size() > 1 else "")
 
 
 func hide_keyboard() -> void:
@@ -286,70 +338,53 @@ func hide_keyboard() -> void:
 
 func http_request(url: String, method: String = "GET", data: String = "", headers: Dictionary = {}) -> void:
 	if not _sdk:
-		http_response.emit(0, "", "Not in mini-game environment")
+		http_response.emit(0, "", NOT_IN_RUNTIME)
 		return
-	var cb := JavaScriptBridge.create_callback(_on_http_response)
-	_cbs["http"] = cb
-	_sdk.httpRequest(url, method, data, JSON.stringify(headers), cb)
+	_sdk.httpRequest(url, method, data, JSON.stringify(headers), _track_oneshot(_on_http_response))
 
 
 func _on_http_response(args: Array) -> void:
 	http_response.emit(
-		int(args[0]) if args.size() > 0 else 0,
-		str(args[1]) if args.size() > 1 else "",
-		str(args[2]) if args.size() > 2 else "")
+		_i(args[0]) if args.size() > 0 else 0,
+		_s(args[1]) if args.size() > 1 else "",
+		_s(args[2]) if args.size() > 2 else "")
 
 
 # ── System Info ───────────────────────────────────────────────────
 
 func get_system_info() -> Dictionary:
-	if not _sdk:
-		return {}
-	var json_str = _sdk.getSystemInfo()
-	var result = JSON.parse_string(str(json_str))
-	return result if result is Dictionary else {}
+	return _parse_json_object(_sdk.getSystemInfo() if _sdk else null)
 
 
 func get_launch_options() -> Dictionary:
-	if not _sdk:
-		return {}
-	var json_str = _sdk.getLaunchOptions()
-	var result = JSON.parse_string(str(json_str))
-	return result if result is Dictionary else {}
+	return _parse_json_object(_sdk.getLaunchOptions() if _sdk else null)
 
 
 func get_window_info() -> Dictionary:
-	if not _sdk:
-		return {}
-	var json_str = _sdk.getWindowInfo()
-	var result = JSON.parse_string(str(json_str))
-	return result if result is Dictionary else {}
+	return _parse_json_object(_sdk.getWindowInfo() if _sdk else null)
 
 
 func get_menu_button_rect() -> Dictionary:
-	if not _sdk:
+	return _parse_json_object(_sdk.getMenuButtonRect() if _sdk else null)
+
+
+static func _parse_json_object(json_str: Variant) -> Dictionary:
+	if json_str == null:
 		return {}
-	var json_str = _sdk.getMenuButtonRect()
-	var result = JSON.parse_string(str(json_str))
-	return result if result is Dictionary else {}
+	var parsed: Variant = JSON.parse_string(str(json_str))
+	return parsed if parsed is Dictionary else {}
 
 
 # ── Lifecycle ─────────────────────────────────────────────────────
 
 func _setup_lifecycle() -> void:
-	var show_cb := JavaScriptBridge.create_callback(_on_app_show)
-	var hide_cb := JavaScriptBridge.create_callback(_on_app_hide)
-	var err_cb := JavaScriptBridge.create_callback(_on_app_error)
-	_cbs["app_show"] = show_cb
-	_cbs["app_hide"] = hide_cb
-	_cbs["app_error"] = err_cb
-	_sdk.onAppShow(show_cb)
-	_sdk.onAppHide(hide_cb)
-	_sdk.onAppError(err_cb)
+	_sdk.onAppShow(_track_persistent(_on_app_show))
+	_sdk.onAppHide(_track_persistent(_on_app_hide))
+	_sdk.onAppError(_track_persistent(_on_app_error))
 
 
 func _on_app_show(args: Array) -> void:
-	app_shown.emit(str(args[0]) if args.size() > 0 else "{}")
+	app_shown.emit(_s(args[0]) if args.size() > 0 else "{}")
 
 
 func _on_app_hide(_args: Array) -> void:
@@ -357,7 +392,7 @@ func _on_app_hide(_args: Array) -> void:
 
 
 func _on_app_error(args: Array) -> void:
-	app_error.emit(str(args[0]) if args.size() > 0 else "")
+	app_error.emit(_s(args[0]) if args.size() > 0 else "")
 
 
 # ── Clipboard ─────────────────────────────────────────────────────
@@ -369,17 +404,15 @@ func set_clipboard(data: String) -> void:
 
 func get_clipboard() -> void:
 	if not _sdk:
-		clipboard_received.emit("", "Not in mini-game environment")
+		clipboard_received.emit("", NOT_IN_RUNTIME)
 		return
-	var cb := JavaScriptBridge.create_callback(_on_clipboard)
-	_cbs["clipboard"] = cb
-	_sdk.getClipboard(cb)
+	_sdk.getClipboard(_track_oneshot(_on_clipboard))
 
 
 func _on_clipboard(args: Array) -> void:
 	clipboard_received.emit(
-		str(args[0]) if args.size() > 0 else "",
-		str(args[1]) if args.size() > 1 else "")
+		_s(args[0]) if args.size() > 0 else "",
+		_s(args[1]) if args.size() > 1 else "")
 
 
 # ── Screen ────────────────────────────────────────────────────────
@@ -401,13 +434,11 @@ func show_modal(title: String, content: String) -> void:
 	if not _sdk:
 		modal_result.emit(false)
 		return
-	var cb := JavaScriptBridge.create_callback(_on_modal)
-	_cbs["modal"] = cb
-	_sdk.showModal(title, content, cb)
+	_sdk.showModal(title, content, _track_oneshot(_on_modal))
 
 
 func _on_modal(args: Array) -> void:
-	modal_result.emit(bool(args[0]) if args.size() > 0 else false)
+	modal_result.emit(_b(args[0]) if args.size() > 0 else false)
 
 
 func show_loading(title: String = "Loading...") -> void:
