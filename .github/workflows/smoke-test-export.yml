@@ -1,0 +1,189 @@
+name: Smoke Test Export
+
+on:
+  pull_request:
+    paths:
+      - "addons/godot_mini_game/**"
+      - "scenes/**"
+      - "scripts/**"
+      - "project.godot"
+      - ".github/workflows/smoke-test-export.yml"
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+# End-to-end smoke check: install Godot 4.6, run the exporter against the
+# in-repo demo project for both platforms, then validate that every artifact
+# the WeChat / Douyin DevTools needs is present, the right size, and parses.
+# This is the test the project was missing — CI previously only verified that
+# a custom engine could be compiled, never that the export pipeline produced
+# anything loadable.
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [wechat, douyin]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Brotli
+        run: sudo apt-get update && sudo apt-get install -y brotli jq
+
+      - name: Install Godot 4.6.1-stable (headless)
+        run: |
+          set -e
+          GODOT_VERSION=4.6.1-stable
+          URL="https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}/Godot_v${GODOT_VERSION}_linux.x86_64.zip"
+          curl -sSL -o godot.zip "$URL"
+          unzip -q godot.zip
+          chmod +x Godot_v${GODOT_VERSION}_linux.x86_64
+          sudo mv Godot_v${GODOT_VERSION}_linux.x86_64 /usr/local/bin/godot
+          godot --version
+
+      - name: Create a Web export preset
+        # The exporter rewrites this anyway (to all_resources). We only need
+        # a preset to exist with the name "MiniGame".
+        run: |
+          cat > export_presets.cfg <<'EOF'
+          [preset.0]
+          name="MiniGame"
+          platform="Web"
+          runnable=true
+          dedicated_server=false
+          custom_features=""
+          export_filter="all_resources"
+          include_filter=""
+          exclude_filter=""
+          export_path=""
+          encryption_include_filters=""
+          encryption_exclude_filters=""
+          encrypt_pck=false
+          encrypt_directory=false
+          script_export_mode=2
+
+          [preset.0.options]
+          custom_template/debug=""
+          custom_template/release=""
+          variant/extensions_support=false
+          vram_texture_compression/for_desktop=true
+          vram_texture_compression/for_mobile=false
+          html/export_icon=true
+          html/custom_html_shell=""
+          html/head_include=""
+          html/canvas_resize_policy=2
+          html/focus_canvas_on_start=true
+          html/experimental_virtual_keyboard=false
+          progressive_web_app/enabled=false
+          EOF
+
+      - name: Import project (populate .godot cache)
+        run: |
+          godot --headless --import --quit 2>&1 | tail -20 || true
+
+      - name: Run exporter for ${{ matrix.platform }}
+        run: |
+          mkdir -p /tmp/export_out
+          # Drive the exporter directly from a one-shot SceneTree script so we
+          # exercise the same code path the dock uses (incl. async _export_pck).
+          cat > /tmp/run_export.gd <<EOF
+          extends SceneTree
+          func _init() -> void:
+              var Exporter := load("res://addons/godot_mini_game/exporter.gd")
+              var ex = Exporter.new()
+              ex.log_callback = func(msg: String) -> void: print("[export] ", msg)
+              var err = await ex.export_mini_game(
+                  "${{ matrix.platform }}",
+                  "wxtest123",
+                  "portrait",
+                  "MiniGame",
+                  "/tmp/export_out"
+              )
+              if err != OK:
+                  push_error("Export failed: %s" % error_string(err))
+                  quit(1)
+              quit(0)
+          EOF
+          godot --headless --path . --script /tmp/run_export.gd
+          echo "---"
+          echo "Tree:"
+          find /tmp/export_out -maxdepth 3 -type f | sort
+
+      - name: Verify common artifacts
+        run: |
+          set -e
+          OUT=/tmp/export_out
+          MUST_EXIST=(
+            adapter.js
+            fetch.js
+            game.js
+            game.json
+            project.config.json
+            engine/godot.js
+            engine/godot.wasm.br
+            engine/godot.zip
+            js/libs/sdk.js
+            js/loader.js
+            js/worker/position_reporting.js
+            images/logo.png
+            images/background.png
+          )
+          for f in "${MUST_EXIST[@]}"; do
+            if [ ! -f "$OUT/$f" ]; then
+              echo "::error::MISSING: $f"
+              exit 1
+            fi
+            size=$(stat -c%s "$OUT/$f")
+            echo "OK: $f ($size bytes)"
+          done
+
+      - name: Verify wechat-only artifacts
+        if: matrix.platform == 'wechat'
+        run: |
+          set -e
+          test -f /tmp/export_out/project.private.config.json
+          echo "OK: project.private.config.json"
+
+      - name: Validate JSON files parse
+        run: |
+          set -e
+          for f in /tmp/export_out/game.json /tmp/export_out/project.config.json; do
+            jq empty "$f" || (echo "::error::$f is not valid JSON" && exit 1)
+            echo "OK JSON: $f"
+          done
+
+      - name: Validate wasm.br size is sane
+        run: |
+          set -e
+          SIZE=$(stat -c%s /tmp/export_out/engine/godot.wasm.br)
+          echo "godot.wasm.br = $SIZE bytes"
+          # Bundled WASM is ~6 MB compressed; allow 1MB–15MB range.
+          # Below 1MB indicates a truncated download; above 15MB indicates
+          # compression was skipped or the wrong engine was bundled.
+          if [ "$SIZE" -lt 1048576 ] || [ "$SIZE" -gt 15728640 ]; then
+            echo "::error::godot.wasm.br size $SIZE is outside expected 1MB..15MB"
+            exit 1
+          fi
+
+      - name: Validate WeChat single-package limit
+        if: matrix.platform == 'wechat'
+        run: |
+          set -e
+          # Mini-game main package (everything outside the declared subpackages
+          # engine/ and subpacks/) must be < 4 MB.
+          MAIN_SIZE=$(find /tmp/export_out -maxdepth 1 -type f -printf '%s\n' | awk '{s+=$1} END {print s+0}')
+          MAIN_SIZE=$((MAIN_SIZE + $(find /tmp/export_out/js /tmp/export_out/images -type f -printf '%s\n' 2>/dev/null | awk '{s+=$1} END {print s+0}')))
+          echo "Main package size: $MAIN_SIZE bytes"
+          if [ "$MAIN_SIZE" -gt 4194304 ]; then
+            echo "::error::Main package exceeds WeChat 4 MB limit ($MAIN_SIZE bytes)"
+            exit 1
+          fi
+
+      - name: Upload export artifact for inspection
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: export-${{ matrix.platform }}
+          path: /tmp/export_out
+          retention-days: 7

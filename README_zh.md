@@ -175,9 +175,12 @@ addons/godot_mini_game/
 
 ## 依赖
 
-- **Godot 4.x**（4.3 – 4.6 已测试）
+- **Godot 4.6.x** — 内置引擎模板基于 4.6.1-stable 编译。其它 4.x 版本几乎一定会在运行时挂掉，
+  因为 `.pck` 字节码和内置 WASM 必须来自同一个 Godot 版本。要用别的版本必须
+  自己重编一份匹配的模板（见"为其它 Godot 版本编译模板"），然后通过 Dock 导入。
 - **微信开发者工具** 或 **抖音开发者工具**
-- **Node.js**（推荐，自带 Brotli 压缩）或 `brotli` CLI（`brew install brotli`）
+- **Node.js** *必需*（用于内置 Brotli 压缩）或 `brotli` CLI（`brew install brotli`）。
+  两者都没有时导出会失败 —— 未压缩的 WASM 超过微信单包 4 MB 上限。
 
 ## 文档
 

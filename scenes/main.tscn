@@ -1,7 +1,6 @@
-[gd_scene load_steps=3 format=3 uid="uid://test_main_scene"]
+[gd_scene load_steps=2 format=3 uid="uid://test_main_scene"]
 
 [ext_resource type="Script" path="res://scripts/main.gd" id="1"]
-[ext_resource type="AudioStream" path="res://jntm.mp3" id="2"]
 
 [node name="Main" type="Control"]
 layout_mode = 3
@@ -109,4 +108,3 @@ theme_override_font_sizes/font_size = 14
 theme_override_colors/font_color = Color(0.6, 0.6, 0.6, 1)
 
 [node name="AudioPlayer" type="AudioStreamPlayer" parent="."]
-stream = ExtResource("2")

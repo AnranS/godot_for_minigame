@@ -176,9 +176,15 @@ addons/godot_mini_game/
 
 ## Requirements
 
-- **Godot 4.x** (tested 4.3 – 4.6)
+- **Godot 4.6.x** — the bundled engine template is compiled against 4.6.1-stable.
+  Other 4.x versions will likely fail at runtime because `.pck` bytecode and the
+  bundled WASM must be from the same Godot version. To use a different version
+  you must rebuild a matching template (see "Building for a different Godot
+  version" below) and import it via the dock.
 - **WeChat DevTools** or **Douyin DevTools**
-- **Node.js** (recommended, built-in Brotli compression) or `brotli` CLI (`brew install brotli`)
+- **Node.js** *required* (used for built-in Brotli compression) or `brotli` CLI
+  (`brew install brotli`). Without one of these the export will fail —
+  uncompressed WASM exceeds WeChat's 4 MB single-package limit.
 
 ## Documentation
 
