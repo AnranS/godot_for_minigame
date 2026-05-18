@@ -7,6 +7,37 @@
 
 const _api = (typeof wx !== "undefined") ? wx : tt;
 
+// Best-effort error formatter. Default `console.warn("[SDK] ...", err)` outputs
+// "[SDK] ... [object Object]" or "[SDK] ... {}" for proxy-wrapped platform error
+// objects (BannerAd.onError, requestMidasPayment.fail, etc.), which is useless
+// in DevTools. Pull the human-readable fields out first.
+function _fmtErr(err) {
+  if (err == null) return "(no error info)";
+  if (typeof err === "string") return err;
+  const parts = [];
+  if (err.errCode !== undefined) parts.push(`code=${err.errCode}`);
+  if (err.errMsg) parts.push(err.errMsg);
+  else if (err.message) parts.push(err.message);
+  if (parts.length === 0) {
+    try { return JSON.stringify(err); } catch (_) { return String(err); }
+  }
+  return parts.join(" ");
+}
+
+// Returns a system-info-shaped object, preferring the new (non-deprecated)
+// composed APIs introduced in WeChat base library 2.20+. Older versions still
+// have getSystemInfoSync but it emits a deprecation notice on every call,
+// polluting the console.
+function _getSystemInfoModern() {
+  if (_api.getDeviceInfo && _api.getWindowInfo && _api.getAppBaseInfo) {
+    return Object.assign({},
+      _api.getDeviceInfo(),
+      _api.getWindowInfo(),
+      _api.getAppBaseInfo());
+  }
+  return _api.getSystemInfoSync();
+}
+
 class GodotSDK {
 
   // ── Engine binding ──────────────────────────────────────────────
@@ -49,7 +80,7 @@ class GodotSDK {
   login(callback) {
     _api.login({
       success: (res) => callback(res.code || "", ""),
-      fail: (err) => callback("", err.errMsg || String(err)),
+      fail: (err) => callback("", _fmtErr(err)),
     });
   }
 
@@ -57,7 +88,7 @@ class GodotSDK {
     const handler = {
       desc: "用于完善用户资料",
       success: (res) => callback(JSON.stringify(res.userInfo || {}), ""),
-      fail: (err) => callback("", err.errMsg || String(err)),
+      fail: (err) => callback("", _fmtErr(err)),
     };
     if (_api.getUserProfile) {
       _api.getUserProfile(handler);
@@ -69,7 +100,7 @@ class GodotSDK {
   checkSession(callback) {
     _api.checkSession({
       success: () => callback(true, ""),
-      fail: (err) => callback(false, err.errMsg || "session expired"),
+      fail: (err) => callback(false, _fmtErr(err) || "session expired"),
     });
   }
 
@@ -105,9 +136,9 @@ class GodotSDK {
       if (this._rewardedAd) { try { this._rewardedAd.destroy(); } catch (_) {} }
       if (!_api.createRewardedVideoAd) { if (callback) callback(false, "createRewardedVideoAd not supported"); return; }
       this._rewardedAd = _api.createRewardedVideoAd({ adUnitId: adId });
-      this._rewardedAd.onError((err) => console.warn("[SDK] RewardedAd error:", err));
+      this._rewardedAd.onError((err) => console.warn("[SDK] RewardedAd error:", _fmtErr(err)));
       if (callback) callback(true, "");
-    } catch (e) { console.warn("[SDK] createRewardedAd:", e); if (callback) callback(false, e.errMsg || String(e)); }
+    } catch (e) { console.warn("[SDK] createRewardedAd:", _fmtErr(e)); if (callback) callback(false, _fmtErr(e)); }
   }
 
   showRewardedAd(callback) {
@@ -120,8 +151,8 @@ class GodotSDK {
       };
       ad.onClose(onClose);
       ad.show().catch(() => ad.load().then(() => ad.show()))
-        .catch((err) => { ad.offClose(onClose); callback(false, err.errMsg || String(err)); });
-    } catch (e) { callback(false, e.errMsg || String(e)); }
+        .catch((err) => { ad.offClose(onClose); callback(false, _fmtErr(err)); });
+    } catch (e) { callback(false, _fmtErr(e)); }
   }
 
   // ── Banner Ad ──────────────────────────────────────────────────
@@ -130,19 +161,19 @@ class GodotSDK {
     try {
       if (this._bannerAd) { try { this._bannerAd.destroy(); } catch (_) {} }
       if (!_api.createBannerAd) { if (callback) callback(false, "createBannerAd not supported"); return; }
-      const info = _api.getWindowInfo ? _api.getWindowInfo() : _api.getSystemInfoSync();
+      const info = _getSystemInfoModern();
       this._bannerAd = _api.createBannerAd({
         adUnitId: adId,
         style: { left: 0, top: (info.windowHeight || info.screenHeight) - 100, width: info.windowWidth || info.screenWidth },
       });
-      this._bannerAd.onError((err) => console.warn("[SDK] BannerAd error:", err));
+      this._bannerAd.onError((err) => console.warn("[SDK] BannerAd error:", _fmtErr(err)));
       if (callback) callback(true, "");
-    } catch (e) { console.warn("[SDK] createBannerAd:", e); if (callback) callback(false, e.errMsg || String(e)); }
+    } catch (e) { console.warn("[SDK] createBannerAd:", _fmtErr(e)); if (callback) callback(false, _fmtErr(e)); }
   }
 
-  showBannerAd() { try { if (this._bannerAd) this._bannerAd.show(); } catch (e) { console.warn("[SDK] showBannerAd:", e); } }
-  hideBannerAd() { try { if (this._bannerAd) this._bannerAd.hide(); } catch (e) { console.warn("[SDK] hideBannerAd:", e); } }
-  destroyBannerAd() { try { if (this._bannerAd) { this._bannerAd.destroy(); this._bannerAd = null; } } catch (e) { console.warn("[SDK] destroyBannerAd:", e); } }
+  showBannerAd() { try { if (this._bannerAd) this._bannerAd.show(); } catch (e) { console.warn("[SDK] showBannerAd:", _fmtErr(e)); } }
+  hideBannerAd() { try { if (this._bannerAd) this._bannerAd.hide(); } catch (e) { console.warn("[SDK] hideBannerAd:", _fmtErr(e)); } }
+  destroyBannerAd() { try { if (this._bannerAd) { this._bannerAd.destroy(); this._bannerAd = null; } } catch (e) { console.warn("[SDK] destroyBannerAd:", _fmtErr(e)); } }
 
   // ── Interstitial Ad ────────────────────────────────────────────
 
@@ -151,9 +182,9 @@ class GodotSDK {
       if (this._interstitialAd) { try { this._interstitialAd.destroy(); } catch (_) {} }
       if (!_api.createInterstitialAd) { if (callback) callback(false, "createInterstitialAd not supported"); return; }
       this._interstitialAd = _api.createInterstitialAd({ adUnitId: adId });
-      this._interstitialAd.onError((err) => console.warn("[SDK] InterstitialAd error:", err));
+      this._interstitialAd.onError((err) => console.warn("[SDK] InterstitialAd error:", _fmtErr(err)));
       if (callback) callback(true, "");
-    } catch (e) { console.warn("[SDK] createInterstitialAd:", e); if (callback) callback(false, e.errMsg || String(e)); }
+    } catch (e) { console.warn("[SDK] createInterstitialAd:", _fmtErr(e)); if (callback) callback(false, _fmtErr(e)); }
   }
 
   showInterstitialAd(callback) {
@@ -161,8 +192,8 @@ class GodotSDK {
     try {
       this._interstitialAd.show()
         .then(() => callback(true, ""))
-        .catch((err) => callback(false, err.errMsg || String(err)));
-    } catch (e) { callback(false, e.errMsg || String(e)); }
+        .catch((err) => callback(false, _fmtErr(err)));
+    } catch (e) { callback(false, _fmtErr(e)); }
   }
 
   // ── Payment ────────────────────────────────────────────────────
@@ -173,7 +204,7 @@ class GodotSDK {
     _api.requestMidasPayment({
       ...p,
       success: () => callback(true, ""),
-      fail: (err) => callback(false, err.errMsg || String(err)),
+      fail: (err) => callback(false, _fmtErr(err)),
     });
   }
 
@@ -217,14 +248,14 @@ class GodotSDK {
         const body = typeof res.data === "string" ? res.data : JSON.stringify(res.data);
         callback(res.statusCode, body, "");
       },
-      fail: (err) => callback(0, "", err.errMsg || String(err)),
+      fail: (err) => callback(0, "", _fmtErr(err)),
     });
   }
 
   // ── System Info ────────────────────────────────────────────────
 
   getSystemInfo() {
-    try { return JSON.stringify(_api.getSystemInfoSync()); }
+    try { return JSON.stringify(_getSystemInfoModern()); }
     catch (_) { return "{}"; }
   }
 
@@ -235,8 +266,10 @@ class GodotSDK {
 
   getWindowInfo() {
     try {
-      const fn = _api.getWindowInfo || _api.getSystemInfoSync;
-      return JSON.stringify(fn.call(_api));
+      // getWindowInfo is the modern dedicated API; fall back to the composed
+      // info object so older base libraries still get something usable.
+      const fn = _api.getWindowInfo;
+      return JSON.stringify(fn ? fn.call(_api) : _getSystemInfoModern());
     } catch (_) { return "{}"; }
   }
 
@@ -268,7 +301,7 @@ class GodotSDK {
   getClipboard(callback) {
     _api.getClipboardData({
       success: (res) => callback(res.data || "", ""),
-      fail: (err) => callback("", err.errMsg || String(err)),
+      fail: (err) => callback("", _fmtErr(err)),
     });
   }
 

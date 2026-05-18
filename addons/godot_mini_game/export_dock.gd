@@ -36,10 +36,20 @@ func _ready() -> void:
 	export_btn.pressed.connect(_on_export)
 	folder_dialog.dir_selected.connect(_on_dir_selected)
 	import_btn.pressed.connect(_on_import_template)
-	refresh_btn.pressed.connect(_refresh_template_status)
+	# The "Refresh" button refreshes BOTH the template status and the export
+	# preset list, because users frequently create their Web preset *after*
+	# enabling the plugin and would otherwise be stuck staring at "(未找到导出预设)"
+	# until they restarted the editor.
+	refresh_btn.pressed.connect(_refresh_all)
 	template_file_dialog.file_selected.connect(_on_template_file_selected)
 
 	_log("[b]小游戏导出插件已就绪[/b]")
+
+
+func _refresh_all() -> void:
+	_refresh_presets()
+	_refresh_template_status()
+	_log("已刷新预设和模板状态")
 
 
 func _refresh_presets() -> void:
@@ -103,6 +113,12 @@ func _on_dir_selected(dir: String) -> void:
 
 
 func _on_export() -> void:
+	# Re-read export_presets.cfg every time the user clicks Export so we never
+	# act on a stale snapshot taken when the dock was first instantiated.
+	# This is the cheapest way to avoid the "(未找到导出预设)" sticky-state bug
+	# where the user creates the preset *after* enabling the plugin.
+	_refresh_presets()
+
 	var platform_idx := platform_option.selected
 	var platform: String = "wechat" if platform_idx == 0 else "douyin"
 	var appid: String = appid_input.text.strip_edges()
@@ -114,7 +130,7 @@ func _on_export() -> void:
 		_log("[color=red]请选择输出目录[/color]")
 		return
 	if preset_name.is_empty() or preset_name.begins_with("("):
-		_log("[color=red]请先在 Godot 中创建一个 Web 导出预设[/color]")
+		_log("[color=red]请先在 Project → Export 中创建一个 Web 导出预设；如已创建请点击「刷新」按钮[/color]")
 		return
 
 	export_btn.disabled = true
@@ -140,12 +156,16 @@ func _on_export() -> void:
 	export_btn.disabled = false
 
 
+## Pops a one-shot modal dialog. The dialog is parented to the editor's base
+## control instead of the dock itself, so it centers over the whole editor
+## window and survives even if the dock is hidden / moved mid-export.
 func _show_toast(title: String, message: String) -> void:
 	var dialog := AcceptDialog.new()
 	dialog.title = title
 	dialog.dialog_text = message
 	dialog.min_size = Vector2i(320, 0)
-	add_child(dialog)
+	var parent: Node = EditorInterface.get_base_control() if Engine.is_editor_hint() else self
+	parent.add_child(dialog)
 	dialog.popup_centered()
 	dialog.confirmed.connect(dialog.queue_free)
 	dialog.canceled.connect(dialog.queue_free)

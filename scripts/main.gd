@@ -13,19 +13,19 @@ extends Control
 @onready var info_label: Label = $Scroll/Content/InfoLabel
 
 var score := 0
-var colors := [
+var colors: Array[Color] = [
 	Color("#478cbf"), Color("#e74c3c"), Color("#2ecc71"),
 	Color("#f39c12"), Color("#9b59b6"), Color("#1abc9c"),
 ]
 
-var _result_labels := {}
+var _result_labels: Dictionary = {}  # String → Label
 
 
 func _ready() -> void:
 	tap_button.pressed.connect(_on_tap)
 	play_btn.pressed.connect(_on_play)
 	pause_btn.pressed.connect(_on_pause)
-	audio_player.finished.connect(func(): audio_label.text = "Audio: Stopped")
+	audio_player.finished.connect(func() -> void: audio_label.text = "Audio: Stopped")
 	score_label.text = "Score: 0"
 	color_rect.color = colors[0]
 
@@ -136,7 +136,7 @@ func _build_sdk_tests() -> void:
 	])
 
 	_add_section("Lifecycle", [
-		["(auto)", func(): _set_result("Lifecycle", "Listening for onShow/onHide...")],
+		["(auto)", func() -> void: _set_result("Lifecycle", "Listening for onShow/onHide...")],
 	])
 
 
@@ -183,34 +183,25 @@ func _log(msg: String) -> void:
 	info_label.text = msg
 
 
-func _get_sdk() -> Node:
-	return get_node_or_null("/root/MiniGameSDK")
-
-
 # ── SDK signal connections ─────────────────────────────────────────
 
 func _connect_sdk_signals() -> void:
-	var sdk := _get_sdk()
-	if not sdk:
-		_log("MiniGameSDK autoload not found")
-		return
-
-	sdk.login_completed.connect(func(code: String, err: String):
+	MiniGameSDK.login_completed.connect(func(code: String, err: String) -> void:
 		if err.is_empty():
 			_set_result("Auth / Login", "Login OK, code: %s" % code)
 		else:
 			_set_result("Auth / Login", "Login failed: %s" % err))
 
-	sdk.session_checked.connect(func(valid: bool, err: String):
+	MiniGameSDK.session_checked.connect(func(valid: bool, err: String) -> void:
 		_set_result("Auth / Login", "Session valid: %s %s" % [valid, err]))
 
-	sdk.user_info_received.connect(func(info: String, err: String):
+	MiniGameSDK.user_info_received.connect(func(info: String, err: String) -> void:
 		if err.is_empty():
 			_set_result("Auth / Login", "UserInfo: %s" % info.left(120))
 		else:
 			_set_result("Auth / Login", "UserInfo failed: %s" % err))
 
-	sdk.ad_created.connect(func(ad_type: String, ok: bool, err: String):
+	MiniGameSDK.ad_created.connect(func(ad_type: String, ok: bool, err: String) -> void:
 		var names := {"rewarded": "Rewarded Ad", "banner": "Banner Ad", "interstitial": "Interstitial Ad"}
 		var section: String = names.get(ad_type, ad_type)
 		if ok:
@@ -218,40 +209,40 @@ func _connect_sdk_signals() -> void:
 		else:
 			_set_result(section, "Create failed: %s" % err))
 
-	sdk.rewarded_ad_result.connect(func(ended: bool, err: String):
+	MiniGameSDK.rewarded_ad_result.connect(func(ended: bool, err: String) -> void:
 		_set_result("Rewarded Ad", "Ended: %s, err: %s" % [ended, err]))
 
-	sdk.interstitial_ad_result.connect(func(ok: bool, err: String):
+	MiniGameSDK.interstitial_ad_result.connect(func(ok: bool, err: String) -> void:
 		_set_result("Interstitial Ad", "OK: %s, err: %s" % [ok, err]))
 
-	sdk.payment_result.connect(func(ok: bool, err: String):
+	MiniGameSDK.payment_result.connect(func(ok: bool, err: String) -> void:
 		_set_result("Payment", "OK: %s, err: %s" % [ok, err]))
 
-	sdk.keyboard_event.connect(func(evt: String, val: String):
+	MiniGameSDK.keyboard_event.connect(func(evt: String, val: String) -> void:
 		_set_result("Keyboard", "[%s] %s" % [evt, val]))
 
-	sdk.http_response.connect(func(status: int, data: String, err: String):
+	MiniGameSDK.http_response.connect(func(status: int, data: String, err: String) -> void:
 		if err.is_empty():
 			_set_result("Network", "HTTP %d: %s" % [status, data.left(200)])
 		else:
 			_set_result("Network", "HTTP err: %s" % err))
 
-	sdk.clipboard_received.connect(func(data: String, err: String):
+	MiniGameSDK.clipboard_received.connect(func(data: String, err: String) -> void:
 		if err.is_empty():
 			_set_result("Clipboard", "Pasted: %s" % data)
 		else:
 			_set_result("Clipboard", "Paste err: %s" % err))
 
-	sdk.modal_result.connect(func(confirmed: bool):
+	MiniGameSDK.modal_result.connect(func(confirmed: bool) -> void:
 		_set_result("Screen / UI", "Modal confirmed: %s" % confirmed))
 
-	sdk.app_shown.connect(func(opts: String):
+	MiniGameSDK.app_shown.connect(func(opts: String) -> void:
 		_set_result("Lifecycle", "onShow: %s" % opts.left(100)))
 
-	sdk.app_hidden.connect(func():
+	MiniGameSDK.app_hidden.connect(func() -> void:
 		_set_result("Lifecycle", "onHide"))
 
-	sdk.app_error.connect(func(msg: String):
+	MiniGameSDK.app_error.connect(func(msg: String) -> void:
 		_set_result("Lifecycle", "onError: %s" % msg.left(100)))
 
 
@@ -259,128 +250,106 @@ func _connect_sdk_signals() -> void:
 
 # Storage
 func _test_storage_save() -> void:
-	var sdk := _get_sdk()
-	if not sdk: _set_result("Storage", "SDK N/A"); return
-	sdk.storage_set("test_key", "hello_%d" % randi_range(0, 999))
+	MiniGameSDK.storage_set("test_key", "hello_%d" % randi_range(0, 999))
 	_set_result("Storage", "Saved test_key")
 
+
 func _test_storage_load() -> void:
-	var sdk := _get_sdk()
-	if not sdk: _set_result("Storage", "SDK N/A"); return
-	var val: String = sdk.storage_get("test_key", "(empty)")
+	var val := MiniGameSDK.storage_get("test_key", "(empty)")
 	_set_result("Storage", "test_key = %s" % val)
 
+
 func _test_storage_remove() -> void:
-	var sdk := _get_sdk()
-	if not sdk: _set_result("Storage", "SDK N/A"); return
-	sdk.storage_remove("test_key")
+	MiniGameSDK.storage_remove("test_key")
 	_set_result("Storage", "Removed test_key")
 
+
 func _test_storage_clear() -> void:
-	var sdk := _get_sdk()
-	if not sdk: _set_result("Storage", "SDK N/A"); return
-	sdk.storage_clear()
+	MiniGameSDK.storage_clear()
 	_set_result("Storage", "Storage cleared")
 
+
 func _test_storage_info() -> void:
-	var sdk := _get_sdk()
-	if not sdk: _set_result("Storage", "SDK N/A"); return
-	_set_result("Storage", sdk.storage_info())
+	var info := MiniGameSDK.storage_info()
+	_set_result("Storage", "keys=%d size=%s" % [
+		(info.get("keys", []) as Array).size(),
+		info.get("currentSize", info.get("size", "?")),
+	])
 
 
 # Auth
 func _test_login() -> void:
-	var sdk := _get_sdk()
-	if not sdk: _set_result("Auth / Login", "SDK N/A"); return
 	_set_result("Auth / Login", "Logging in...")
-	sdk.login()
+	MiniGameSDK.login()
+
 
 func _test_check_session() -> void:
-	var sdk := _get_sdk()
-	if not sdk: _set_result("Auth / Login", "SDK N/A"); return
-	sdk.check_session()
+	MiniGameSDK.check_session()
+
 
 func _test_user_info() -> void:
-	var sdk := _get_sdk()
-	if not sdk: _set_result("Auth / Login", "SDK N/A"); return
 	_set_result("Auth / Login", "Getting user info...")
-	sdk.get_user_info()
+	MiniGameSDK.get_user_info()
 
 
 # Share
 func _test_share() -> void:
-	var sdk := _get_sdk()
-	if not sdk: _set_result("Share", "SDK N/A"); return
-	sdk.share_app("Come play this game!", "", "from=share")
+	MiniGameSDK.share_app("Come play this game!", "", "from=share")
 	_set_result("Share", "shareAppMessage called")
 
+
 func _test_show_share_menu() -> void:
-	var sdk := _get_sdk()
-	if not sdk: _set_result("Share", "SDK N/A"); return
-	sdk.show_share_menu()
+	MiniGameSDK.show_share_menu()
 	_set_result("Share", "Share menu shown")
 
+
 func _test_hide_share_menu() -> void:
-	var sdk := _get_sdk()
-	if not sdk: _set_result("Share", "SDK N/A"); return
-	sdk.hide_share_menu()
+	MiniGameSDK.hide_share_menu()
 	_set_result("Share", "Share menu hidden")
 
 
 # Rewarded Ad
 func _test_create_rewarded_ad() -> void:
-	var sdk := _get_sdk()
-	if not sdk: _set_result("Rewarded Ad", "SDK N/A"); return
 	_set_result("Rewarded Ad", "Creating... (DevTools may show framework errors with test IDs)")
-	sdk.create_rewarded_ad("adunit-test-rewarded-001")
+	MiniGameSDK.create_rewarded_ad("adunit-test-rewarded-001")
+
 
 func _test_show_rewarded_ad() -> void:
-	var sdk := _get_sdk()
-	if not sdk: _set_result("Rewarded Ad", "SDK N/A"); return
 	_set_result("Rewarded Ad", "Showing...")
-	sdk.show_rewarded_ad()
+	MiniGameSDK.show_rewarded_ad()
 
 
 # Banner Ad
 func _test_create_banner_ad() -> void:
-	var sdk := _get_sdk()
-	if not sdk: _set_result("Banner Ad", "SDK N/A"); return
 	_set_result("Banner Ad", "Creating... (DevTools may show framework errors with test IDs)")
-	sdk.create_banner_ad("adunit-test-banner-001")
+	MiniGameSDK.create_banner_ad("adunit-test-banner-001")
+
 
 func _test_show_banner_ad() -> void:
-	var sdk := _get_sdk()
-	if not sdk: _set_result("Banner Ad", "SDK N/A"); return
-	sdk.show_banner_ad()
+	MiniGameSDK.show_banner_ad()
 	_set_result("Banner Ad", "Shown")
 
+
 func _test_hide_banner_ad() -> void:
-	var sdk := _get_sdk()
-	if not sdk: _set_result("Banner Ad", "SDK N/A"); return
-	sdk.hide_banner_ad()
+	MiniGameSDK.hide_banner_ad()
 	_set_result("Banner Ad", "Hidden")
 
 
 # Interstitial Ad
 func _test_create_interstitial_ad() -> void:
-	var sdk := _get_sdk()
-	if not sdk: _set_result("Interstitial Ad", "SDK N/A"); return
 	_set_result("Interstitial Ad", "Creating... (DevTools may show framework errors with test IDs)")
-	sdk.create_interstitial_ad("adunit-test-interstitial-001")
+	MiniGameSDK.create_interstitial_ad("adunit-test-interstitial-001")
+
 
 func _test_show_interstitial_ad() -> void:
-	var sdk := _get_sdk()
-	if not sdk: _set_result("Interstitial Ad", "SDK N/A"); return
 	_set_result("Interstitial Ad", "Showing...")
-	sdk.show_interstitial_ad()
+	MiniGameSDK.show_interstitial_ad()
 
 
 # Payment
 func _test_payment() -> void:
-	var sdk := _get_sdk()
-	if not sdk: _set_result("Payment", "SDK N/A"); return
 	_set_result("Payment", "Requesting...")
-	sdk.request_payment({
+	MiniGameSDK.request_payment({
 		"mode": "game",
 		"env": 0,
 		"offerId": "test_offer_001",
@@ -391,117 +360,94 @@ func _test_payment() -> void:
 
 # Vibration
 func _test_vibrate_short() -> void:
-	var sdk := _get_sdk()
-	if not sdk: _set_result("Vibration", "SDK N/A"); return
-	sdk.vibrate_short("light")
+	MiniGameSDK.vibrate_short("light")
 	_set_result("Vibration", "Short (light)")
 
+
 func _test_vibrate_medium() -> void:
-	var sdk := _get_sdk()
-	if not sdk: _set_result("Vibration", "SDK N/A"); return
-	sdk.vibrate_short("medium")
+	MiniGameSDK.vibrate_short("medium")
 	_set_result("Vibration", "Short (medium)")
 
+
 func _test_vibrate_long() -> void:
-	var sdk := _get_sdk()
-	if not sdk: _set_result("Vibration", "SDK N/A"); return
-	sdk.vibrate_long()
+	MiniGameSDK.vibrate_long()
 	_set_result("Vibration", "Long")
 
 
 # Keyboard
 func _test_show_keyboard() -> void:
-	var sdk := _get_sdk()
-	if not sdk: _set_result("Keyboard", "SDK N/A"); return
-	sdk.show_keyboard("Hello", 50)
+	MiniGameSDK.show_keyboard("Hello", 50)
 	_set_result("Keyboard", "Keyboard opened")
 
+
 func _test_hide_keyboard() -> void:
-	var sdk := _get_sdk()
-	if not sdk: _set_result("Keyboard", "SDK N/A"); return
-	sdk.hide_keyboard()
+	MiniGameSDK.hide_keyboard()
 	_set_result("Keyboard", "Keyboard closed")
 
 
 # Clipboard
 func _test_clipboard_set() -> void:
-	var sdk := _get_sdk()
-	if not sdk: _set_result("Clipboard", "SDK N/A"); return
-	sdk.set_clipboard("Hello from Godot! %d" % randi_range(0, 999))
+	MiniGameSDK.set_clipboard("Hello from Godot! %d" % randi_range(0, 999))
 	_set_result("Clipboard", "Copied to clipboard")
 
+
 func _test_clipboard_get() -> void:
-	var sdk := _get_sdk()
-	if not sdk: _set_result("Clipboard", "SDK N/A"); return
-	sdk.get_clipboard()
+	MiniGameSDK.get_clipboard()
 	_set_result("Clipboard", "Reading clipboard...")
 
 
 # Network
 func _test_http_get() -> void:
-	var sdk := _get_sdk()
-	if not sdk: _set_result("Network", "SDK N/A"); return
 	_set_result("Network", "Requesting...")
-	sdk.http_request("https://httpbin.org/get", "GET")
+	MiniGameSDK.http_request("https://httpbin.org/get", "GET")
 
 
 # System
 func _test_system_info() -> void:
-	var sdk := _get_sdk()
-	if not sdk: _set_result("System", "SDK N/A"); return
-	var info: Dictionary = sdk.get_system_info()
-	var summary := "brand=%s model=%s system=%s" % [
-		info.get("brand", "?"), info.get("model", "?"), info.get("system", "?")]
-	_set_result("System", summary)
+	var info := MiniGameSDK.get_system_info()
+	_set_result("System", "brand=%s model=%s system=%s" % [
+		info.get("brand", "?"), info.get("model", "?"), info.get("system", "?")])
+
 
 func _test_launch_options() -> void:
-	var sdk := _get_sdk()
-	if not sdk: _set_result("System", "SDK N/A"); return
-	var opts: Dictionary = sdk.get_launch_options()
+	var opts := MiniGameSDK.get_launch_options()
 	_set_result("System", str(opts).left(200))
 
+
 func _test_window_info() -> void:
-	var sdk := _get_sdk()
-	if not sdk: _set_result("System", "SDK N/A"); return
-	var info: Dictionary = sdk.get_window_info()
-	_set_result("System", "%dx%d @%.1fx" % [
-		info.get("windowWidth", 0), info.get("windowHeight", 0), info.get("pixelRatio", 1)])
+	var info := MiniGameSDK.get_window_info()
+	_set_result("System", "%sx%s @%.1fx" % [
+		info.get("windowWidth", 0), info.get("windowHeight", 0),
+		float(info.get("pixelRatio", 1.0))])
+
 
 func _test_menu_rect() -> void:
-	var sdk := _get_sdk()
-	if not sdk: _set_result("System", "SDK N/A"); return
-	var r: Dictionary = sdk.get_menu_button_rect()
+	var r := MiniGameSDK.get_menu_button_rect()
 	_set_result("System", "Menu: x=%s y=%s w=%s h=%s" % [
 		r.get("left", "?"), r.get("top", "?"), r.get("width", "?"), r.get("height", "?")])
 
 
 # Screen / UI
 func _test_keep_screen_on() -> void:
-	var sdk := _get_sdk()
-	if not sdk: _set_result("Screen / UI", "SDK N/A"); return
-	sdk.set_keep_screen_on(true)
+	MiniGameSDK.set_keep_screen_on(true)
 	_set_result("Screen / UI", "Keep screen on: true")
 
+
 func _test_toast() -> void:
-	var sdk := _get_sdk()
-	if not sdk: _set_result("Screen / UI", "SDK N/A"); return
-	sdk.show_toast("Hello from Godot!", "success", 2000)
+	MiniGameSDK.show_toast("Hello from Godot!", "success", 2000)
 	_set_result("Screen / UI", "Toast shown")
 
+
 func _test_modal() -> void:
-	var sdk := _get_sdk()
-	if not sdk: _set_result("Screen / UI", "SDK N/A"); return
-	sdk.show_modal("Confirm", "Do you like Godot?")
+	MiniGameSDK.show_modal("Confirm", "Do you like Godot?")
 	_set_result("Screen / UI", "Modal shown, waiting...")
 
+
 func _test_show_loading() -> void:
-	var sdk := _get_sdk()
-	if not sdk: _set_result("Screen / UI", "SDK N/A"); return
-	sdk.show_loading("Loading...")
+	MiniGameSDK.show_loading("Loading...")
 	_set_result("Screen / UI", "Loading overlay shown")
 
+
 func _test_hide_loading() -> void:
-	var sdk := _get_sdk()
-	if not sdk: _set_result("Screen / UI", "SDK N/A"); return
-	sdk.hide_loading()
+	MiniGameSDK.hide_loading()
 	_set_result("Screen / UI", "Loading overlay hidden")
