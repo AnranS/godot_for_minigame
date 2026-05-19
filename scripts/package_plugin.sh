@@ -19,6 +19,7 @@ fi
 OUTPUT_NAME="godot_mini_game_v${VERSION}"
 OUTPUT_ZIP="${PROJECT_DIR}/dist/${OUTPUT_NAME}.zip"
 TEMP_DIR=$(mktemp -d)
+trap 'rm -rf "${TEMP_DIR}"' EXIT
 
 echo "Packaging Godot Mini Game Plugin v${VERSION}"
 echo "============================================"
@@ -43,11 +44,9 @@ done
 
 # Create zip
 mkdir -p "$(dirname "$OUTPUT_ZIP")"
+rm -f "$OUTPUT_ZIP"
 cd "${TEMP_DIR}"
 zip -r -9 "$OUTPUT_ZIP" addons/
-
-# Cleanup
-rm -rf "${TEMP_DIR}"
 
 TOTAL_SIZE=$(du -h "$OUTPUT_ZIP" | cut -f1 | xargs)
 echo ""

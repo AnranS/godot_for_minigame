@@ -22,7 +22,11 @@ A Godot 4.x editor plugin that converts your game into a **WeChat** or **Douyin 
 
 ### 1. Install
 
-Download the [latest release](../../releases) and extract into your project root:
+**Recommended: install from a GitHub Release**
+
+1. Open [Releases](../../releases)
+2. Download `godot_mini_game_vX.Y.Z.zip` from Assets (not GitHub's auto-generated Source code archives)
+3. Extract it into your Godot project root:
 
 ```
 your_project/
@@ -30,7 +34,22 @@ your_project/
     godot_mini_game/   ← extracted here
 ```
 
-Or clone this repo and copy the `addons/godot_mini_game/` folder.
+Or clone this repo and copy `addons/godot_mini_game/` into your project:
+
+```bash
+git clone https://github.com/<owner>/<repo>.git
+cp -R <repo>/addons/godot_mini_game your_project/addons/
+```
+
+> Maintainers: install and authenticate GitHub CLI (`gh auth login`), update
+> `version` in `addons/godot_mini_game/plugin.cfg`, commit the change, then run:
+>
+> ```bash
+> scripts/release_plugin.sh 0.1.1
+> ```
+>
+> The script packages the plugin, creates/pushes the `v0.1.1` tag, and uploads
+> the installable `godot_mini_game_v0.1.1.zip` to the GitHub Release assets.
 
 ### 2. Enable
 

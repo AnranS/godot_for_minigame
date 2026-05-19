@@ -19,18 +19,16 @@ jobs:
           VERSION=$(grep 'version=' addons/godot_mini_game/plugin.cfg | head -1 | cut -d'"' -f2)
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
-      - name: Package plugin
+      - name: Check tag matches plugin version
         run: |
-          mkdir -p dist
-          TEMP=$(mktemp -d)
-          mkdir -p "$TEMP/addons"
-          cp -r addons/godot_mini_game "$TEMP/addons/"
-          find "$TEMP" -name "*.uid" -delete
-          find "$TEMP" -name ".DS_Store" -delete
-          find "$TEMP" -name "*.import" -delete
-          cd "$TEMP"
-          zip -r -9 "$GITHUB_WORKSPACE/dist/godot_mini_game_v${{ steps.version.outputs.version }}.zip" addons/
-          ls -lh "$GITHUB_WORKSPACE/dist/"
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          if [ "$TAG_VERSION" != "${{ steps.version.outputs.version }}" ]; then
+            echo "::error::Tag version ($TAG_VERSION) does not match plugin.cfg (${{ steps.version.outputs.version }})"
+            exit 1
+          fi
+
+      - name: Package plugin
+        run: scripts/package_plugin.sh
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -43,6 +41,8 @@ jobs:
             1. Download `godot_mini_game_v${{ steps.version.outputs.version }}.zip`
             2. Extract into your Godot project root
             3. Enable the plugin in Project Settings > Plugins
+
+            Do not download GitHub's auto-generated Source code archives for plugin installation.
 
             Includes bundled engine template for Godot 4.6 (mini-game compatible).
           files: |

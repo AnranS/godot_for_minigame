@@ -22,7 +22,11 @@
 
 ### 1. 安装
 
-下载 [最新 release](../../releases) 解压到项目根目录：
+**推荐：从 GitHub Release 安装**
+
+1. 打开 [Releases](../../releases)
+2. 在 Assets 中下载 `godot_mini_game_vX.Y.Z.zip`（不要下载 GitHub 自动生成的 Source code 压缩包）
+3. 解压到你的 Godot 项目根目录：
 
 ```
 your_project/
@@ -30,7 +34,22 @@ your_project/
     godot_mini_game/   ← 解压到这里
 ```
 
-或者克隆本仓库后把 `addons/godot_mini_game/` 复制过去。
+或者克隆本仓库后，把 `addons/godot_mini_game/` 复制到你的项目里：
+
+```bash
+git clone https://github.com/<owner>/<repo>.git
+cp -R <repo>/addons/godot_mini_game your_project/addons/
+```
+
+> 维护者发布新版本时：先安装并登录 GitHub CLI（`gh auth login`），更新
+> `addons/godot_mini_game/plugin.cfg` 里的 `version`，提交后运行：
+>
+> ```bash
+> scripts/release_plugin.sh 0.1.1
+> ```
+>
+> 脚本会打包插件、创建/推送 `v0.1.1` tag，并把可安装的
+> `godot_mini_game_v0.1.1.zip` 上传到 GitHub Release 附件。
 
 ### 2. 启用插件
 
