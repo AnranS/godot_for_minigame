@@ -73,16 +73,27 @@ func _refresh_template_status() -> void:
 		return
 	var ver_key := Exporter.get_godot_version_key()
 	var status := Exporter.get_template_status()
+	var template_version: String = status.get("template_version", "")
+	var version_note := ""
+	if not template_version.is_empty():
+		version_note = "模板 %s / 编辑器 %s" % [template_version, ver_key]
+	else:
+		version_note = "编辑器 %s" % ver_key
 	template_status.clear()
+	if status.ready and not bool(status.get("version_match", false)):
+		template_status.append_text("[color=yellow]⚠ 模板版本不完全匹配[/color] (%s)\n建议导入当前 Godot 版本对应的小游戏模板" % version_note)
+		return
 	match status.source:
 		"addon":
-			template_status.append_text("[color=green]✓ 兼容模板就绪[/color] (自定义, Godot %s)" % ver_key)
+			template_status.append_text("[color=green]✓ 兼容模板就绪[/color] (自定义, %s)" % version_note)
 		"bundled":
-			template_status.append_text("[color=green]✓ 兼容模板就绪[/color] (内置, Godot %s)" % ver_key)
+			template_status.append_text("[color=green]✓ 兼容模板就绪[/color] (内置, %s)" % version_note)
 		"store":
-			template_status.append_text("[color=green]✓ 兼容模板就绪[/color] (模板库, Godot %s)" % ver_key)
+			template_status.append_text("[color=green]✓ 兼容模板就绪[/color] (模板库, %s)" % version_note)
+		"store_legacy":
+			template_status.append_text("[color=green]✓ 兼容模板就绪[/color] (旧模板库, %s)" % version_note)
 		"standard":
-			template_status.append_text("[color=yellow]⚠ 仅标准模板[/color] (Godot %s)\n模拟器可用，真机可能不兼容" % ver_key)
+			template_status.append_text("[color=yellow]⚠ 仅标准模板[/color] (%s)\n模拟器可用，真机可能不兼容" % version_note)
 		_:
 			template_status.append_text("[color=red]✗ 未找到引擎模板[/color] (Godot %s)" % ver_key)
 

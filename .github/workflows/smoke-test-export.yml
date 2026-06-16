@@ -82,6 +82,13 @@ jobs:
         run: |
           godot --headless --import --quit 2>&1 | tail -20 || true
 
+      - name: Run focused unit tests
+        run: |
+          set -e
+          node test/sdk_bridge.test.mjs
+          godot --headless --path . --script res://test/exporter_version_test.gd
+          godot --headless --path . --script res://test/minigame_sdk_test.gd
+
       - name: Run exporter for ${{ matrix.platform }}
         run: |
           mkdir -p /tmp/export_out

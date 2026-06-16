@@ -6,6 +6,7 @@
 
 import "./libs/godot";
 import { GodotSDK } from "./libs/sdk";
+import { waitForImage } from "./image_loader";
 
 const _api = (typeof wx !== "undefined") ? wx : tt;
 
@@ -167,10 +168,9 @@ class Loader {
   async load() {
     try {
       console.log("[Loader] ▶ 开始加载流程");
-      const loadImg = (img) => new Promise((resolve) => { img.onload = resolve; img.onerror = () => resolve(); });
 
       console.log("[Loader] 1/6 加载图片资源...");
-      await Promise.all([loadImg(this.bgImage), loadImg(this.logoImage)]);
+      await Promise.all([waitForImage(this.bgImage), waitForImage(this.logoImage)]);
 
       console.log("[Loader] 2/6 图片加载完成，开始加载引擎子包...");
       this._step();

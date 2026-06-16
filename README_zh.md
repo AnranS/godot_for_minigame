@@ -15,7 +15,7 @@
 - **零配置**——自带引擎模板，不需要自己折腾 Emscripten
 - **一键导出**——编辑器底部 Dock 面板搞定一切：`.pck`、引擎文件、JS 适配、平台配置
 - **真机可跑**——引擎去掉了 `WXWebAssembly` 不支持的 WASM SIMD / 异常处理 Tag
-- **13 类原生 API**——登录、广告、支付、存储、分享、振动、键盘、剪贴板、网络等
+- **20+ 类原生 API**——登录、隐私授权、授权设置、原生按钮、调试日志、账号信息、广告、支付、存储、媒体图片、Camera、Video、VideoDecoder、MediaAudioPlayer、RecorderManager 录音、游戏录屏、InnerAudio 音频播放、文件系统、分包、Worker、用户托管数据 / 开放数据域、客服会话、订阅消息、分享、小程序跳转、振动、键盘、剪贴板、网络、文件传输、WebSocket、传感器、电量、更新管理、截屏录屏、窗口事件、运行时错误事件等
 - **双平台**——一套项目同时出微信、抖音
 
 ## 快速开始
@@ -109,14 +109,81 @@ MiniGameSDK.vibrate_short("medium")
 | `login_completed` | `code: String, error: String` |
 | `session_checked` | `valid: bool, error: String` |
 | `user_info_received` | `info_json: String, error: String` |
+| `privacy_setting_received` | `need_authorization: bool, privacy_contract_name: String, data_json: String, error: String` |
+| `privacy_authorize_result` | `success: bool, error: String` |
+| `privacy_contract_opened` | `success: bool, error: String` |
+| `privacy_authorization_needed` | `event_info_json: String, error: String` |
+| `setting_received` | `settings_json: String, error: String` |
+| `setting_opened` | `settings_json: String, error: String` |
+| `authorization_result` | `scope: String, success: bool, error: String` |
+| `native_button_operation_result` | `button_type: String, action: String, success: bool, data_json: String, error: String` |
+| `native_button_tapped` | `button_type: String, data_json: String, error: String` |
+| `debug_operation_result` | `action: String, success: bool, data_json: String, error: String` |
 | `ad_created` | `ad_type: String, success: bool, error: String` |
 | `rewarded_ad_result` | `is_ended: bool, error: String` |
 | `interstitial_ad_result` | `success: bool, error: String` |
 | `payment_result` | `success: bool, error: String` |
 | `keyboard_event` | `event_type: String, value: String` |
 | `http_response` | `status_code: int, data: String, error: String` |
+| `file_transfer_result` | `action: String, success: bool, status_code: int, data_json: String, error: String` |
+| `media_result` | `action: String, success: bool, data_json: String, error: String` |
+| `camera_operation_result` | `action: String, success: bool, data_json: String, error: String` |
+| `camera_frame` | `data_json: String, error: String` |
+| `camera_event` | `event_type: String, data_json: String, error: String` |
+| `video_operation_result` | `action: String, success: bool, data_json: String, error: String` |
+| `video_event` | `event_type: String, data_json: String, error: String` |
+| `recorder_operation_result` | `action: String, success: bool, data_json: String, error: String` |
+| `recorder_event` | `event_type: String, data_json: String, error: String` |
+| `available_audio_sources_received` | `sources_json: String, data_json: String, error: String` |
+| `video_decoder_operation_result` | `action: String, success: bool, data_json: String, error: String` |
+| `video_decoder_event` | `event_type: String, data_json: String, error: String` |
+| `media_audio_operation_result` | `action: String, success: bool, data_json: String, error: String` |
+| `game_recorder_operation_result` | `action: String, success: bool, data_json: String, error: String` |
+| `game_recorder_event` | `event_type: String, data_json: String, error: String` |
+| `inner_audio_operation_result` | `action: String, success: bool, data_json: String, error: String` |
+| `inner_audio_event` | `event_type: String, data_json: String, error: String` |
+| `socket_operation_result` | `action: String, success: bool, data_json: String, error: String` |
+| `socket_opened` | `data_json: String, error: String` |
+| `socket_message_received` | `data: String, data_json: String, error: String` |
+| `socket_closed` | `code: int, reason: String, data_json: String, error: String` |
+| `socket_error` | `data_json: String, error: String` |
+| `file_system_result` | `action: String, success: bool, data_json: String, error: String` |
+| `subpackage_result` | `action: String, success: bool, data_json: String, error: String` |
+| `subpackage_progress` | `action: String, progress: int, total_bytes_written: int, total_bytes_expected: int, data_json: String` |
+| `worker_operation_result` | `action: String, success: bool, data_json: String, error: String` |
+| `worker_message` | `data_json: String, error: String` |
+| `worker_error` | `data_json: String, error: String` |
+| `worker_process_killed` | `data_json: String, error: String` |
+| `network_type_received` | `network_type: String, data_json: String, error: String` |
+| `network_status_changed` | `is_connected: bool, network_type: String, data_json: String` |
+| `sensor_started` | `sensor: String, success: bool, error: String` |
+| `sensor_stopped` | `sensor: String, success: bool, error: String` |
+| `accelerometer_changed` | `x: float, y: float, z: float, data_json: String` |
+| `gyroscope_changed` | `x: float, y: float, z: float, data_json: String` |
+| `compass_changed` | `direction: float, accuracy: Variant, data_json: String` |
+| `device_motion_changed` | `alpha: float, beta: float, gamma: float, data_json: String` |
+| `battery_info_received` | `level: int, is_charging: bool, data_json: String, error: String` |
+| `audio_interruption` | `event_type: String, data_json: String, error: String` |
+| `theme_changed` | `theme: String, data_json: String, error: String` |
+| `mini_program_navigation_result` | `action: String, success: bool, data_json: String, error: String` |
+| `cloud_storage_result` | `action: String, success: bool, data_json: String, error: String` |
+| `customer_service_result` | `action: String, success: bool, data_json: String, error: String` |
+| `subscribe_message_result` | `action: String, success: bool, data_json: String, error: String` |
+| `update_checked` | `has_update: bool, data_json: String, error: String` |
+| `update_ready` | `error: String` |
+| `update_failed` | `error: String` |
+| `memory_warning` | `level: int, data_json: String, error: String` |
+| `window_resized` | `width: int, height: int, data_json: String, error: String` |
+| `unhandled_rejection` | `reason: String, data_json: String, error: String` |
+| `screen_brightness_received` | `value: float, data_json: String, error: String` |
+| `screen_brightness_set` | `value: float, success: bool, error: String` |
+| `user_capture_screen` | `data_json: String, error: String` |
+| `screen_recording_state_received` | `state: String, data_json: String, error: String` |
+| `screen_recording_state_changed` | `state: String, data_json: String, error: String` |
+| `visual_effect_on_capture_set` | `effect: String, success: bool, error: String` |
 | `clipboard_received` | `data: String, error: String` |
 | `modal_result` | `confirmed: bool` |
+| `generic_api_result` | `api_name: String, success: bool, data_json: String, error: String` |
 | `app_shown` | `options_json: String` |
 | `app_hidden` | — |
 | `app_error` | `message: String` |
@@ -126,6 +193,11 @@ MiniGameSDK.vibrate_short("medium")
 | 分类 | 方法 |
 |------|------|
 | **登录鉴权** | `login()` `check_session()` `get_user_info()` |
+| **隐私授权** | `get_privacy_setting()` `require_privacy_authorize()` `open_privacy_contract()` `start_privacy_authorization_listener()` `resolve_privacy_authorization(event, button_id)` `expose_privacy_authorization()` `agree_privacy_authorization(button_id)` `disagree_privacy_authorization()` |
+| **授权设置** | `get_setting(with_subscriptions)` `open_setting(with_subscriptions)` `authorize(scope)` |
+| **原生按钮** | `create_user_info_button(options)` `create_open_setting_button(options)` `create_game_club_button(options)` `show_native_button(button_type)` `hide_native_button(button_type)` `destroy_native_button(button_type)` `stop_native_button_tap_listener(button_type)` |
+| **调试日志** | `set_enable_debug(enable_debug)` `get_log_manager(level)` `log_manager_debug(args)` `log_manager_info(args)` `log_manager_log(args)` `log_manager_warn(args)` `get_realtime_log_manager()` `realtime_log_tag(tag)` `realtime_log_info(args)` `realtime_log_warn(args)` `realtime_log_error(args)` `realtime_log_set_filter_msg(msg)` `realtime_log_add_filter_msg(msg)` |
+| **账号信息** | `get_account_info()` |
 | **本地存储** | `storage_set(key, val)` `storage_get(key, default)` `storage_remove(key)` `storage_clear()` `storage_info()` |
 | **分享** | `share_app(title, image_url, query)` `show_share_menu()` `hide_share_menu()` |
 | **激励广告** | `create_rewarded_ad(id)` `show_rewarded_ad()` |
@@ -136,9 +208,35 @@ MiniGameSDK.vibrate_short("medium")
 | **键盘** | `show_keyboard(default_value, max_length, multiple)` `hide_keyboard()` |
 | **剪贴板** | `set_clipboard(data)` `get_clipboard()` |
 | **网络请求** | `http_request(url, method, data, headers)` |
-| **系统信息** | `get_system_info()` `get_launch_options()` `get_window_info()` `get_menu_button_rect()` |
+| **媒体图片** | `choose_media(count, media_type, source_type, max_duration, size_type, camera)` `choose_image(count, size_type, source_type)` `preview_image(urls, current, show_menu, referrer_policy)` `save_image_to_photos_album(file_path)` `compress_image(src, quality, compressed_width, compressed_height)` |
+| **Camera** | `create_camera(x, y, width, height, device_position, flash, frame_size)` `camera_take_photo(quality)` `camera_start_record()` `camera_stop_record(compressed)` `camera_set_zoom(zoom)` `camera_listen_frame_change(use_active_worker)` `camera_close_frame_change()` `camera_destroy()` |
+| **Video** | `create_video(options)` `set_video_properties(properties)` `get_video_state()` `video_play()` `video_pause()` `video_stop()` `video_seek(time)` `video_request_full_screen(direction)` `video_exit_full_screen()` `stop_video_listener(event_types)` `video_destroy()` |
+| **媒体音频** | `get_available_audio_sources()` `create_video_decoder()` `video_decoder_start(options)` `video_decoder_get_frame_data()` `video_decoder_seek(position)` `video_decoder_stop()` `video_decoder_remove()` `start_video_decoder_listener(event_types)` `stop_video_decoder_listener(event_types)` `create_media_audio_player(volume)` `set_media_audio_volume(volume)` `media_audio_add_video_decoder_source()` `media_audio_remove_video_decoder_source()` `media_audio_start()` `media_audio_stop()` `media_audio_destroy()` |
+| **RecorderManager 录音** | `get_recorder_manager()` `recorder_start(options)` `recorder_pause()` `recorder_resume()` `recorder_stop()` |
+| **游戏录屏** | `get_game_recorder()` `game_recorder_start(options)` `game_recorder_stop()` `game_recorder_pause()` `game_recorder_resume()` `game_recorder_abort()` `start_game_recorder_listener(event_types)` `stop_game_recorder_listener(event_types)` `operate_game_recorder_video(params)` `create_game_recorder_share_button(style, share)` `show_game_recorder_share_button()` `hide_game_recorder_share_button()` `off_game_recorder_share_button_tap()` |
+| **InnerAudio 音频** | `set_inner_audio_option(options)` `create_inner_audio_context(create_options, properties)` `set_inner_audio_properties(properties)` `get_inner_audio_state()` `inner_audio_play()` `inner_audio_pause()` `inner_audio_stop()` `inner_audio_seek(position)` `stop_inner_audio_listener(event_types)` `inner_audio_destroy()` |
+| **文件传输** | `download_file(url, file_path, headers, timeout_ms, enable_profile, enable_http2, enable_quic)` `upload_file(url, file_path, name, form_data, headers, timeout_ms, enable_profile, enable_http2, enable_quic)` |
+| **文件系统** | `call_file_system(method, options)` `file_system_access(path)` `file_system_read_file(file_path, encoding, position, length)` `file_system_write_file(file_path, data, encoding)` `file_system_append_file(file_path, data, encoding)` `file_system_mkdir(dir_path, recursive)` `file_system_readdir(dir_path)` `file_system_unlink(file_path)` `file_system_save_file(temp_file_path, file_path)` `file_system_get_saved_file_list()` `file_system_remove_saved_file(file_path)` `file_system_get_file_info(file_path, digest_algorithm)` `file_system_copy_file(src_path, dest_path)` `file_system_rename(old_path, new_path)` `file_system_rmdir(dir_path, recursive)` `file_system_stat(path, recursive)` `file_system_unzip(zip_file_path, target_path)` |
+| **分包** | `load_subpackage(name)` `pre_download_subpackage(name, package_type)` |
+| **Worker** | `create_worker(script_path, use_experimental_worker)` `worker_post_message(message)` `worker_terminate()` |
+| **WebSocket** | `connect_socket(url, headers, protocols, tcp_no_delay, per_message_deflate, timeout_ms, force_cellular_network)` `send_socket_message(data)` `close_socket(code, reason)` |
+| **网络状态** | `get_network_type()` `start_network_status_listener()` `stop_network_status_listener()` |
+| **传感器** | `start_accelerometer(interval)` `stop_accelerometer()` `start_gyroscope(interval)` `stop_gyroscope()` `start_compass()` `stop_compass()` `start_device_motion_listening(interval)` `stop_device_motion_listening()` |
+| **电量** | `get_battery_info()` `get_battery_info_sync()` |
+| **音频事件** | `start_audio_interruption_listener()` `stop_audio_interruption_listener()` |
+| **主题 / 性能** | `start_theme_change_listener()` `stop_theme_change_listener()` `get_performance_entries(entry_type)` `report_performance(id, value, dimensions)` |
+| **小程序跳转** | `navigate_to_mini_program(app_id, path, extra_data, env_version, short_link, no_relaunch_if_path_unchanged)` `navigate_back_mini_program(extra_data)` `exit_mini_program()` `restart_mini_program(path)` |
+| **用户托管数据 / 开放数据域** | `set_user_cloud_storage(kv_data)` `remove_user_cloud_storage(key_list)` `get_user_cloud_storage_keys()` `get_user_cloud_storage(key_list)` `get_friend_cloud_storage(key_list)` `get_group_cloud_storage(key_list, share_ticket, group_id)` `post_open_data_context_message(message, shared_canvas_mode)` |
+| **客服会话 / 订阅消息** | `open_customer_service_conversation(session_from, show_message_card, send_message_title, send_message_path, send_message_img)` `request_subscribe_message(tmpl_ids)` `request_subscribe_system_message(msg_type_list)` |
+| **更新管理** | `start_update_listener()` `apply_update()` |
+| **内存告警** | `start_memory_warning_listener()` `stop_memory_warning_listener()` |
+| **窗口事件** | `start_window_resize_listener()` `stop_window_resize_listener()` |
+| **运行时错误** | `start_unhandled_rejection_listener()` `stop_unhandled_rejection_listener()` |
+| **截屏 / 录屏** | `get_screen_brightness()` `set_screen_brightness(value)` `start_user_capture_screen_listener()` `stop_user_capture_screen_listener()` `get_screen_recording_state()` `start_screen_recording_state_listener()` `stop_screen_recording_state_listener()` `set_visual_effect_on_capture(effect)` |
+| **系统信息 / 兼容性** | `can_i_use(schema)` `get_device_info()` `get_app_base_info()` `get_system_setting()` `get_app_authorize_setting()` `get_system_info()` `get_launch_options()` `get_window_info()` `get_menu_button_rect()` |
 | **UI 交互** | `show_toast(title, icon, duration)` `show_modal(title, content)` `show_loading(title)` `hide_loading()` |
 | **屏幕** | `set_keep_screen_on(keep_on)` |
+| **通用 API** | `call_api(api_name, params)` |
 
 </details>
 

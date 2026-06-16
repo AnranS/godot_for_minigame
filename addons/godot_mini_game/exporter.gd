@@ -22,7 +22,7 @@ const MANAGED_FILES: PackedStringArray = [
 	"adapter.js", "fetch.js", "game.js", "game.json",
 	"project.config.json", "project.private.config.json",
 ]
-const MANAGED_DIRS: PackedStringArray = ["engine", "images", "js", "subpacks"]
+const MANAGED_DIRS: PackedStringArray = ["audio", "engine", "images", "js", "subpacks"]
 
 var log_callback: Callable
 
@@ -30,28 +30,53 @@ var log_callback: Callable
 # ─── Template store ────────────────────────────────────────────────
 
 static func get_godot_version_key() -> String:
+	return _editor_version_string()
+
+
+static func get_godot_legacy_version_key() -> String:
 	var v := Engine.get_version_info()
 	return "%d.%d" % [v.major, v.minor]
+
 
 static func get_template_store_dir() -> String:
 	return OS.get_config_dir().path_join("godot_mini_game/templates/" + get_godot_version_key())
 
+
+static func get_template_store_dirs() -> PackedStringArray:
+	var dirs := PackedStringArray([get_template_store_dir()])
+	var legacy := OS.get_config_dir().path_join("godot_mini_game/templates/" + get_godot_legacy_version_key())
+	if legacy != dirs[0]:
+		dirs.append(legacy)
+	return dirs
+
+
 static func get_template_status() -> Dictionary:
-	## Returns { "source": String, "has_js": bool, "has_wasm": bool, "ready": bool }
-	var result := { "source": "none", "has_js": false, "has_wasm": false, "ready": false }
+	## Returns source / file readiness plus version metadata.
+	var editor_version := get_godot_version_key()
+	var result := {
+		"source": "none",
+		"has_js": false,
+		"has_wasm": false,
+		"ready": false,
+		"editor_version": editor_version,
+		"template_version": "",
+		"version_match": false,
+	}
 
 	# Check user-provided in addon root (manual override)
 	var addon_js := FileAccess.file_exists(ADDON_ROOT + "godot.js")
 	var addon_wasm := FileAccess.file_exists(ADDON_ROOT + "godot.wasm.br") or FileAccess.file_exists(ADDON_ROOT + "godot.wasm")
 	if addon_js and addon_wasm:
-		result = { "source": "addon", "has_js": true, "has_wasm": true, "ready": true }
+		var addon_version := _read_version_key_file(ADDON_ROOT + "version.txt")
+		result = _status("addon", true, true, addon_version, editor_version)
 		return result
 
 	# Check bundled engine in addon engine/ dir
 	var bundled_js := FileAccess.file_exists(ENGINE_DIR + "godot.js")
 	var bundled_wasm := FileAccess.file_exists(ENGINE_DIR + "godot.wasm.br") or FileAccess.file_exists(ENGINE_DIR + "godot.wasm")
 	if bundled_js and bundled_wasm:
-		result = { "source": "bundled", "has_js": true, "has_wasm": true, "ready": true }
+		var bundled_version := _read_version_key_file(ENGINE_DIR + "version.txt")
+		result = _status("bundled", true, true, bundled_version, editor_version)
 		return result
 
 	# Check template store
@@ -59,8 +84,18 @@ static func get_template_status() -> Dictionary:
 	var store_js := FileAccess.file_exists(store.path_join("godot.js"))
 	var store_wasm := FileAccess.file_exists(store.path_join("godot.wasm.br")) or FileAccess.file_exists(store.path_join("godot.wasm"))
 	if store_js and store_wasm:
-		result = { "source": "store", "has_js": true, "has_wasm": true, "ready": true }
+		var store_version := _read_version_key_file(store.path_join("version.txt"))
+		result = _status("store", true, true, store_version if not store_version.is_empty() else editor_version, editor_version)
 		return result
+
+	var legacy_store := get_template_store_dirs()[1] if get_template_store_dirs().size() > 1 else store
+	if legacy_store != store:
+		var legacy_js := FileAccess.file_exists(legacy_store.path_join("godot.js"))
+		var legacy_wasm := FileAccess.file_exists(legacy_store.path_join("godot.wasm.br")) or FileAccess.file_exists(legacy_store.path_join("godot.wasm"))
+		if legacy_js and legacy_wasm:
+			var legacy_version := _read_version_key_file(legacy_store.path_join("version.txt"))
+			result = _status("store_legacy", true, true, legacy_version if not legacy_version.is_empty() else get_godot_legacy_version_key(), editor_version)
+			return result
 
 	# Check standard Godot web export template
 	var v := Engine.get_version_info()
@@ -68,7 +103,7 @@ static func get_template_status() -> Dictionary:
 	var template_base := OS.get_config_dir().path_join("Godot/export_templates/" + ver_str)
 	for candidate in ["web_nothreads_release.zip", "web_nothreads_debug.zip", "web_release.zip", "web_debug.zip"]:
 		if FileAccess.file_exists(template_base.path_join(candidate)):
-			result = { "source": "standard", "has_js": true, "has_wasm": true, "ready": true }
+			result = _status("standard", true, true, ver_str, editor_version)
 			return result
 
 	return result
@@ -165,7 +200,7 @@ func import_template_zip(zip_path: String) -> Error:
 	return OK
 
 
-## Extracts the `major.minor` key from strings like "4.6.1-stable" or "4.6.1.stable".
+## Extracts a normalized version key from strings like "4.6.1-stable" or "4.6.1.stable".
 static func _version_key_from_string(s: String) -> String:
 	if s.is_empty():
 		return ""
@@ -174,7 +209,35 @@ static func _version_key_from_string(s: String) -> String:
 		return ""
 	if not parts[0].is_valid_int() or not parts[1].is_valid_int():
 		return ""
+	if parts.size() >= 4 and parts[2].is_valid_int() and not str(parts[3]).is_empty():
+		return "%s.%s.%s.%s" % [parts[0], parts[1], parts[2], parts[3]]
+	if parts.size() >= 3 and parts[2].is_valid_int():
+		return "%s.%s.%s" % [parts[0], parts[1], parts[2]]
 	return "%s.%s" % [parts[0], parts[1]]
+
+
+static func _read_version_key_file(path: String) -> String:
+	if not FileAccess.file_exists(path):
+		return ""
+	var f := FileAccess.open(path, FileAccess.READ)
+	if not f:
+		return ""
+	var text := f.get_as_text().strip_edges()
+	f.close()
+	return _version_key_from_string(text)
+
+
+static func _status(source: String, has_js: bool, has_wasm: bool, template_version: String, editor_version: String) -> Dictionary:
+	var version_match := template_version.is_empty() or template_version == editor_version
+	return {
+		"source": source,
+		"has_js": has_js,
+		"has_wasm": has_wasm,
+		"ready": has_js and has_wasm,
+		"editor_version": editor_version,
+		"template_version": template_version,
+		"version_match": version_match,
+	}
 
 
 static func _editor_version_string() -> String:
@@ -197,7 +260,7 @@ func export_mini_game(
 	# Step 0: wipe stale managed artifacts so we never inherit a half-failed run.
 	_cleanup_managed_outputs(output_dir)
 
-	for sub in ["engine", "js/libs", "js/worker", "images", "subpacks"]:
+	for sub in ["audio", "engine", "js/libs", "js/worker", "images", "subpacks"]:
 		DirAccess.make_dir_recursive_absolute(output_dir.path_join(sub))
 
 	# Step 1: Export .pck (lightweight, does not require export templates)
@@ -414,12 +477,13 @@ func _obtain_godot_js(output_dir: String) -> bool:
 		return true
 
 	# Priority 3: version-matched template from local store
-	var store_js := get_template_store_dir().path_join("godot.js")
-	if FileAccess.file_exists(store_js):
-		_copy_file(store_js, dst)
-		_log("  已使用模板库 godot.js (Godot %s)" % get_godot_version_key())
-		_patch_godot_js(dst)
-		return true
+	for store_dir in get_template_store_dirs():
+		var store_js := store_dir.path_join("godot.js")
+		if FileAccess.file_exists(store_js):
+			_copy_file(store_js, dst)
+			_log("  已使用模板库 godot.js (%s)" % store_dir.get_file())
+			_patch_godot_js(dst)
+			return true
 
 	# Priority 4 (fallback): extract from installed Web export template zip
 	var data := _read_from_template_zip(".js")
@@ -531,17 +595,17 @@ func _obtain_godot_wasm(output_dir: String) -> bool:
 		return _brotli_compress(wasm_path, br_path)
 
 	# Priority 3: version-matched template from local store
-	var store_dir := get_template_store_dir()
-	var store_br := store_dir.path_join("godot.wasm.br")
-	var store_raw := store_dir.path_join("godot.wasm")
-	if FileAccess.file_exists(store_br):
-		_copy_file(store_br, br_path)
-		_log("  已使用模板库 godot.wasm.br (Godot %s)" % get_godot_version_key())
-		return true
-	if FileAccess.file_exists(store_raw):
-		_copy_file(store_raw, wasm_path)
-		_log("  已使用模板库 godot.wasm (Godot %s)" % get_godot_version_key())
-		return _brotli_compress(wasm_path, br_path)
+	for store_dir in get_template_store_dirs():
+		var store_br := store_dir.path_join("godot.wasm.br")
+		var store_raw := store_dir.path_join("godot.wasm")
+		if FileAccess.file_exists(store_br):
+			_copy_file(store_br, br_path)
+			_log("  已使用模板库 godot.wasm.br (%s)" % store_dir.get_file())
+			return true
+		if FileAccess.file_exists(store_raw):
+			_copy_file(store_raw, wasm_path)
+			_log("  已使用模板库 godot.wasm (%s)" % store_dir.get_file())
+			return _brotli_compress(wasm_path, br_path)
 
 	# Priority 4 (fallback): extract from installed Web export template zip → compress
 	var data := _read_from_template_zip(".wasm")
@@ -704,8 +768,10 @@ func _copy_common_templates(output_dir: String) -> void:
 	var common := TEMPLATES + "common/"
 	var mappings := {
 		"adapter.js":                       "adapter.js",
+		"audio/demo-tone.wav":              "audio/demo-tone.wav",
 		"fetch.js":                         "fetch.js",
 		"js/libs/sdk.js":                   "js/libs/sdk.js",
+		"js/image_loader.js":               "js/image_loader.js",
 		"js/loader.js":                     "js/loader.js",
 		"js/worker/position_reporting.js":  "js/worker/position_reporting.js",
 	}
