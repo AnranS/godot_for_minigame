@@ -21,9 +21,16 @@ console.log("[Adapter] GameGlobal.canvas 存在:", !!_global.canvas, "类型:", 
 // and Godot engine will actually render to). Only create a new one as fallback.
 const _mainCanvas = _global.canvas || _api.createCanvas();
 const _winInfo = (_api.getWindowInfo || _api.getSystemInfoSync).call(_api);
-const _dpr = _winInfo.pixelRatio;
-_mainCanvas.width = _winInfo.windowWidth * _dpr;
-_mainCanvas.height = _winInfo.windowHeight * _dpr;
+const _dpr = Number(_winInfo.pixelRatio) || 1;
+let _viewportWidth = Number(_winInfo.windowWidth || _winInfo.screenWidth || _mainCanvas.width || 1);
+let _viewportHeight = Number(_winInfo.windowHeight || _winInfo.screenHeight || _mainCanvas.height || 1);
+
+function _backingSize(value) {
+  return Math.max(1, Math.round(value * _dpr));
+}
+
+_mainCanvas.width = _backingSize(_viewportWidth);
+_mainCanvas.height = _backingSize(_viewportHeight);
 
 // Mini-game canvas may only allow getContext to succeed once per type.
 // Cache the context so the loader's WebGL2 ctx is reused by Godot's Emscripten.
@@ -53,6 +60,28 @@ function _safeDefine(obj, key, value) {
   try { Object.defineProperty(obj, key, { value, configurable: true, writable: true }); } catch (_) {
     try { obj[key] = value; } catch (_2) {}
   }
+}
+
+function _installCanvasMetrics(canvas) {
+  if (!canvas) return;
+  if (!canvas.style) _safeDefine(canvas, "style", {});
+  if (canvas.style) {
+    try {
+      canvas.style.width = _viewportWidth + "px";
+      canvas.style.height = _viewportHeight + "px";
+    } catch (_) {}
+  }
+  _safeDefine(canvas, "clientWidth", _viewportWidth);
+  _safeDefine(canvas, "clientHeight", _viewportHeight);
+  _safeDefine(canvas, "offsetWidth", _viewportWidth);
+  _safeDefine(canvas, "offsetHeight", _viewportHeight);
+  _safeDefine(canvas, "getBoundingClientRect", function () {
+    return {
+      x: 0, y: 0, top: 0, left: 0,
+      right: _viewportWidth, bottom: _viewportHeight,
+      width: _viewportWidth, height: _viewportHeight,
+    };
+  });
 }
 
 // ── Event system ──────────────────────────────────────────────────
@@ -150,14 +179,8 @@ const _fakeParent = {
 };
 _safeDefine(_mainCanvas, "parentElement", _fakeParent);
 _safeDefine(_mainCanvas, "parentNode", _fakeParent);
-if (!_mainCanvas.style) _safeDefine(_mainCanvas, "style", {});
+_installCanvasMetrics(_mainCanvas);
 _safeDefine(_mainCanvas, "tabIndex", -1);
-if (!_mainCanvas.getBoundingClientRect) {
-  _safeDefine(_mainCanvas, "getBoundingClientRect", function () {
-    const w = this.width / _dpr, h = this.height / _dpr;
-    return { x: 0, y: 0, top: 0, left: 0, right: w, bottom: h, width: w, height: h };
-  });
-}
 if (!_mainCanvas.requestPointerLock) _safeDefine(_mainCanvas, "requestPointerLock", () => {});
 if (!_mainCanvas.requestFullscreen) _safeDefine(_mainCanvas, "requestFullscreen", () => Promise.resolve());
 _safeDefine(_mainCanvas, "mozRequestFullScreen", _mainCanvas.requestFullscreen || (() => Promise.resolve()));
@@ -183,8 +206,8 @@ const _document = {
   pointerLockElement: null,
   documentElement: {
     style: {},
-    clientWidth: _mainCanvas.width,
-    clientHeight: _mainCanvas.height,
+    clientWidth: _viewportWidth,
+    clientHeight: _viewportHeight,
   },
   head: { appendChild(c) { return c; }, removeChild(c) { return c; }, insertBefore(n) { return n; } },
   body: {
@@ -193,8 +216,8 @@ const _document = {
     removeChild(c) { return c; },
     insertBefore(n) { return n; },
     contains() { return true; },
-    clientWidth: _mainCanvas.width,
-    clientHeight: _mainCanvas.height,
+    clientWidth: _viewportWidth,
+    clientHeight: _viewportHeight,
   },
   scripts: [],
   styleSheets: [],
@@ -266,6 +289,31 @@ const _document = {
   hasFocus() { return true; },
 };
 Object.defineProperty(_document, "currentScript", { get: () => ({ src: "" }) });
+
+function _syncDomViewportMetrics() {
+  _document.documentElement.clientWidth = _viewportWidth;
+  _document.documentElement.clientHeight = _viewportHeight;
+  _document.body.clientWidth = _viewportWidth;
+  _document.body.clientHeight = _viewportHeight;
+}
+
+function _setViewportSize(width, height) {
+  const nextWidth = Number(width);
+  const nextHeight = Number(height);
+  if (Number.isFinite(nextWidth) && nextWidth > 0) _viewportWidth = nextWidth;
+  if (Number.isFinite(nextHeight) && nextHeight > 0) _viewportHeight = nextHeight;
+
+  _mainCanvas.width = _backingSize(_viewportWidth);
+  _mainCanvas.height = _backingSize(_viewportHeight);
+  _installCanvasMetrics(_mainCanvas);
+  if (typeof _usableCanvas !== "undefined" && _usableCanvas !== _mainCanvas) {
+    _installCanvasMetrics(_usableCanvas);
+  }
+  if (_global.canvas && _global.canvas !== _mainCanvas && _global.canvas !== _usableCanvas) {
+    _installCanvasMetrics(_global.canvas);
+  }
+  _syncDomViewportMetrics();
+}
 
 // ── navigator ─────────────────────────────────────────────────────
 const _sysInfo = _api.getSystemInfoSync();
@@ -712,13 +760,13 @@ const _window = {
   document: _document, navigator: _navigator, localStorage: _localStorage,
   location: _location, performance: _performance, canvas: _mainCanvas,
 
-  innerWidth: _winInfo.windowWidth, innerHeight: _winInfo.windowHeight,
-  outerWidth: _winInfo.windowWidth, outerHeight: _winInfo.windowHeight,
+  innerWidth: _viewportWidth, innerHeight: _viewportHeight,
+  outerWidth: _viewportWidth, outerHeight: _viewportHeight,
   devicePixelRatio: _dpr,
   screen: {
-    width: _winInfo.screenWidth || _winInfo.windowWidth,
-    height: _winInfo.screenHeight || _winInfo.windowHeight,
-    availWidth: _winInfo.windowWidth, availHeight: _winInfo.windowHeight,
+    width: _winInfo.screenWidth || _viewportWidth,
+    height: _winInfo.screenHeight || _viewportHeight,
+    availWidth: _viewportWidth, availHeight: _viewportHeight,
     orientation: { type: "portrait-primary", angle: 0 },
   },
 
@@ -881,7 +929,11 @@ _api.onTouchCancel((r) => {
 // ── Window resize ─────────────────────────────────────────────────
 if (typeof _api.onWindowResize === "function") {
   _api.onWindowResize((r) => {
-    _window.innerWidth = r.windowWidth; _window.innerHeight = r.windowHeight;
+    const size = (r && r.size) || r || {};
+    _setViewportSize(size.windowWidth, size.windowHeight);
+    _window.innerWidth = _viewportWidth; _window.innerHeight = _viewportHeight;
+    _window.outerWidth = _viewportWidth; _window.outerHeight = _viewportHeight;
+    _window.screen.availWidth = _viewportWidth; _window.screen.availHeight = _viewportHeight;
     _dispatchEvent("resize", { type: "resize" });
   });
 }
@@ -947,13 +999,7 @@ if (_global.canvas && _global.canvas !== _mainCanvas) {
   _safeDefine(_gc, "id", "canvas");
   _safeDefine(_gc, "parentElement", _fakeParent);
   _safeDefine(_gc, "parentNode", _fakeParent);
-  if (!_gc.style) _safeDefine(_gc, "style", {});
-  if (!_gc.getBoundingClientRect) {
-    _safeDefine(_gc, "getBoundingClientRect", function () {
-      const w = this.width / _dpr, h = this.height / _dpr;
-      return { x: 0, y: 0, top: 0, left: 0, right: w, bottom: h, width: w, height: h };
-    });
-  }
+  _installCanvasMetrics(_gc);
   if (!_gc.focus) _safeDefine(_gc, "focus", () => {});
   if (!_gc.blur) _safeDefine(_gc, "blur", () => {});
   _safeDefine(_gc, "requestPointerLock", () => {});
