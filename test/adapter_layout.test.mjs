@@ -75,17 +75,18 @@ async function loadAdapter() {
   await import(`data:text/javascript;charset=utf-8,${encodeURIComponent(source)}#${Date.now()}-${Math.random()}`);
 }
 
-async function testCanvasUsesCssMetricsAndPhysicalBackingStore() {
+async function testCanvasUsesLogicalMetricsForGodotViewport() {
   const { mainCanvas } = installMiniGameGlobals();
   await loadAdapter();
 
   const adapter = globalThis.GameGlobal.__adapter;
   const rect = adapter.canvas.getBoundingClientRect();
 
-  assert.equal(mainCanvas.width, 1170);
-  assert.equal(mainCanvas.height, 2532);
+  assert.equal(mainCanvas.width, 390);
+  assert.equal(mainCanvas.height, 844);
   assert.equal(adapter.window.innerWidth, 390);
   assert.equal(adapter.window.innerHeight, 844);
+  assert.equal(adapter.window.devicePixelRatio, 1);
   assert.equal(adapter.document.documentElement.clientWidth, 390);
   assert.equal(adapter.document.documentElement.clientHeight, 844);
   assert.equal(adapter.document.body.clientWidth, 390);
@@ -108,10 +109,11 @@ async function testResizeKeepsMetricsInTheSameCoordinateSpace() {
   const adapter = globalThis.GameGlobal.__adapter;
   const rect = adapter.canvas.getBoundingClientRect();
 
-  assert.equal(mainCanvas.width, 1290);
-  assert.equal(mainCanvas.height, 2796);
+  assert.equal(mainCanvas.width, 430);
+  assert.equal(mainCanvas.height, 932);
   assert.equal(adapter.window.innerWidth, 430);
   assert.equal(adapter.window.innerHeight, 932);
+  assert.equal(adapter.window.devicePixelRatio, 1);
   assert.equal(adapter.document.documentElement.clientWidth, 430);
   assert.equal(adapter.document.documentElement.clientHeight, 932);
   assert.equal(adapter.canvas.clientWidth, 430);
@@ -139,7 +141,7 @@ async function testTouchCoordinatesStayInCssPixels() {
   assert.equal(events[0].clientY, 200);
 }
 
-await testCanvasUsesCssMetricsAndPhysicalBackingStore();
+await testCanvasUsesLogicalMetricsForGodotViewport();
 await testResizeKeepsMetricsInTheSameCoordinateSpace();
 await testTouchCoordinatesStayInCssPixels();
 

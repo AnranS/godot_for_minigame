@@ -21,7 +21,10 @@ console.log("[Adapter] GameGlobal.canvas 存在:", !!_global.canvas, "类型:", 
 // and Godot engine will actually render to). Only create a new one as fallback.
 const _mainCanvas = _global.canvas || _api.createCanvas();
 const _winInfo = (_api.getWindowInfo || _api.getSystemInfoSync).call(_api);
-const _dpr = Number(_winInfo.pixelRatio) || 1;
+// Godot Web uses window.devicePixelRatio to scale canvas.width/height and then
+// reports canvas.width/height back as the window size. Mini-game touch and
+// window APIs use logical pixels, so expose a logical-pixel DPR to Godot.
+const _dpr = 1;
 let _viewportWidth = Number(_winInfo.windowWidth || _winInfo.screenWidth || _mainCanvas.width || 1);
 let _viewportHeight = Number(_winInfo.windowHeight || _winInfo.screenHeight || _mainCanvas.height || 1);
 
