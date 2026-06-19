@@ -49,9 +49,10 @@ function _safeSet(obj, key, value) {
 _safeSet(GameGlobal, "crypto", crypto);
 _safeSet(GameGlobal, "Blob", FakeBlob);
 _safeSet(GameGlobal, "godotSdk", godotSdk);
+_safeSet(globalThis, "godotSdk", godotSdk);
 // Also register on the adapter's window so JavaScriptBridge.get_interface() finds it
 if (GameGlobal.__adapter && GameGlobal.__adapter.window) {
-  GameGlobal.__adapter.window.godotSdk = godotSdk;
+  _safeSet(GameGlobal.__adapter.window, "godotSdk", godotSdk);
 }
 
 // Use __adapter.canvas which has properly wrapped addEventListener/getContext,
