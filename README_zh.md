@@ -8,11 +8,11 @@
 
 ---
 
-一个 Godot 4.x 编辑器插件，把你的游戏一键打包成可直接提审的**微信小游戏**或**抖音小游戏**。内置预编译引擎模板——装好插件、点导出、用开发者工具打开即可。
+一个 Godot 4.x 编辑器插件，把你的游戏一键打包成可直接提审的**微信小游戏**或**抖音小游戏**。内置 Godot 4.6.1 预编译引擎，并拒绝不安全的引擎/项目版本错配。
 
 ## 特性
 
-- **零配置**——自带引擎模板，不需要自己折腾 Emscripten
+- **版本安全**——只使用精确匹配的引擎；Godot 4.6.1 可直接使用内置模板
 - **一键导出**——编辑器底部 Dock 面板搞定一切：`.pck`、引擎文件、JS 适配、平台配置
 - **真机可跑**——引擎去掉了 `WXWebAssembly` 不支持的 WASM SIMD / 异常处理 Tag
 - **20+ 类原生 API**——登录、隐私授权、授权设置、原生按钮、调试日志、账号信息、广告、支付、存储、媒体图片、Camera、Video、VideoDecoder、MediaAudioPlayer、RecorderManager 录音、游戏录屏、InnerAudio 音频播放、文件系统、分包、Worker、用户托管数据 / 开放数据域、客服会话、订阅消息、分享、小程序跳转、振动、键盘、剪贴板、网络、文件传输、WebSocket、传感器、电量、更新管理、截屏录屏、窗口事件、运行时错误事件等
@@ -254,10 +254,12 @@ MiniGameSDK.vibrate_short("medium")
 
 | 优先级 | 来源 | 说明 |
 |--------|------|------|
-| 1 | `addons/godot_mini_game/godot.js` + `godot.wasm.br` | 手动覆盖（最高） |
-| 2 | `addons/godot_mini_game/engine/` | 插件内置（默认） |
-| 3 | `~/.config/godot_mini_game/templates/{version}/` | 通过 Dock 导入 |
-| 4 | Godot 官方 Web 导出模板 | 仅开发者工具模拟器可用，会给出警告 |
+| 1 | `addons/godot_mini_game/godot.js` + `godot.wasm.br` + `version.txt` | 精确版本的手动覆盖 |
+| 2 | `~/.config/godot_mini_game/templates/{完整版本}/` | 通过 Dock 导入的精确版本模板 |
+| 3 | `addons/godot_mini_game/engine/` | 版本精确匹配时使用内置模板 |
+| 4 | 精确版本的 Godot 官方 Web 导出模板 | 仅开发者工具模拟器可用，会给出警告 |
+
+JS 与 WASM 始终从同一个来源选择；没有精确匹配时，插件会在触碰输出目录前终止导出。
 
 ### 为其它 Godot 版本编译模板
 
@@ -292,9 +294,8 @@ addons/godot_mini_game/
 
 ## 依赖
 
-- **Godot 4.6.x** — 内置引擎模板基于 4.6.1-stable 编译。其它 4.x 版本几乎一定会在运行时挂掉，
-  因为 `.pck` 字节码和内置 WASM 必须来自同一个 Godot 版本。要用别的版本必须
-  自己重编一份匹配的模板（见"为其它 Godot 版本编译模板"），然后通过 Dock 导入。
+- **Godot 4.x**，并提供精确版本的引擎模板。内置引擎是 4.6.1-stable；其它版本若要真机运行，
+  需导入对应版本的小游戏兼容模板。已安装的官方 Web 模板只能作为开发者工具/模拟器回退。
 - **微信开发者工具** 或 **抖音开发者工具**
 - **Node.js** *必需*（用于内置 Brotli 压缩）或 `brotli` CLI（`brew install brotli`）。
   两者都没有时导出会失败 —— 未压缩的 WASM 超过微信单包 4 MB 上限。

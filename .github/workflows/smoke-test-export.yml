@@ -6,6 +6,7 @@ on:
       - "addons/godot_mini_game/**"
       - "scenes/**"
       - "scripts/**"
+      - "test/**"
       - "project.godot"
       - ".github/workflows/smoke-test-export.yml"
   push:
@@ -28,6 +29,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
       - name: Install Brotli
         run: sudo apt-get update && sudo apt-get install -y brotli jq
 
@@ -43,8 +48,8 @@ jobs:
           godot --version
 
       - name: Create a Web export preset
-        # The exporter rewrites this anyway (to all_resources). We only need
-        # a preset to exist with the name "MiniGame".
+        # The exporter preserves the selected preset and its resource filter.
+        # This fixture exports all demo resources for the end-to-end smoke test.
         run: |
           cat > export_presets.cfg <<'EOF'
           [preset.0]
@@ -80,17 +85,20 @@ jobs:
 
       - name: Import project (populate .godot cache)
         run: |
-          godot --headless --import --quit 2>&1 | tail -20 || true
+          set -eo pipefail
+          godot --headless --import --quit 2>&1 | tail -20
 
-      - name: Run focused unit tests
+      - name: Run unit tests
         run: |
           set -e
-          node test/sdk_bridge.test.mjs
-          godot --headless --path . --script res://test/exporter_version_test.gd
-          godot --headless --path . --script res://test/minigame_sdk_test.gd
+          node --test test/*.test.mjs
+          for test_file in test/*.gd; do
+            godot --headless --path . --script "res://$test_file"
+          done
 
       - name: Run exporter for ${{ matrix.platform }}
         run: |
+          set -e
           mkdir -p /tmp/export_out
           # Drive the exporter directly from a one-shot SceneTree script so we
           # exercise the same code path the dock uses (incl. async _export_pck).
@@ -122,12 +130,13 @@ jobs:
           set -e
           OUT=/tmp/export_out
           MUST_EXIST=(
+            .godot-mini-game-export
             adapter.js
             fetch.js
             game.js
             game.json
             project.config.json
-            engine/godot.js
+            js/libs/godot.js
             engine/godot.wasm.br
             engine/godot.zip
             js/libs/sdk.js
@@ -145,6 +154,11 @@ jobs:
             echo "OK: $f ($size bytes)"
           done
 
+          for f in adapter.js fetch.js game.js js/image_loader.js js/loader.js js/libs/godot.js js/libs/sdk.js; do
+            node --check "$OUT/$f"
+            echo "OK JS: $f"
+          done
+
       - name: Verify wechat-only artifacts
         if: matrix.platform == 'wechat'
         run: |
@@ -155,7 +169,7 @@ jobs:
       - name: Validate JSON files parse
         run: |
           set -e
-          for f in /tmp/export_out/game.json /tmp/export_out/project.config.json; do
+          for f in /tmp/export_out/*.json; do
             jq empty "$f" || (echo "::error::$f is not valid JSON" && exit 1)
             echo "OK JSON: $f"
           done
@@ -165,6 +179,7 @@ jobs:
           set -e
           SIZE=$(stat -c%s /tmp/export_out/engine/godot.wasm.br)
           echo "godot.wasm.br = $SIZE bytes"
+          brotli --test /tmp/export_out/engine/godot.wasm.br
           # Bundled WASM is ~6 MB compressed; allow 1MB–15MB range.
           # Below 1MB indicates a truncated download; above 15MB indicates
           # compression was skipped or the wrong engine was bundled.
@@ -179,8 +194,9 @@ jobs:
           set -e
           # Mini-game main package (everything outside the declared subpackages
           # engine/ and subpacks/) must be < 4 MB.
-          MAIN_SIZE=$(find /tmp/export_out -maxdepth 1 -type f -printf '%s\n' | awk '{s+=$1} END {print s+0}')
-          MAIN_SIZE=$((MAIN_SIZE + $(find /tmp/export_out/js /tmp/export_out/images -type f -printf '%s\n' 2>/dev/null | awk '{s+=$1} END {print s+0}')))
+          MAIN_SIZE=$(find /tmp/export_out \
+            \( -path /tmp/export_out/engine -o -path /tmp/export_out/subpacks \) -prune \
+            -o -type f -printf '%s\n' | awk '{s+=$1} END {print s+0}')
           echo "Main package size: $MAIN_SIZE bytes"
           if [ "$MAIN_SIZE" -gt 4194304 ]; then
             echo "::error::Main package exceeds WeChat 4 MB limit ($MAIN_SIZE bytes)"

@@ -1,6 +1,6 @@
 {
   "deviceOrientation": "{{ORIENTATION}}",
-  "subpackages": [
+  "subPackages": [
     { "root": "engine/", "name": "engine" },
     { "root": "subpacks/", "name": "subpacks" }
   ]

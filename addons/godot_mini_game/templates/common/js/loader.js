@@ -186,7 +186,19 @@ class Loader {
       GameGlobal.engine = engine;
       godotSdk.set_engine(engine);
 
-      console.log("[Loader] 4/6 调用 engine.startGame()...");
+      const executable = "engine/godot";
+      const mainPack = "engine/godot.zip";
+      const persistentPaths = (engine.config && Array.isArray(engine.config.persistentPaths))
+        ? engine.config.persistentPaths
+        : ["/userfs"];
+
+      console.log("[Loader] 4/7 初始化引擎并恢复持久文件...");
+      await godotSdk.preparePersistentFS(persistentPaths);
+      await engine.init(executable);
+      const restored = await godotSdk.restorePersistentPaths(persistentPaths);
+      console.log(`[Loader]     已通过 ${restored.method} 恢复 ${restored.entries || 0} 个持久文件系统条目`);
+
+      console.log("[Loader] 5/7 调用 engine.startGame()...");
       console.log("[Loader]     canvas:", _canvas ? `${_canvas.width}x${_canvas.height}` : "null");
       const ctx = _canvas.getContext("webgl2");
       console.log("[Loader]     WebGL2 context:", ctx ? "OK" : "FAILED (null)");
@@ -197,22 +209,19 @@ class Loader {
 
       await engine.startGame({
         canvas: _canvas,
-        executable: "engine/godot",
-        mainPack: "engine/godot.zip",
+        executable,
+        mainPack,
         args: [],
       });
 
-      console.log("[Loader] 5/6 engine.startGame() 完成，设置文件同步...");
-      if (typeof engine !== "undefined" && engine.config && engine.config.persistentPaths) {
-        engine.config.persistentPaths.forEach(p => godotSdk.copyLocalToFS(p));
-      }
+      console.log("[Loader] 6/7 engine.startGame() 完成，设置文件同步...");
       setInterval(() => {
         godotSdk.syncfs(null, err => { if (err) console.error("[sync]", err); });
       }, 5000);
       this.logoImage = null;
       this.loadingCtx.clearRect(0, 0, this.loadingCanvas.width, this.loadingCanvas.height);
       this.cleanWebgl();
-      console.log("[Loader] 6/6 ✓ 加载完成，游戏已启动");
+      console.log("[Loader] 7/7 ✓ 加载完成，游戏已启动");
     } catch (err) {
       console.error("[Loader] ✗ 加载失败:", err);
       if (err && err.stack) console.error("[Loader] Stack:", err.stack);

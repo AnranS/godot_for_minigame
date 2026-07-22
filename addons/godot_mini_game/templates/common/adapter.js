@@ -11,9 +11,12 @@
  * No build step required — this is a single self-contained ES module.
  */
 
-const _api = (typeof wx !== "undefined") ? wx : tt;
+const _wechatApi = (typeof wx !== "undefined") ? wx : null;
+const _douyinApi = (typeof tt !== "undefined") ? tt : null;
+const _api = _wechatApi || _douyinApi;
+if (!_api) throw new Error("[Adapter] 未检测到微信或抖音小游戏 API");
 const _global = GameGlobal;
-console.log("[Adapter] ▶ 初始化适配层, platform:", _api === wx ? "wechat" : "douyin");
+console.log("[Adapter] ▶ 初始化适配层, platform:", _api === _wechatApi ? "wechat" : "douyin");
 console.log("[Adapter] GameGlobal.canvas 存在:", !!_global.canvas, "类型:", typeof _global.canvas);
 
 // ── Canvas ────────────────────────────────────────────────────────
@@ -584,9 +587,8 @@ function _tryResumeAudio() {
 // When createWebAudioContext is unavailable, use InnerAudioContext to play audio.
 // decodeAudioData saves raw audio bytes to a temp file; BufferSourceNode.start()
 // creates an InnerAudioContext pointing to that file.
-const _fs = (_api === wx) ? wx.getFileSystemManager() : (typeof tt !== "undefined" ? tt.getFileSystemManager() : null);
-const _userDataPath = (typeof wx !== "undefined" ? wx.env?.USER_DATA_PATH : null) ||
-                      (typeof tt !== "undefined" ? tt.env?.USER_DATA_PATH : null) || "";
+const _fs = typeof _api.getFileSystemManager === "function" ? _api.getFileSystemManager() : null;
+const _userDataPath = _api.env?.USER_DATA_PATH || "";
 let _audioTempIdx = 0;
 
 function _saveAudioTemp(arrayBuffer) {

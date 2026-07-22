@@ -8,11 +8,11 @@
 
 ---
 
-A Godot 4.x editor plugin that converts your game into a **WeChat** or **Douyin (TikTok) Mini Game** ready for submission. Ships with a pre-compiled engine template — install the plugin, click export, open in DevTools.
+A Godot 4.x editor plugin that converts your game into a **WeChat** or **Douyin (TikTok) Mini Game** ready for submission. Ships with a Godot 4.6.1 pre-compiled engine template and refuses unsafe engine/project version mismatches.
 
 ## Highlights
 
-- **Zero config** — bundled engine template works out of the box, no Emscripten setup needed
+- **Version-safe export** — uses only an exact-version engine; Godot 4.6.1 works with the bundled template out of the box
 - **One-click export** — editor dock panel handles everything: `.pck`, engine files, JS adapters, platform configs
 - **Real-device ready** — engine compiled without WASM SIMD / exception tags that crash `WXWebAssembly`
 - **20+ native API groups** — auth, privacy, settings, native buttons, debug logging, account, ads, payment, storage, media/images, Camera, Video, VideoDecoder, MediaAudioPlayer, RecorderManager, game recorder, inner audio, file system, subpackages, Worker, cloud storage/open data, customer service, subscribe messages, share, mini program navigation, vibration, keyboard, clipboard, network, file transfer, WebSocket, sensors, battery, update manager, screen capture/recording, window events, runtime error events, and more
@@ -255,10 +255,12 @@ The plugin bundles a pre-compiled engine in `addons/godot_mini_game/engine/` (Go
 
 | Priority | Source | Notes |
 |----------|--------|-------|
-| 1 | `addons/godot_mini_game/godot.js` + `godot.wasm.br` | Manual override |
-| 2 | `addons/godot_mini_game/engine/` | Bundled (default) |
-| 3 | `~/.config/godot_mini_game/templates/{version}/` | Imported via dock |
-| 4 | Standard Godot Web export template | DevTools only, warns |
+| 1 | `addons/godot_mini_game/godot.js` + `godot.wasm.br` + `version.txt` | Exact-version manual override |
+| 2 | `~/.config/godot_mini_game/templates/{full-version}/` | Exact-version template imported via dock |
+| 3 | `addons/godot_mini_game/engine/` | Bundled, when its version exactly matches |
+| 4 | Exact-version standard Godot Web export template | DevTools only, with warning |
+
+JS and WASM are always selected from the same source. If no exact match exists, export fails before touching the output directory.
 
 ### Building for a different Godot version
 
@@ -293,11 +295,10 @@ addons/godot_mini_game/
 
 ## Requirements
 
-- **Godot 4.6.x** — the bundled engine template is compiled against 4.6.1-stable.
-  Other 4.x versions will likely fail at runtime because `.pck` bytecode and the
-  bundled WASM must be from the same Godot version. To use a different version
-  you must rebuild a matching template (see "Building for a different Godot
-  version" below) and import it via the dock.
+- **Godot 4.x** with an exact-version engine template. The bundled engine is
+  4.6.1-stable. For another version, import a matching mini-game template for
+  real-device use; an installed standard Web template is accepted only as a
+  DevTools/simulator fallback.
 - **WeChat DevTools** or **Douyin DevTools**
 - **Node.js** *required* (used for built-in Brotli compression) or `brotli` CLI
   (`brew install brotli`). Without one of these the export will fail —

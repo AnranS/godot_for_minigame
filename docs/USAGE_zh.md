@@ -80,9 +80,9 @@ Godot 编辑器 → **Project > Project Settings > Plugins** → 勾选 **Godot 
 
 **Project > Export** → **Add...** → 选 **Web**。名字随便起（例如 `MiniGame`），其它参数保持默认即可，不需要下载 Web 导出模板。
 
-> **为什么不需要下载模板？** 插件用 `--export-pack` 只导出 `.pck`，引擎二进制从 `addons/godot_mini_game/engine/` 读取。这绕开了 Godot 官方 Web 模板的 WASM 特性限制（SIMD / 异常 Tag 在真机 `WXWebAssembly` 上跑不起来）。
+> **为什么仍要创建 Web 预设？** 插件会使用它的资源过滤通过 `--export-pack` 生成游戏包，再单独提供精确版本的引擎。Godot 4.6.1 可使用内置小游戏引擎；其它版本真机运行时需要导入匹配模板。
 
-> **导出过滤会被覆盖**：插件会把所选预设的 `export_filter` 强制改成 `all_resources`，并清掉 `export_files`，确保所有资源都被打包。如果你有严格的资源筛选需求，建议专门建一个供插件使用的预设。
+> **导出过滤会被保留**：插件原样使用所选 Web 预设，不会修改 `export_presets.cfg`。请确认该预设包含游戏需要的全部场景和资源。
 
 ---
 
@@ -144,10 +144,12 @@ Dock 顶部的 **引擎模板** 栏显示当前查找结果。插件按以下顺
 
 | 优先级 | 位置 | 使用场景 |
 |--------|------|---------|
-| 1 | `addons/godot_mini_game/godot.js` + `godot.wasm.br` | 手动覆盖（调试/定制） |
-| 2 | `addons/godot_mini_game/engine/` | 插件内置，默认走这里 |
-| 3 | `~/.config/godot_mini_game/templates/{major.minor}/` | 通过 Dock 导入的模板库 |
-| 4 | Godot 官方 Web 导出模板 zip | 仅开发者工具模拟器可用，带警告 |
+| 1 | `addons/godot_mini_game/godot.js` + `godot.wasm.br` + `version.txt` | 精确版本的手动覆盖 |
+| 2 | `~/.config/godot_mini_game/templates/{完整版本}/` | 通过 Dock 导入的精确版本模板 |
+| 3 | `addons/godot_mini_game/engine/` | 仅版本精确匹配时使用内置模板 |
+| 4 | 精确版本的 Godot 官方 Web 导出模板 zip | 仅开发者工具模拟器可用，带警告 |
+
+解析器不会混用不同来源的 JS 与 WASM；版本不匹配时会在清理已有输出前终止。
 
 ### 导入新版引擎模板
 
@@ -155,11 +157,13 @@ Dock 顶部的 **引擎模板** 栏显示当前查找结果。插件按以下顺
 - 可以是 GitHub Actions 产出的 `minigame-template-*.zip`
 - 也可以是自己用 `scripts/build_wasm_template.sh` 编出来的 zip
 
+zip 必须包含合法且非空的 `version.txt`。其它 Godot 版本的压缩包会按其完整版本归档，只有切换到匹配的编辑器后才会生效；没有版本标记的压缩包会被拒绝。
+
 导入流程：
-1. 插件扫描 zip 里的 `godot.js`、`godot.wasm` / `godot.wasm.br`
-2. 解压到 `~/.config/godot_mini_game/templates/{4.x}/`（跨项目复用）
+1. 插件扫描 zip 里的 `version.txt`、`godot.js`、`godot.wasm` / `godot.wasm.br`
+2. 先解压并校验到暂存目录，再替换 `~/.config/godot_mini_game/templates/{完整版本}/`（跨项目复用）
 3. 如果只找到未压缩的 `.wasm`，会自动调 Node/brotli CLI 生成 `.wasm.br`
-4. 写入 `version.txt` 做版本标记
+4. 任一步失败时保留原有的精确版本模板
 
 ### 刷新
 
@@ -1420,7 +1424,7 @@ MiniGameSDK.call_api("getStorageSync", {"_args": ["level"]})
 如果 `godot.zip` 超过 4 MB，需要切分资源。最简单的做法：
 
 1. 在 Godot 里把大资源（视频、音频、高清贴图）放到一个单独的目录，例如 `res://heavy/`
-2. 导出预设里暂时不过滤——插件强制 `all_resources`，因此当前无法在插件内拆分
+2. 用所选 Web 预设的资源过滤把这些资源排除在主 `godot.zip` 之外
 3. 进阶做法：导出后手动把 `engine/godot.zip` 里的部分资源（用 `Godot --headless --export-pack` 分多次生成）移到 `subpacks/`，并在 `game.json` 里新增 `{"root":"subpacks/","name":"subpacks"}`（插件已经声明好）
 
 > TODO（issue 跟踪）：当前插件只生成一个 `.pck`。多包导出需要自己扩展 `exporter.gd::_export_pck`。
@@ -1439,20 +1443,22 @@ MiniGameSDK.call_api("getStorageSync", {"_args": ["level"]})
 
 Godot 的 `user://` 默认存到 IDBFS（IndexedDB），在小游戏环境下会被 loader 拦截：
 
-- 启动时 loader 调 `godotSdk.copyLocalToFS(p)` 把持久化路径从 `wx.getStorage` 恢复到 emscripten FS
-- 每 5 秒 `setInterval` 一次 `godotSdk.syncfs()` 把 FS 落回 `wx.setStorage`
+- `Engine.init()` 前，loader 会安装由平台 `FileSystemManager` 驱动的 IndexedDB 兼容层，数据位于 `USER_DATA_PATH`
+- `Engine.init()` 走正常 IDBFS populate，因此游戏启动前就能看到已有 `user://` 文件
+- Godot 关闭可写的 `user://` 文件后，会在下一次主循环触发 IDBFS 同步；兼容层把 `put`/`delete` 真正写入平台文件系统
+- 每 5 秒的 `syncfs()` 会等待已排队的平台写入并暴露错误，不再在持久化不可用时静默成功
 
-如果你想立刻落盘（比如在关键节点），可以：
+关键存档点应先关闭 Godot `FileAccess`，再等一帧后请求确认：
 
 ```gdscript
-# 没开放显式 flush 接口，暂时只能靠 5s interval。
-# 或者通过 JavaScriptBridge 手动调：
-JavaScriptBridge.eval("GameGlobal.godotSdk.syncfs(null, ()=>{})")
+JavaScriptBridge.eval("GameGlobal.godotSdk.syncfs(()=>console.log('save flushed'),e=>console.error(e))")
 ```
+
+Godot 官方 wrapper 没有暴露强制 FS sync 方法，因此这个调用无法刷出仍未关闭的文件。
 
 ### 存档迁移
 
-第一次从 Web 切到小游戏时，`user://` 是空的——因为小游戏没有 Web 平台的 IDB。想迁移旧存档需要自己用 `MiniGameSDK.storage_get/set` 从服务端拉下来写到 `user://`。
+第一次从 Web 切到小游戏时，`user://` 是空的——小游戏无法访问浏览器原来的 IDB。可从服务端下载旧存档后用 Godot `FileAccess` 写入；小型键值存档也可以使用 `MiniGameSDK.storage_get/storage_set`。
 
 ---
 

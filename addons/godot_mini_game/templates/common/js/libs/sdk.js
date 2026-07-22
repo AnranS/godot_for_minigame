@@ -217,6 +217,464 @@ function _reasonToString(reason) {
   return _fmtErr(reason);
 }
 
+const _IDB_FILE_MODE = 0o100666;
+const _IDB_DIR_MODE = 0o40777;
+const _IDB_TYPE_MASK = 0o170000;
+
+function _fsCall(fs, method, options) {
+  return new Promise((resolve, reject) => {
+    const fn = fs && fs[method];
+    if (typeof fn !== "function") {
+      reject(new Error(`FileSystemManager.${method} is not supported`));
+      return;
+    }
+    try {
+      fn.call(fs, Object.assign({}, options || {}, {
+        success: (res) => resolve(res || {}),
+        fail: (err) => reject(err instanceof Error ? err : new Error(_fmtErr(err))),
+      }));
+    } catch (e) {
+      reject(e);
+    }
+  });
+}
+
+function _isMissingFileError(err) {
+  const text = _fmtErr(err).toLowerCase();
+  return text.includes("no such file") || text.includes("not found") || text.includes("enoent");
+}
+
+function _normalizeVirtualPath(path) {
+  const value = String(path || "").replace(/\\/g, "/");
+  if (!value.startsWith("/")) throw new Error(`Persistent path must be absolute: ${value}`);
+  const parts = [];
+  for (const part of value.split("/")) {
+    if (!part || part === ".") continue;
+    if (part === "..") throw new Error(`Persistent path cannot contain '..': ${value}`);
+    parts.push(part);
+  }
+  return `/${parts.join("/")}`;
+}
+
+function _entryTimestamp(stats) {
+  const raw = stats && (stats.lastModifiedTime ?? stats.mtimeMs ?? stats.mtime);
+  let value = raw instanceof Date ? raw.getTime() : Number(raw);
+  // Older Douyin FileSystemManager Stats reports Unix seconds, while WeChat
+  // and newer runtimes use milliseconds. Values below 1e12 cannot represent a
+  // contemporary millisecond timestamp, so normalize them before creating Date.
+  if (Number.isFinite(value) && value > 0 && value < 1e12) value *= 1000;
+  const date = new Date(Number.isFinite(value) && value > 0 ? value : Date.now());
+  return Number.isNaN(date.getTime()) ? new Date() : date;
+}
+
+function _copyIdbEntry(entry) {
+  if (!entry) return entry;
+  const timestamp = entry.timestamp instanceof Date
+    ? new Date(entry.timestamp.getTime())
+    : new Date(entry.timestamp);
+  const copy = {
+    timestamp: Number.isNaN(timestamp.getTime()) ? new Date() : timestamp,
+    mode: Number(entry.mode),
+  };
+  const bytes = _arrayBufferBytes(entry.contents);
+  if (bytes) copy.contents = new Uint8Array(bytes);
+  return copy;
+}
+
+/**
+ * A small IndexedDB-compatible facade backed by the mini-game file system.
+ *
+ * Godot's Web runtime mounts IDBFS at /userfs and automatically calls
+ * FS.syncfs(false) after a writable user:// file is closed. Mini-game hosts do
+ * not provide IndexedDB, so the adapter's in-memory stub loses those records on
+ * process exit. This facade keeps the IDBFS schema while persisting each record
+ * below USER_DATA_PATH using the same absolute virtual path.
+ */
+class MiniGamePersistentIDB {
+  constructor(api, paths) {
+    if (!api || typeof api.getFileSystemManager !== "function") {
+      throw new Error("Persistent file bridge requires getFileSystemManager()");
+    }
+    if (!api.env || !api.env.USER_DATA_PATH) {
+      throw new Error("Persistent file bridge requires env.USER_DATA_PATH");
+    }
+    this.api = api;
+    this.fs = api.getFileSystemManager();
+    if (!this.fs) throw new Error("getFileSystemManager() returned no FileSystemManager");
+    this.userDataPath = String(api.env.USER_DATA_PATH).replace(/\/$/, "");
+    this.paths = [...new Set((paths || []).map(_normalizeVirtualPath))];
+    this.databases = new Map();
+    this.openedRoots = new Set();
+    this.populatedRoots = new Set();
+    this.writeTail = Promise.resolve();
+    this.writeGeneration = 0;
+    this.lastError = null;
+    this.indexedDB = {
+      open: (name, version) => this._open(name, version),
+      deleteDatabase: (name) => this._deleteDatabase(name),
+    };
+  }
+
+  async initialize() {
+    for (const root of this.paths) {
+      const entries = new Map();
+      await this._ensureDirectory(this._platformPath(root));
+      await this._scanDirectory(root, entries);
+      this.databases.set(root, entries);
+    }
+    return this;
+  }
+
+  install() {
+    const targets = [globalThis];
+    if (typeof GameGlobal !== "undefined") {
+      targets.push(GameGlobal);
+      if (GameGlobal.__adapter && GameGlobal.__adapter.window) {
+        targets.push(GameGlobal.__adapter.window);
+      }
+    }
+    if (typeof window !== "undefined") targets.push(window);
+
+    let installed = false;
+    for (const target of [...new Set(targets.filter(Boolean))]) {
+      try {
+        Object.defineProperty(target, "indexedDB", {
+          value: this.indexedDB,
+          configurable: true,
+          writable: true,
+        });
+      } catch (_) {
+        try { target.indexedDB = this.indexedDB; } catch (_2) {}
+      }
+      if (target.indexedDB === this.indexedDB) installed = true;
+    }
+    if (!installed) throw new Error("Unable to install persistent IndexedDB bridge");
+  }
+
+  async flush() {
+    // A user:// close is noticed by Godot on the next main-loop iteration. Give
+    // that iteration and the resulting IDB transaction time to enqueue writes.
+    await this._nextFrame();
+    let stableGeneration = -1;
+    for (let i = 0; i < 4; i++) {
+      const tail = this.writeTail;
+      await tail;
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      if (stableGeneration === this.writeGeneration && tail === this.writeTail) break;
+      stableGeneration = this.writeGeneration;
+    }
+    if (this.lastError) throw this.lastError;
+  }
+
+  _nextFrame() {
+    const scope = (typeof window !== "undefined" && window) || globalThis;
+    if (scope && typeof scope.requestAnimationFrame === "function") {
+      return new Promise((resolve) => scope.requestAnimationFrame(() => resolve()));
+    }
+    return new Promise((resolve) => setTimeout(resolve, 20));
+  }
+
+  _platformPath(path) {
+    return `${this.userDataPath}${_normalizeVirtualPath(path)}`;
+  }
+
+  _rootFor(path, expectedRoot) {
+    const normalized = _normalizeVirtualPath(path);
+    const requestedRoot = expectedRoot ? _normalizeVirtualPath(expectedRoot) : null;
+    const root = requestedRoot || this.paths
+      .filter((candidate) => normalized === candidate || normalized.startsWith(`${candidate}/`))
+      .sort((a, b) => b.length - a.length)[0];
+    if (requestedRoot && !this.paths.includes(requestedRoot)) {
+      throw new Error(`Unknown persistent root: ${requestedRoot}`);
+    }
+    if (!root) throw new Error(`Path is outside configured persistent roots: ${normalized}`);
+    if (normalized !== root && !normalized.startsWith(`${root}/`)) {
+      throw new Error(`Path is outside configured persistent root ${root}: ${normalized}`);
+    }
+    return { root, path: normalized };
+  }
+
+  async _ensureDirectory(dirPath) {
+    try {
+      await _fsCall(this.fs, "access", { path: dirPath });
+    } catch (_) {
+      await _fsCall(this.fs, "mkdir", { dirPath, recursive: true });
+    }
+  }
+
+  async _scanDirectory(virtualDir, entries) {
+    const result = await _fsCall(this.fs, "readdir", { dirPath: this._platformPath(virtualDir) });
+    const names = (result.files || []).filter((name) => name !== "." && name !== "..");
+    for (const name of names) {
+      const path = _normalizeVirtualPath(`${virtualDir}/${name}`);
+      const statResult = await _fsCall(this.fs, "stat", { path: this._platformPath(path) });
+      const stats = statResult.stat || statResult.stats || statResult;
+      const timestamp = _entryTimestamp(stats);
+      if (stats && typeof stats.isDirectory === "function" && stats.isDirectory()) {
+        entries.set(path, { timestamp, mode: _IDB_DIR_MODE });
+        await this._scanDirectory(path, entries);
+      } else if (stats && typeof stats.isFile === "function" && stats.isFile()) {
+        const file = await _fsCall(this.fs, "readFile", { filePath: this._platformPath(path) });
+        const bytes = _arrayBufferBytes(file.data);
+        if (!bytes) throw new Error(`FileSystemManager.readFile returned non-binary data for ${path}`);
+        entries.set(path, { timestamp, mode: _IDB_FILE_MODE, contents: new Uint8Array(bytes) });
+      }
+    }
+  }
+
+  _enqueueWrite(operation) {
+    const task = this.writeTail
+      .catch(() => {})
+      .then(operation)
+      .then((value) => {
+        this.writeGeneration += 1;
+        return value;
+      });
+    this.writeTail = task.catch((err) => {
+      this.lastError = err instanceof Error ? err : new Error(_fmtErr(err));
+      return undefined;
+    });
+    return task;
+  }
+
+  async _writeFile(path, bytes) {
+    const idx = path.lastIndexOf("/");
+    await this._ensureDirectory(path.slice(0, idx));
+    const data = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+    if (typeof this.fs.writeFile === "function") {
+      await _fsCall(this.fs, "writeFile", { filePath: path, data });
+      return;
+    }
+
+    const opened = await _fsCall(this.fs, "open", { filePath: path, flag: "w+" });
+    const fd = opened.fd;
+    try {
+      await _fsCall(this.fs, "write", { fd, data });
+    } finally {
+      await _fsCall(this.fs, "close", { fd });
+    }
+  }
+
+  async _persistPut(root, key, entry) {
+    const resolved = this._rootFor(key, root);
+    if (resolved.path === root) {
+      throw new Error(`Invalid IDBFS record path: ${key}`);
+    }
+    const target = this._platformPath(resolved.path);
+    const type = Number(entry.mode) & _IDB_TYPE_MASK;
+    if (type === (_IDB_DIR_MODE & _IDB_TYPE_MASK)) {
+      await this._ensureDirectory(target);
+    } else if (type === (_IDB_FILE_MODE & _IDB_TYPE_MASK)) {
+      const bytes = _arrayBufferBytes(entry.contents);
+      if (!bytes) throw new Error(`IDBFS file record has no binary contents: ${key}`);
+      await this._writeFile(target, bytes);
+    } else {
+      throw new Error(`Unsupported IDBFS record mode for ${key}: ${entry.mode}`);
+    }
+  }
+
+  async _persistDelete(root, key, entry) {
+    const resolved = this._rootFor(key, root);
+    if (resolved.path === root) {
+      throw new Error(`Invalid IDBFS record path: ${key}`);
+    }
+    const target = this._platformPath(resolved.path);
+    const type = Number(entry && entry.mode) & _IDB_TYPE_MASK;
+    const method = type === (_IDB_DIR_MODE & _IDB_TYPE_MASK) ? "rmdir" : "unlink";
+    const options = method === "rmdir"
+      ? { dirPath: target, recursive: false }
+      : { filePath: target };
+    try {
+      await _fsCall(this.fs, method, options);
+    } catch (e) {
+      if (!_isMissingFileError(e)) throw e;
+    }
+  }
+
+  _request(transaction, operation) {
+    const request = { result: undefined, error: null, readyState: "pending", onsuccess: null, onerror: null };
+    transaction._begin();
+    setTimeout(async () => {
+      try {
+        request.result = await operation();
+        request.readyState = "done";
+        if (typeof request.onsuccess === "function") request.onsuccess({ target: request });
+      } catch (e) {
+        request.error = e;
+        this.lastError = e instanceof Error ? e : new Error(_fmtErr(e));
+        request.readyState = "done";
+        const event = { target: request, preventDefault() {} };
+        if (typeof request.onerror === "function") request.onerror(event);
+        transaction._fail(e);
+      } finally {
+        transaction._end();
+      }
+    }, 0);
+    return request;
+  }
+
+  _openKeyCursor(transaction, root, entries) {
+    const request = { result: undefined, error: null, readyState: "pending", onsuccess: null, onerror: null };
+    const values = [...entries.entries()].sort((a, b) => {
+      const timeDiff = a[1].timestamp.getTime() - b[1].timestamp.getTime();
+      return timeDiff || a[0].localeCompare(b[0]);
+    });
+    let index = 0;
+    transaction._begin();
+    const advance = () => {
+      setTimeout(() => {
+        if (index >= values.length) {
+          this.populatedRoots.add(root);
+          request.result = null;
+          request.readyState = "done";
+          if (typeof request.onsuccess === "function") request.onsuccess({ target: request });
+          transaction._end();
+          return;
+        }
+        const [primaryKey, entry] = values[index];
+        let continued = false;
+        request.result = {
+          primaryKey,
+          key: new Date(entry.timestamp.getTime()),
+          continue() {
+            if (continued) return;
+            continued = true;
+            index += 1;
+            advance();
+          },
+        };
+        if (typeof request.onsuccess === "function") request.onsuccess({ target: request });
+      }, 0);
+    };
+    advance();
+    return request;
+  }
+
+  _transaction(root, entries, mode) {
+    let pending = 0;
+    let setupComplete = false;
+    let finished = false;
+    let completionTimer = null;
+    const transaction = {
+      mode,
+      error: null,
+      oncomplete: null,
+      onerror: null,
+      onabort: null,
+      abort() {
+        if (finished) return;
+        finished = true;
+        transaction.error = transaction.error || new Error("IndexedDB transaction aborted");
+        if (typeof transaction.onabort === "function") {
+          transaction.onabort({ target: transaction, preventDefault() {} });
+        }
+      },
+    };
+    const maybeComplete = () => {
+      if (!setupComplete || pending !== 0 || finished || completionTimer) return;
+      completionTimer = setTimeout(() => {
+        completionTimer = null;
+        if (pending !== 0 || finished) return;
+        finished = true;
+        if (typeof transaction.oncomplete === "function") transaction.oncomplete({ target: transaction });
+      }, 0);
+    };
+    transaction._begin = () => {
+      if (finished) throw new Error("IndexedDB transaction is inactive");
+      pending += 1;
+    };
+    transaction._end = () => {
+      pending = Math.max(0, pending - 1);
+      maybeComplete();
+    };
+    transaction._fail = (error) => {
+      if (finished) return;
+      finished = true;
+      transaction.error = error;
+      const event = { target: transaction, preventDefault() {} };
+      if (typeof transaction.onerror === "function") transaction.onerror(event);
+    };
+    transaction.objectStore = () => ({
+      indexNames: { contains: (name) => name === "timestamp", length: 1 },
+      createIndex: () => transaction.objectStore(),
+      index: () => ({ openKeyCursor: () => this._openKeyCursor(transaction, root, entries) }),
+      get: (key) => this._request(transaction, () => _copyIdbEntry(entries.get(String(key)))),
+      put: (entry, key) => this._request(transaction, async () => {
+        const path = String(key);
+        const copy = _copyIdbEntry(entry);
+        await this._enqueueWrite(() => this._persistPut(root, path, copy));
+        entries.set(path, copy);
+        return path;
+      }),
+      delete: (key) => this._request(transaction, async () => {
+        const path = String(key);
+        const oldEntry = entries.get(path);
+        await this._enqueueWrite(() => this._persistDelete(root, path, oldEntry));
+        entries.delete(path);
+      }),
+    });
+    setTimeout(() => {
+      setupComplete = true;
+      maybeComplete();
+    }, 0);
+    return transaction;
+  }
+
+  _database(root, entries) {
+    return {
+      name: root,
+      objectStoreNames: { contains: (name) => name === "FILE_DATA", length: 1 },
+      createObjectStore: () => ({
+        indexNames: { contains: () => true, length: 1 },
+        createIndex() { return this; },
+      }),
+      deleteObjectStore() {},
+      transaction: (_storeNames, mode) => this._transaction(root, entries, mode || "readonly"),
+      close() {},
+    };
+  }
+
+  _open(name, _version) {
+    const root = _normalizeVirtualPath(name);
+    const request = {
+      result: null,
+      error: null,
+      readyState: "pending",
+      transaction: null,
+      onsuccess: null,
+      onerror: null,
+      onupgradeneeded: null,
+    };
+    setTimeout(() => {
+      const entries = this.databases.get(root);
+      if (!entries) {
+        request.error = new Error(`No persistent bridge configured for ${root}`);
+        request.readyState = "done";
+        if (typeof request.onerror === "function") {
+          request.onerror({ target: request, preventDefault() {} });
+        }
+        return;
+      }
+      request.result = this._database(root, entries);
+      this.openedRoots.add(root);
+      request.readyState = "done";
+      if (typeof request.onsuccess === "function") request.onsuccess({ target: request });
+    }, 0);
+    return request;
+  }
+
+  _deleteDatabase(name) {
+    const request = { result: undefined, error: null, readyState: "pending", onsuccess: null, onerror: null };
+    setTimeout(() => {
+      const root = _normalizeVirtualPath(name);
+      if (this.databases.has(root)) this.databases.set(root, new Map());
+      request.readyState = "done";
+      if (typeof request.onsuccess === "function") request.onsuccess({ target: request });
+    }, 0);
+    return request;
+  }
+}
+
 class GodotSDK {
 
   // ── Engine binding ──────────────────────────────────────────────
@@ -3546,9 +4004,61 @@ class GodotSDK {
   showLoading(title) { _api.showLoading({ title: title || "", mask: true }); }
   hideLoading() { _api.hideLoading({}); }
 
-  // ── File system bridge (existing) ──────────────────────────────
+  // ── File system bridge ─────────────────────────────────────────
+
+  async preparePersistentFS(paths) {
+    const persistentPaths = Array.isArray(paths) ? paths : [];
+    if (persistentPaths.length === 0) {
+      this._persistentBridge = null;
+      return { paths: [], entries: 0 };
+    }
+    const bridge = new MiniGamePersistentIDB(_api, persistentPaths);
+    await bridge.initialize();
+    bridge.install();
+    this._persistentBridge = bridge;
+    let entries = 0;
+    for (const records of bridge.databases.values()) entries += records.size;
+    return { paths: bridge.paths.slice(), entries };
+  }
+
+  async restorePersistentPaths(paths) {
+    const persistentPaths = Array.isArray(paths) ? paths : [];
+    if (this._persistentBridge) {
+      if (!this.engine || !this.engine.rtenv) {
+        throw new Error("Persistent IDBFS restore must run after Engine.init() completes");
+      }
+      const requested = [...new Set(persistentPaths.map(_normalizeVirtualPath))].sort();
+      const configured = this._persistentBridge.paths.slice().sort();
+      if (requested.length !== configured.length || requested.some((path, i) => path !== configured[i])) {
+        throw new Error("Persistent restore paths do not match the initialized IDBFS bridge");
+      }
+      if (this._persistentBridge.lastError) throw this._persistentBridge.lastError;
+      const missed = configured.filter((path) => !this._persistentBridge.populatedRoots.has(path));
+      if (missed.length > 0) {
+        throw new Error(`Engine.init() did not populate persistent IDBFS roots: ${missed.join(", ")}`);
+      }
+      let entries = 0;
+      for (const records of this._persistentBridge.databases.values()) entries += records.size;
+      // Engine.init() awaits Module.initFS(), whose FS.syncfs(true) has consumed
+      // the facade records at this point. Do not scan/copy again: that would
+      // overwrite the IDBFS timestamps and needlessly duplicate every file.
+      return { method: "idbfs", paths: configured, entries };
+    }
+
+    if (!this.engine || typeof this.engine.copyToFS !== "function") {
+      throw new Error("Persistent restore requires an initialized Engine with copyToFS()");
+    }
+    for (const path of persistentPaths) await this.copyLocalToFS(path);
+    return { method: "copyToFS", paths: persistentPaths.slice() };
+  }
 
   writeFile(path, array) {
+    if (!_api.env || !_api.env.USER_DATA_PATH) {
+      return Promise.reject(new Error("writeFile requires env.USER_DATA_PATH"));
+    }
+    if (typeof _api.getFileSystemManager !== "function") {
+      return Promise.reject(new Error("writeFile requires getFileSystemManager()"));
+    }
     const fs = _api.getFileSystemManager();
     const idx = path.lastIndexOf("/");
     const dir = idx > 0 ? path.slice(0, idx) : "/";
@@ -3575,22 +4085,45 @@ class GodotSDK {
   }
 
   copyLocalToFS(path) {
+    if (!this.engine || typeof this.engine.copyToFS !== "function") {
+      return Promise.reject(new Error("Persistent restore requires an initialized Engine with copyToFS()"));
+    }
+    if (!_api.env || !_api.env.USER_DATA_PATH) {
+      return Promise.reject(new Error("Persistent restore requires env.USER_DATA_PATH"));
+    }
+    if (typeof _api.getFileSystemManager !== "function") {
+      return Promise.reject(new Error("Persistent restore requires getFileSystemManager()"));
+    }
+    const root = _normalizeVirtualPath(path);
     const fs = _api.getFileSystemManager();
-    return this._accessOrMkdir(fs, `${_api.env.USER_DATA_PATH}${path}`)
+    return this._accessOrMkdir(fs, `${_api.env.USER_DATA_PATH}${root}`)
       .then(() => new Promise((resolve, reject) => {
-        fs.readdir({ dirPath: `${_api.env.USER_DATA_PATH}${path}`,
+        fs.readdir({ dirPath: `${_api.env.USER_DATA_PATH}${root}`,
           success: res => resolve(res.files.filter(v => v !== "." && v !== "..")),
           fail: reject });
       }))
       .then(dirs => dirs.reduce((chain, name) => chain.then(() => {
-        const p = `${_api.env.USER_DATA_PATH}${path}/${name}`;
+        const child = _normalizeVirtualPath(`${root}/${name}`);
+        const p = `${_api.env.USER_DATA_PATH}${child}`;
         return new Promise((resolve, reject) => {
           fs.stat({ path: p, success: r => resolve(r.stats), fail: reject });
         }).then(stat => {
-          if (stat.isDirectory()) return this.copyLocalToFS(`${path}/${name}`);
+          if (stat.isDirectory()) return this.copyLocalToFS(child);
           if (stat.isFile()) {
             return new Promise((resolve, reject) => {
-              fs.readFile({ filePath: p, success: r => { this.engine.copyToFS(`${path}/${name}`, r.data); resolve(); }, fail: reject });
+              fs.readFile({ filePath: p, success: r => {
+                const bytes = _arrayBufferBytes(r.data);
+                if (!bytes) {
+                  reject(new Error(`FileSystemManager.readFile returned non-binary data for ${child}`));
+                  return;
+                }
+                try {
+                  this.engine.copyToFS(child, bytes);
+                  resolve();
+                } catch (e) {
+                  reject(e);
+                }
+              }, fail: reject });
             });
           }
         });
@@ -3598,13 +4131,29 @@ class GodotSDK {
   }
 
   syncfs(onSuccess, onError) {
-    if (!this.engine || typeof this.engine.copyFSToAdapter !== "function") {
-      if (onSuccess) onSuccess();
-      return;
+    let operation;
+    if (this.engine && typeof this.engine.copyFSToAdapter === "function") {
+      operation = Promise.resolve().then(() => this.engine.copyFSToAdapter(this));
+    } else if (this._persistentBridge) {
+      operation = this._persistentBridge.flush();
+    } else {
+      operation = Promise.reject(new Error(
+        "Persistent sync unavailable: Engine.copyFSToAdapter() is missing and the mini-game file bridge was not initialized"));
     }
-    this.engine.copyFSToAdapter(this)
-      .then(() => { if (onSuccess) onSuccess(); })
-      .catch(err => { if (onError) onError(err); });
+
+    return operation
+      .then(() => {
+        if (onSuccess) onSuccess();
+        return true;
+      })
+      .catch((err) => {
+        const error = err instanceof Error ? err : new Error(_fmtErr(err));
+        if (onError) {
+          onError(error);
+          return false;
+        }
+        throw error;
+      });
   }
 
   downloadSubpacks(onSuccess, onError) {

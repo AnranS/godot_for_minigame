@@ -52,20 +52,22 @@ func _refresh_all() -> void:
 	_log("已刷新预设和模板状态")
 
 
-func _refresh_presets() -> void:
+func _refresh_presets(preferred_name: String = "") -> void:
+	if preferred_name.is_empty() and preset_option.item_count > 0 and preset_option.selected >= 0:
+		var current := preset_option.get_item_text(preset_option.selected)
+		if not current.begins_with("("):
+			preferred_name = current
 	preset_option.clear()
-	var cfg := ConfigFile.new()
-	var err := cfg.load("res://export_presets.cfg")
-	if err != OK:
+	var presets := Exporter.get_web_export_preset_names()
+	if presets.is_empty():
 		preset_option.add_item("(未找到导出预设)", 0)
 		return
-	var idx := 0
-	for section in cfg.get_sections():
-		if section.begins_with("preset."):
-			var preset_name: String = cfg.get_value(section, "name", "")
-			if preset_name != "":
-				preset_option.add_item(preset_name, idx)
-				idx += 1
+	var selected_index := 0
+	for preset_name in presets:
+		preset_option.add_item(preset_name)
+		if preset_name == preferred_name:
+			selected_index = preset_option.item_count - 1
+	preset_option.select(selected_index)
 
 
 func _refresh_template_status() -> void:
@@ -128,14 +130,19 @@ func _on_export() -> void:
 	# act on a stale snapshot taken when the dock was first instantiated.
 	# This is the cheapest way to avoid the "(未找到导出预设)" sticky-state bug
 	# where the user creates the preset *after* enabling the plugin.
-	_refresh_presets()
+	var selected_preset := ""
+	if preset_option.item_count > 0 and preset_option.selected >= 0:
+		selected_preset = preset_option.get_item_text(preset_option.selected)
+	_refresh_presets(selected_preset)
 
 	var platform_idx := platform_option.selected
 	var platform: String = "wechat" if platform_idx == 0 else "douyin"
 	var appid: String = appid_input.text.strip_edges()
 	var orientation: String = "portrait" if orientation_option.selected == 0 else "landscape"
 	var output_dir: String = output_path.text.strip_edges()
-	var preset_name: String = preset_option.get_item_text(preset_option.selected)
+	var preset_name := ""
+	if preset_option.item_count > 0 and preset_option.selected >= 0:
+		preset_name = preset_option.get_item_text(preset_option.selected)
 
 	if output_dir.is_empty():
 		_log("[color=red]请选择输出目录[/color]")

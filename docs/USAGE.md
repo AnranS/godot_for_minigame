@@ -80,9 +80,9 @@ Godot editor → **Project > Project Settings > Plugins** → check **Godot Mini
 
 **Project > Export** → **Add...** → **Web**. Name it anything (e.g. `MiniGame`). Default settings are fine; you do NOT need to download a standard Web export template.
 
-> **Why no template download?** The plugin uses `--export-pack` to produce a bare `.pck`, then supplies its own engine binaries from `addons/godot_mini_game/engine/`. This sidesteps the WASM features (SIMD, exception tags) that `WXWebAssembly` on real devices refuses to compile.
+> **Why is the Web preset still needed?** The plugin uses its resource filter with `--export-pack` to produce the game pack, then supplies an exact-version engine separately. Godot 4.6.1 can use the bundled mini-game engine; other versions need a matching imported template for real-device use.
 
-> **Export filter is overridden:** the plugin forces `export_filter=all_resources` and clears `export_files` on the chosen preset. If you have a carefully curated filter preset for another purpose, create a dedicated preset for mini-game export.
+> **Your export filter is preserved:** the plugin uses the selected Web preset without modifying `export_presets.cfg`. Make sure that preset includes every scene and resource your game needs.
 
 ---
 
@@ -144,10 +144,12 @@ The **Engine Template** strip at the top of the dock shows the current lookup re
 
 | Priority | Location | When it's used |
 |----------|----------|----------------|
-| 1 | `addons/godot_mini_game/godot.js` + `godot.wasm.br` | Manual override (debugging / custom builds) |
-| 2 | `addons/godot_mini_game/engine/` | Bundled default |
-| 3 | `~/.config/godot_mini_game/templates/{major.minor}/` | Imported via dock, shared across projects |
-| 4 | Godot's standard Web export template zip | Simulator-only fallback, with warning |
+| 1 | `addons/godot_mini_game/godot.js` + `godot.wasm.br` + `version.txt` | Exact-version manual override |
+| 2 | `~/.config/godot_mini_game/templates/{full-version}/` | Exact-version imported template, shared across projects |
+| 3 | `addons/godot_mini_game/engine/` | Bundled template, only on an exact version match |
+| 4 | Exact-version standard Godot Web export template zip | Simulator-only fallback, with warning |
+
+The resolver never mixes JS and WASM from different sources. A mismatch fails before the existing output is cleaned.
 
 ### Import a new engine template
 
@@ -155,11 +157,13 @@ Click **Import Template**, pick a zip:
 - Either the `minigame-template-*.zip` from GitHub Actions
 - Or one you built locally with `scripts/build_wasm_template.sh`
 
+The zip must contain a valid, non-empty `version.txt`. An archive for another Godot version is filed under that exact version and remains inactive until the project is opened with the matching editor; an unversioned archive is rejected.
+
 Steps performed:
-1. Scan the zip for `godot.js`, `godot.wasm` / `godot.wasm.br`
-2. Extract into `~/.config/godot_mini_game/templates/{4.x}/` (reusable across projects)
+1. Scan the zip for `version.txt`, `godot.js`, and `godot.wasm` / `godot.wasm.br`
+2. Extract and validate in a staging directory, then replace `~/.config/godot_mini_game/templates/{full-version}/` (reusable across projects)
 3. If only an uncompressed `.wasm` is present, auto-run Node or brotli CLI to produce `.wasm.br`
-4. Write a `version.txt` marker
+4. Keep the previous exact-version template intact if any step fails
 
 ### Refresh
 
@@ -1419,7 +1423,7 @@ WeChat limits: main 4 MB, each subpackage 4 MB, total 20 MB (as of 2026 Q1). The
 If `godot.zip` overflows 4 MB you need to shard assets:
 
 1. Group heavy assets (videos, audio, hi-res textures) under e.g. `res://heavy/`
-2. The plugin currently forces `all_resources` on the preset, so sharding via the preset alone is not possible yet
+2. Use the selected Web preset's resource filter to keep those assets out of the main `godot.zip`
 3. Advanced: run `Godot --headless --export-pack` manually multiple times to produce separate `.pck` files, place them in `subpacks/`, and add an entry to `game.json → subpackages` (the `subpacks` root is already declared)
 
 > Tracked as a follow-up: the exporter only produces a single `.pck` today. Multi-pack export requires extending `exporter.gd::_export_pck`.
@@ -1438,18 +1442,22 @@ If `godot.zip` overflows 4 MB you need to shard assets:
 
 Godot `user://` normally maps to IDBFS. Inside a mini-game host the loader bridges it:
 
-- At startup `godotSdk.copyLocalToFS(p)` restores every persistent path from `wx.getStorage` into the Emscripten FS
-- Every 5s a `setInterval` calls `godotSdk.syncfs()` to push the FS back into `wx.setStorage`
+- Before `Engine.init()`, the loader installs an IndexedDB-compatible facade backed by the platform `FileSystemManager` under `USER_DATA_PATH`
+- `Engine.init()` performs the normal IDBFS populate, so existing `user://` files are present before the game starts
+- When Godot closes a writable `user://` file, its next-main-loop IDBFS sync writes `put`/`delete` operations to the platform filesystem
+- The 5s `syncfs()` check waits for queued platform writes and reports failures; it does not silently succeed when persistence is unavailable
 
-To force a flush at a critical moment (no dedicated API yet):
+At a critical save point, close the Godot `FileAccess` first, then wait for the next frame before requesting confirmation:
 
 ```gdscript
-JavaScriptBridge.eval("GameGlobal.godotSdk.syncfs(null, ()=>{})")
+JavaScriptBridge.eval("GameGlobal.godotSdk.syncfs(()=>console.log('save flushed'),e=>console.error(e))")
 ```
+
+The stock Godot wrapper does not expose a force-sync method, so an open file cannot be flushed by this call.
 
 ### Migrating old saves
 
-First time a Web-published game becomes a mini-game, `user://` is empty — the mini-game host has no access to the old IDB. Pull old saves from your server and write them to `user://` yourself through `MiniGameSDK.storage_get`/`set`.
+First time a Web-published game becomes a mini-game, `user://` is empty — the mini-game host has no access to the browser's old IDB. Download the old save from your backend and write it with Godot `FileAccess`, or use `MiniGameSDK.storage_get`/`storage_set` for a small key-value save.
 
 ---
 
