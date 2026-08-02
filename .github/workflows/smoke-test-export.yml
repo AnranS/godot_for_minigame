@@ -3,6 +3,10 @@ name: Smoke Test Export
 on:
   pull_request:
     paths:
+      - "README.md"
+      - "README_zh.md"
+      - "assets/**"
+      - "docs/**"
       - "addons/godot_mini_game/**"
       - "scenes/**"
       - "scripts/**"

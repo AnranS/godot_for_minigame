@@ -40,7 +40,7 @@
       <path fill="#fff" d="m205 105c-73 0-132 50-132 111 0 33 17 63 45 83 3 2 5 5 4 10l-7 24c-1 5 3 7 6 6l30-17c3-2 7-3 11-2 26 8 48 6 51 6-24-84 59-132 123-128-10-52-65-93-131-93m-44 93a18 18 0 1 1 0-35 18 18 0 0 1 0 35m89 0a18 18 0 1 1 0-35 18 18 0 0 1 0 35"/>
     </g>
 
-    <!-- TikTok / Douyin icon 50x50 -->
+    <!-- Douyin icon 50x50 -->
     <g transform="translate(479,23) scale(0.09766)">
       <rect width="512" height="512" rx="116" ry="116" fill="#21262d"/>
       <path fill="#2DCCD3" fill-rule="nonzero" d="M348.868 152.076c12.815 13.213 28.795 21.265 44.9 24.93v-9.922c-15.132-1.073-30.964-5.834-44.9-15.008zm-92.569-65.444v221.885c0 29.069-20.892 47.767-46.296 47.767-8.427 0-16.43-1.969-23.386-5.609 8.826 11.269 22.762 17.751 38.045 17.751 25.405 0 46.297-18.698 46.297-47.793V98.748h40.263a110.44 110.44 0 01-2.693-12.116h-52.23zm-33.033 128.992V204.63c-5.086-.848-10.172-1.122-14.385-1.122-57.316 0-105.309 45.998-105.309 103.04 0 37.446 18.225 69.457 45.923 88.405-19.296-19.147-31.263-45.948-31.263-76.289 0-56.943 47.843-102.915 105.034-103.04z"/>
@@ -54,9 +54,9 @@
     <!-- Subtitle -->
     <text x="420" y="138" text-anchor="middle" fill="#8b949e" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif" font-size="14">One-click export to WeChat &amp; Douyin mini-games</text>
 
-    <!-- Tag: Godot 4.x -->
+    <!-- Tag: validated Godot version -->
     <rect x="268" y="155" width="88" height="24" rx="12" fill="#478cbf" opacity="0.15"/>
-    <text x="312" y="171" text-anchor="middle" fill="#478cbf" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif" font-size="11" font-weight="600">Godot 4.x</text>
+    <text x="312" y="171" text-anchor="middle" fill="#478cbf" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif" font-size="11" font-weight="600">Godot 4.6.1</text>
 
     <!-- Tag: WeChat -->
     <rect x="364" y="155" width="72" height="24" rx="12" fill="#07c160" opacity="0.15"/>
