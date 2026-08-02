@@ -51,12 +51,12 @@ cp -R godot_for_minigame/addons/godot_mini_game your_project/addons/
 > 中的版本并提交，然后运行：
 >
 > ```bash
-> scripts/release_plugin.sh 0.2.0
+> scripts/release_plugin.sh 0.2.1
 > ```
 >
-> 脚本会校验安装包并推送一个全新的、不可复用的 `v0.2.0` tag。随后由
+> 脚本会校验安装包并推送一个全新的、不可复用的 `v0.2.1` tag。随后由
 > tag 工作流运行完整测试和双平台导出矩阵，并独占发布
-> `godot_mini_game_v0.2.0.zip`。
+> `godot_mini_game_v0.2.1.zip`。
 
 ### 2. 启用插件
 
@@ -308,7 +308,7 @@ addons/godot_mini_game/
 
 ## 依赖
 
-- **Godot 4.6.1.stable** — v0.2.0 内置并认证的是这一精确版本。使用其它
+- **Godot 4.6.1.stable** — v0.2.1 内置并认证的是这一精确版本。使用其它
   编辑器构建时，必须先导入由相同精确版本和源码提交构建的模板包。
 - **微信开发者工具** 或 **抖音开发者工具**
 

@@ -4,8 +4,8 @@ set -euo pipefail
 # Create a GitHub Release and upload the installable Godot plugin zip.
 #
 # Usage:
-#   scripts/release_plugin.sh 0.2.0
-#   scripts/release_plugin.sh 0.2.0 --no-push
+#   scripts/release_plugin.sh 0.2.1
+#   scripts/release_plugin.sh 0.2.1 --no-push
 #
 # Requirements:
 #   - plugin.cfg version already updated and committed
@@ -15,8 +15,8 @@ usage() {
 Usage: scripts/release_plugin.sh <version> [--no-push]
 
 Examples:
-  scripts/release_plugin.sh 0.2.0
-  scripts/release_plugin.sh v0.2.0 --no-push
+  scripts/release_plugin.sh 0.2.1
+  scripts/release_plugin.sh v0.2.1 --no-push
 
 The script verifies the package, creates a new immutable git tag vX.Y.Z, and
 pushes it. The tag-driven GitHub Actions workflow is the only release publisher.
@@ -56,7 +56,7 @@ done
 
 if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
     echo "Invalid version: $VERSION" >&2
-    echo "Expected something like 0.2.0 or v0.2.0" >&2
+    echo "Expected something like 0.2.1 or v0.2.1" >&2
     exit 1
 fi
 

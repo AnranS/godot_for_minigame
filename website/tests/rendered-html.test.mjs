@@ -25,8 +25,8 @@ test("exports a complete static homepage", async () => {
   assert.match(html, /Plugin Core/);
   assert.match(html, /Engine Packs/);
   assert.match(html, /Bridge ABI/);
-  assert.match(html, /v0\.2\.0/);
-  assert.match(html, /godot_mini_game_v0\.2\.0\.zip/);
+  assert.match(html, /v0\.2\.1/);
+  assert.match(html, /godot_mini_game_v0\.2\.1\.zip/);
   assert.doesNotMatch(html, /v0\.1\.1|4\.3–4\.6/);
   assert.doesNotMatch(html, /codex-preview|Your site is taking shape/);
 });

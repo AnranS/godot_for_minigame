@@ -51,12 +51,12 @@ cp -R godot_for_minigame/addons/godot_mini_game your_project/addons/
 > `support-matrix.json`, commit the change, then run:
 >
 > ```bash
-> scripts/release_plugin.sh 0.2.0
+> scripts/release_plugin.sh 0.2.1
 > ```
 >
-> The script verifies the package and pushes a new immutable `v0.2.0` tag. The
+> The script verifies the package and pushes a new immutable `v0.2.1` tag. The
 > tag workflow runs the full test/export matrix and is the only process allowed
-> to publish `godot_mini_game_v0.2.0.zip`.
+> to publish `godot_mini_game_v0.2.1.zip`.
 
 ### 2. Enable
 
@@ -312,7 +312,7 @@ addons/godot_mini_game/
 ## Requirements
 
 - **Godot 4.6.1.stable** — this is the exact certified version bundled by
-  v0.2.0. A different editor build is supported only after importing a template
+  v0.2.1. A different editor build is supported only after importing a template
   pack built from that exact version and source commit.
 - **WeChat DevTools** or **Douyin DevTools**
 
