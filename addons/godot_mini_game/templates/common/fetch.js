@@ -1,9 +1,12 @@
 /**
  * Fetch API polyfill for mini games.
- * Uses wx.request / tt.request for network, wx.getFileSystemManager for local.
+ * Uses the selected PlatformRuntime provider for network and local files.
  */
 
-const _api = (typeof wx !== "undefined") ? wx : tt;
+import { PlatformRuntime } from "./js/platform_runtime";
+
+const _api = PlatformRuntime.requireCapabilities(["fileSystem"], "fetch polyfill");
+const _global = PlatformRuntime.global;
 
 class Headers {
   constructor(init = {}) {
@@ -181,6 +184,7 @@ function Fetch(url, options = {}) {
   }
 
   return new Promise((resolve, reject) => {
+    PlatformRuntime.requireCapabilities(["request"], "remote fetch");
     const headers = {};
     if (options.headers) {
       const h = options.headers instanceof Headers ? options.headers : new Headers(options.headers);
@@ -204,7 +208,7 @@ function Fetch(url, options = {}) {
   });
 }
 
-GameGlobal.fetch = Fetch;
-GameGlobal.Headers = Headers;
-GameGlobal.Response = Response;
-GameGlobal.ReadableStream = ReadableStream;
+_global.fetch = Fetch;
+_global.Headers = Headers;
+_global.Response = Response;
+_global.ReadableStream = ReadableStream;

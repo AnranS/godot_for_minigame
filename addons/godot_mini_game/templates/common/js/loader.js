@@ -5,10 +5,15 @@
  */
 
 import "./libs/godot";
-import { GodotSDK } from "./libs/sdk";
+import { BRIDGE_GLOBAL_NAME, GodotSDK } from "./libs/sdk";
 import { waitForImage } from "./image_loader";
+import { PlatformRuntime } from "./platform_runtime";
 
-const _api = (typeof wx !== "undefined") ? wx : tt;
+const _api = PlatformRuntime.requireCapabilities(
+  ["canvas", "fileSystem", "image", "lifecycle", "subpackage", "windowInfo"],
+  "engine loader",
+);
+const _global = PlatformRuntime.global;
 
 const LoaderConfig = {
   logo: "images/logo.png",
@@ -21,7 +26,9 @@ const LoaderConfig = {
   loadingBarBgColor: "#444",
 };
 
-const crypto = {
+const fallbackCrypto = {
+  // Compatibility fallback only. Preserve a native crypto implementation
+  // whenever the host provides one.
   getRandomValues(view) {
     for (let i = 0; i < view.length; i++) view[i] = Math.floor(Math.random() * 256);
     return view;
@@ -39,43 +46,67 @@ class FakeBlob {
 const godotSdk = new GodotSDK();
 
 function _safeSet(obj, key, value) {
+  if (!obj) return false;
   try {
     const desc = Object.getOwnPropertyDescriptor(obj, key);
-    if (desc && !desc.writable && !desc.configurable) return;
+    if (desc && !desc.writable && !desc.configurable) return obj[key] === value;
     Object.defineProperty(obj, key, { value, configurable: true, writable: true });
   } catch (_) { /* read-only in this runtime — skip */ }
+  return obj[key] === value;
 }
 
-_safeSet(GameGlobal, "crypto", crypto);
-_safeSet(GameGlobal, "Blob", FakeBlob);
-_safeSet(GameGlobal, "godotSdk", godotSdk);
-_safeSet(globalThis, "godotSdk", godotSdk);
-// Also register on the adapter's window so JavaScriptBridge.get_interface() finds it
-if (GameGlobal.__adapter && GameGlobal.__adapter.window) {
-  _safeSet(GameGlobal.__adapter.window, "godotSdk", godotSdk);
+if (!_global.crypto || typeof _global.crypto.getRandomValues !== "function") {
+  _safeSet(_global, "crypto", fallbackCrypto);
+}
+if (!globalThis.crypto || typeof globalThis.crypto.getRandomValues !== "function") {
+  _safeSet(globalThis, "crypto", fallbackCrypto);
+}
+_safeSet(_global, "Blob", FakeBlob);
+const _bridgeTargets = [_global, globalThis];
+if (_global.__adapter && _global.__adapter.window) {
+  _bridgeTargets.push(_global.__adapter.window);
+}
+for (const target of [...new Set(_bridgeTargets)]) {
+  if (!_safeSet(target, BRIDGE_GLOBAL_NAME, godotSdk)) {
+    throw new Error(`[Loader] Cannot register versioned bridge ${BRIDGE_GLOBAL_NAME}`);
+  }
+  // Backward-compatible alias for projects that access the JavaScript object
+  // directly. GDScript uses the versioned name and performs an ABI handshake.
+  _safeSet(target, "godotSdk", godotSdk);
 }
 
 // Use __adapter.canvas which has properly wrapped addEventListener/getContext,
 // even when GameGlobal.canvas is a non-configurable native getter that we can't replace.
-const _canvas = (GameGlobal.__adapter && GameGlobal.__adapter.canvas) || GameGlobal.canvas || _api.createCanvas();
-console.log("[Loader] canvas source:", GameGlobal.__adapter?.canvas ? "__adapter.canvas" : "GameGlobal.canvas");
+const _canvas = (_global.__adapter && _global.__adapter.canvas) || _global.canvas || _api.createCanvas();
+const _window = (_global.__adapter && _global.__adapter.window) || _global.window || globalThis;
+console.log("[Loader] canvas source:", _global.__adapter?.canvas ? "__adapter.canvas" : "GameGlobal.canvas");
 console.log("[Loader] canvas.addEventListener:", typeof _canvas.addEventListener);
 
 class Loader {
   constructor(config) {
     this.config = { ...LoaderConfig, ...config };
-    const info = (_api.getWindowInfo || _api.getSystemInfoSync).call(_api);
-    const dpr = info.pixelRatio;
+    const info = PlatformRuntime.getSystemInfo();
+    const loadingDpr = Math.max(1, Number(info.pixelRatio) || 1);
+    const logicalWidth = Math.max(1, Number(_window.innerWidth) || 1);
+    const logicalHeight = Math.max(1, Number(_window.innerHeight) || 1);
     this.progress = 0;
+    this.state = "idle";
+    this.engine = null;
+    this._loadPromise = null;
+    this._syncTimer = null;
+    this._loadingSurfaceCleaned = false;
 
     this.screenCtx = _canvas.getContext("webgl2");
     this.loadingCanvas = _api.createCanvas();
     this.loadingCtx = this.loadingCanvas.getContext("2d");
-    this.loadingCanvas.width = window.innerWidth * dpr;
-    this.loadingCanvas.height = window.innerHeight * dpr;
-    _canvas.width = window.innerWidth * dpr;
-    _canvas.height = window.innerHeight * dpr;
-    this.loadingCtx.scale(dpr, dpr);
+    this.loadingCanvas.width = logicalWidth * loadingDpr;
+    this.loadingCanvas.height = logicalHeight * loadingDpr;
+    // The adapter exposes DPR=1 to Godot so viewport and touch coordinates
+    // share logical pixels. Keep the engine canvas in that coordinate space;
+    // only the temporary loading canvas uses the physical DPR.
+    _canvas.width = logicalWidth;
+    _canvas.height = logicalHeight;
+    this.loadingCtx.scale(loadingDpr, loadingDpr);
 
     this.bgImage = _api.createImage();
     this.bgImage.src = this.config.background;
@@ -103,7 +134,7 @@ class Loader {
 
   _drawLoading() {
     const ctx = this.loadingCtx;
-    const w = window.innerWidth, h = window.innerHeight;
+    const w = _window.innerWidth, h = _window.innerHeight;
 
     ctx.fillStyle = this.config.backgroundColor;
     ctx.fillRect(0, 0, w, h);
@@ -166,24 +197,38 @@ class Loader {
     gl.drawArrays(gl.TRIANGLES, 0, 6);
   }
 
-  async load() {
+  load() {
+    if (this.state === "disposed") {
+      return Promise.reject(new Error("[Loader] Cannot load after dispose()"));
+    }
+    if (!this._loadPromise) {
+      this.state = "loading";
+      this._loadPromise = this._loadOnce();
+    }
+    return this._loadPromise;
+  }
+
+  async _loadOnce() {
     try {
       console.log("[Loader] ▶ 开始加载流程");
 
       console.log("[Loader] 1/6 加载图片资源...");
       await Promise.all([waitForImage(this.bgImage), waitForImage(this.logoImage)]);
+      this._assertNotDisposed();
 
       console.log("[Loader] 2/6 图片加载完成，开始加载引擎子包...");
       this._step();
       await this.loadSubpackages();
+      this._assertNotDisposed();
 
       console.log("[Loader] 3/6 子包加载完成，初始化引擎...");
       this._step();
-      const _Engine = GameGlobal.Engine || (typeof Engine !== "undefined" ? Engine : null);
+      const _Engine = _global.Engine || globalThis.Engine || null;
       console.log("[Loader]     Engine 类:", _Engine ? "已找到" : "未找到!");
       if (!_Engine) throw new Error("Engine not found – godot.js may not have loaded correctly");
       const engine = new _Engine();
-      GameGlobal.engine = engine;
+      _global.engine = engine;
+      this.engine = engine;
       godotSdk.set_engine(engine);
 
       console.log("[Loader] 4/6 调用 engine.startGame()...");
@@ -201,22 +246,54 @@ class Loader {
         mainPack: "engine/godot.zip",
         args: [],
       });
+      this._assertNotDisposed();
 
       console.log("[Loader] 5/6 engine.startGame() 完成，设置文件同步...");
       if (typeof engine !== "undefined" && engine.config && engine.config.persistentPaths) {
         engine.config.persistentPaths.forEach(p => godotSdk.copyLocalToFS(p));
       }
-      setInterval(() => {
+      this._syncTimer = _window.setInterval(() => {
         godotSdk.syncfs(null, err => { if (err) console.error("[sync]", err); });
       }, 5000);
       this.logoImage = null;
-      this.loadingCtx.clearRect(0, 0, this.loadingCanvas.width, this.loadingCanvas.height);
-      this.cleanWebgl();
+      this._cleanupLoadingSurface();
+      this.state = "running";
       console.log("[Loader] 6/6 ✓ 加载完成，游戏已启动");
+      return engine;
     } catch (err) {
+      if (this.state !== "disposed") this.state = "failed";
+      this._cleanupLoadingSurface();
       console.error("[Loader] ✗ 加载失败:", err);
       if (err && err.stack) console.error("[Loader] Stack:", err.stack);
+      throw err;
     }
+  }
+
+  _assertNotDisposed() {
+    if (this.state === "disposed") throw new Error("[Loader] Load was disposed");
+  }
+
+  _cleanupLoadingSurface() {
+    if (this._loadingSurfaceCleaned) return;
+    this._loadingSurfaceCleaned = true;
+    try {
+      this.loadingCtx.clearRect(0, 0, this.loadingCanvas.width, this.loadingCanvas.height);
+    } catch (_) {}
+    try { this.cleanWebgl(); } catch (_) {}
+  }
+
+  dispose() {
+    if (this.state === "disposed") return;
+    if (this._syncTimer !== null) {
+      _window.clearInterval(this._syncTimer);
+      this._syncTimer = null;
+    }
+    if (this.engine && typeof this.engine.requestQuit === "function") {
+      try { this.engine.requestQuit(); } catch (_) {}
+    }
+    if (_global.engine === this.engine) _safeSet(_global, "engine", null);
+    this._cleanupLoadingSurface();
+    this.state = "disposed";
   }
 }
 

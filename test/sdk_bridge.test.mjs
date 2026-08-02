@@ -4,14 +4,82 @@ import path from "node:path";
 
 const projectRoot = path.resolve(import.meta.dirname, "..");
 const sdkSourcePath = path.join(projectRoot, "addons/godot_mini_game/templates/common/js/libs/sdk.js");
+const runtimeSourcePath = path.join(projectRoot, "addons/godot_mini_game/templates/common/js/platform_runtime.js");
 
-async function loadSdkWithApi(api) {
-  globalThis.wx = api;
+function moduleUrl(source) {
+  return `data:text/javascript;charset=utf-8,${encodeURIComponent(source)}#${Date.now()}-${Math.random()}`;
+}
+
+async function loadSdkWithApi(api, platform = "wechat") {
+  delete globalThis.wx;
   delete globalThis.tt;
+  delete globalThis.__godotMiniGamePlatformRuntime;
+  delete globalThis.PlatformRuntime;
+  globalThis[platform === "douyin" ? "tt" : "wx"] = api;
 
-  const source = fs.readFileSync(sdkSourcePath, "utf8");
-  const moduleUrl = `data:text/javascript;charset=utf-8,${encodeURIComponent(source)}#${Date.now()}-${Math.random()}`;
-  return import(moduleUrl);
+  const runtimeUrl = moduleUrl(fs.readFileSync(runtimeSourcePath, "utf8"));
+  const source = fs.readFileSync(sdkSourcePath, "utf8")
+    .replace('"../platform_runtime"', JSON.stringify(runtimeUrl));
+  return import(moduleUrl(source));
+}
+
+async function testBridgeInfoUsesTheSelectedDouyinProvider() {
+  const ttApi = {
+    createCanvas() { return {}; },
+    request() {},
+    getSystemInfoSync() { return { platform: "devtools" }; },
+    getStorageSync() { return null; },
+    setStorageSync() {},
+  };
+  const {
+    BRIDGE_ABI_VERSION,
+    BRIDGE_BRAND,
+    BRIDGE_GLOBAL_NAME,
+    GodotSDK,
+  } = await loadSdkWithApi(ttApi, "douyin");
+  const sdk = new GodotSDK();
+  const info = JSON.parse(sdk.getBridgeInfo());
+
+  assert.equal(BRIDGE_ABI_VERSION, 1);
+  assert.equal(sdk.abiVersion, 1);
+  assert.equal(sdk.platform, "douyin");
+  assert.equal(info.abiVersion, 1);
+  assert.equal(BRIDGE_BRAND, "godot-mini-game-bridge");
+  assert.equal(BRIDGE_GLOBAL_NAME, "godotMiniGameBridgeV1");
+  assert.equal(info.brand, BRIDGE_BRAND);
+  assert.equal(info.globalName, BRIDGE_GLOBAL_NAME);
+  assert.equal(info.runtimeBrand, "godot-mini-game-platform-runtime");
+  assert.equal(info.runtimeSchemaVersion, 1);
+  assert.equal(info.platform, "douyin");
+  assert.equal(info.capabilities.canvas, true);
+  assert.equal(info.capabilities.request, true);
+  assert.equal(info.capabilities.fileSystem, false);
+
+  const validHandshake = JSON.parse(sdk.validateBridge(1, JSON.stringify([
+    "getBridgeInfo",
+    "validateBridge",
+    "onAppShow",
+  ])));
+  assert.equal(validHandshake.ok, true);
+  assert.equal(validHandshake.bridgeInfo.globalName, BRIDGE_GLOBAL_NAME);
+
+  const wrongAbi = JSON.parse(sdk.validateBridge(2, "[]"));
+  assert.equal(wrongAbi.ok, false);
+  assert.match(wrongAbi.error, /does not match expected ABI 2/);
+
+  const missingMethod = JSON.parse(sdk.validateBridge(1, '["removedBridgeMethod"]'));
+  assert.equal(missingMethod.ok, false);
+  assert.deepEqual(missingMethod.missingMethods, ["removedBridgeMethod"]);
+
+  const unsupported = await new Promise((resolve) => {
+    sdk.callApi("notARealApi", "{}", (...args) => resolve(args));
+  });
+  assert.deepEqual(unsupported, [
+    "notARealApi",
+    false,
+    "",
+    "tt.notARealApi is not supported",
+  ]);
 }
 
 async function testCallApiUsesSuccessCallback() {
@@ -3179,6 +3247,7 @@ async function testScreenWrappersReportUnsupportedMethods() {
   assert.deepEqual(visualEffectResult, ["hidden", false, "wx.setVisualEffectOnCapture is not supported"]);
 }
 
+await testBridgeInfoUsesTheSelectedDouyinProvider();
 await testCallApiUsesSuccessCallback();
 await testCallApiReportsUnsupportedMethods();
 await testGetPrivacySettingWrapper();

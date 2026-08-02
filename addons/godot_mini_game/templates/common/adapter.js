@@ -5,22 +5,26 @@
  * XMLHttpRequest / WebSocket / performance / location into the global scope
  * so Emscripten glue code and Godot Engine.js can run unmodified.
  *
- * Works on both WeChat (wx.*) and Douyin (tt.*) — the caller sets
- * `GameGlobal.__platform` to "wechat" or "douyin" before importing this file.
+ * Works on both WeChat and Douyin through the shared PlatformRuntime provider.
  *
  * No build step required — this is a single self-contained ES module.
  */
 
-const _api = (typeof wx !== "undefined") ? wx : tt;
-const _global = GameGlobal;
-console.log("[Adapter] ▶ 初始化适配层, platform:", _api === wx ? "wechat" : "douyin");
+import { PlatformRuntime } from "./js/platform_runtime";
+
+const _api = PlatformRuntime.requireCapabilities(
+  ["canvas", "windowInfo", "touch"],
+  "adapter",
+);
+const _global = PlatformRuntime.global;
+console.log("[Adapter] ▶ 初始化适配层, platform:", PlatformRuntime.platform);
 console.log("[Adapter] GameGlobal.canvas 存在:", !!_global.canvas, "类型:", typeof _global.canvas);
 
 // ── Canvas ────────────────────────────────────────────────────────
 // Use the runtime's pre-created canvas if available (this is the one the loader
 // and Godot engine will actually render to). Only create a new one as fallback.
 const _mainCanvas = _global.canvas || _api.createCanvas();
-const _winInfo = (_api.getWindowInfo || _api.getSystemInfoSync).call(_api);
+const _winInfo = PlatformRuntime.getSystemInfo();
 // Godot Web uses window.devicePixelRatio to scale canvas.width/height and then
 // reports canvas.width/height back as the window size. Mini-game touch and
 // window APIs use logical pixels, so expose a logical-pixel DPR to Godot.
@@ -319,7 +323,7 @@ function _setViewportSize(width, height) {
 }
 
 // ── navigator ─────────────────────────────────────────────────────
-const _sysInfo = _api.getSystemInfoSync();
+const _sysInfo = _winInfo;
 const _navigator = {
   userAgent: "Mozilla/5.0 MiniGame Godot",
   platform: _sysInfo.platform || "Unknown",
@@ -584,9 +588,8 @@ function _tryResumeAudio() {
 // When createWebAudioContext is unavailable, use InnerAudioContext to play audio.
 // decodeAudioData saves raw audio bytes to a temp file; BufferSourceNode.start()
 // creates an InnerAudioContext pointing to that file.
-const _fs = (_api === wx) ? wx.getFileSystemManager() : (typeof tt !== "undefined" ? tt.getFileSystemManager() : null);
-const _userDataPath = (typeof wx !== "undefined" ? wx.env?.USER_DATA_PATH : null) ||
-                      (typeof tt !== "undefined" ? tt.env?.USER_DATA_PATH : null) || "";
+const _fs = typeof _api.getFileSystemManager === "function" ? _api.getFileSystemManager() : null;
+const _userDataPath = (_api.env && _api.env.USER_DATA_PATH) || "";
 let _audioTempIdx = 0;
 
 function _saveAudioTemp(arrayBuffer) {
@@ -759,6 +762,22 @@ class _AudioContext {
 }
 
 // ── Build the window object ───────────────────────────────────────
+const _hostCrypto = (
+  _global.crypto && typeof _global.crypto.getRandomValues === "function"
+    ? _global.crypto
+    : globalThis.crypto && typeof globalThis.crypto.getRandomValues === "function"
+      ? globalThis.crypto
+      : null
+);
+const _fallbackCrypto = {
+  // Compatibility fallback only. This is intentionally not advertised as a
+  // secure source and is never allowed to replace a host implementation.
+  getRandomValues(view) {
+    for (let i = 0; i < view.length; i++) view[i] = Math.floor(Math.random() * 256);
+    return view;
+  },
+};
+
 const _window = {
   document: _document, navigator: _navigator, localStorage: _localStorage,
   location: _location, performance: _performance, canvas: _mainCanvas,
@@ -830,12 +849,7 @@ const _window = {
   getComputedStyle: () => ({}),
   matchMedia: () => ({ matches: false, addEventListener() {}, removeEventListener() {} }),
 
-  crypto: {
-    getRandomValues(view) {
-      for (let i = 0; i < view.length; i++) view[i] = Math.floor(Math.random() * 256);
-      return view;
-    },
-  },
+  crypto: _hostCrypto || _fallbackCrypto,
 };
 _window.self = _window; _window.top = _window; _window.parent = _window; _window.window = _window;
 
@@ -924,10 +938,12 @@ _api.onTouchEnd((r) => {
   _dispatchEvent("mouseup", _toMouseEvt("mouseup", t));
   _dispatchEvent("touchend", _toTouchEvt("touchend", r));
 });
-_api.onTouchCancel((r) => {
-  if (r.changedTouches[0]) _dispatchEvent("pointercancel", _toPointerEvt("pointercancel", r.changedTouches[0]));
-  _dispatchEvent("touchcancel", _toTouchEvt("touchcancel", r));
-});
+if (typeof _api.onTouchCancel === "function") {
+  _api.onTouchCancel((r) => {
+    if (r.changedTouches[0]) _dispatchEvent("pointercancel", _toPointerEvt("pointercancel", r.changedTouches[0]));
+    _dispatchEvent("touchcancel", _toTouchEvt("touchcancel", r));
+  });
+}
 
 // ── Window resize ─────────────────────────────────────────────────
 if (typeof _api.onWindowResize === "function") {
@@ -1026,10 +1042,7 @@ try {
 // We monkey-patch .instantiate so ArrayBuffer args are replaced with a file path.
 (function () {
   const _wasmCandidates = ["engine/godot.wasm.br", "engine/godot.wasm"];
-  const _natives = [
-    typeof WXWebAssembly !== "undefined" ? WXWebAssembly : null,
-    typeof TTWebAssembly !== "undefined" ? TTWebAssembly : null,
-  ].filter(Boolean);
+  const _natives = PlatformRuntime.getNativeWebAssemblyApis();
 
   // Save original instantiate references BEFORE patching
   const _wasmRef = _natives[0];
@@ -1074,7 +1087,7 @@ try {
       return _tryLoad(_wasmRef, _wasmCandidates, imports, 0);
     };
     // Ensure error constructors exist (WXWebAssembly may not provide them)
-    const _stdWasm = typeof WebAssembly !== "undefined" ? WebAssembly : null;
+    const _stdWasm = PlatformRuntime.getStandardWebAssembly();
     for (const errName of ["CompileError", "LinkError", "RuntimeError"]) {
       if (!shim[errName]) {
         if (_stdWasm && _stdWasm[errName]) {

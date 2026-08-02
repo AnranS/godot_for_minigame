@@ -6,6 +6,12 @@
   <strong>English</strong> · <a href="README_zh.md">简体中文</a>
 </p>
 
+<p align="center">
+  <a href="https://anrans.github.io/godot_for_minigame/">Official website</a> ·
+  <a href="https://anrans.github.io/godot_for_minigame/api/">API reference</a> ·
+  <a href="https://github.com/AnranS/godot_for_minigame/releases">Releases</a>
+</p>
+
 ---
 
 A Godot 4.x editor plugin that converts your game into a **WeChat** or **Douyin (TikTok) Mini Game** ready for submission. Ships with a pre-compiled engine template — install the plugin, click export, open in DevTools.
@@ -37,19 +43,20 @@ your_project/
 Or clone this repo and copy `addons/godot_mini_game/` into your project:
 
 ```bash
-git clone https://github.com/<owner>/<repo>.git
-cp -R <repo>/addons/godot_mini_game your_project/addons/
+git clone https://github.com/AnranS/godot_for_minigame.git
+cp -R godot_for_minigame/addons/godot_mini_game your_project/addons/
 ```
 
-> Maintainers: install and authenticate GitHub CLI (`gh auth login`), update
-> `version` in `addons/godot_mini_game/plugin.cfg`, commit the change, then run:
+> Maintainers: update the matching versions in `plugin.cfg` and
+> `support-matrix.json`, commit the change, then run:
 >
 > ```bash
-> scripts/release_plugin.sh 0.1.1
+> scripts/release_plugin.sh 0.2.0
 > ```
 >
-> The script packages the plugin, creates/pushes the `v0.1.1` tag, and uploads
-> the installable `godot_mini_game_v0.1.1.zip` to the GitHub Release assets.
+> The script verifies the package and pushes a new immutable `v0.2.0` tag. The
+> tag workflow runs the full test/export matrix and is the only process allowed
+> to publish `godot_mini_game_v0.2.0.zip`.
 
 ### 2. Enable
 
@@ -74,6 +81,9 @@ Open the output folder in **WeChat DevTools** or **Douyin DevTools**.
 
 The plugin registers `MiniGameSDK` as an autoload. All async results come through signals.
 Methods are safe no-ops outside mini-game environments — develop and test normally in the editor.
+At startup, the autoload negotiates Bridge ABI 1 before becoming available;
+inspect `is_mini_game`, `bridge_info`, and `bridge_initialization_error` when
+diagnosing runtime integration.
 
 ```gdscript
 # Login
@@ -188,6 +198,7 @@ MiniGameSDK.vibrate_short("medium")
 | `app_shown` | `options_json: String` |
 | `app_hidden` | — |
 | `app_error` | `message: String` |
+| `bridge_initialization_failed` | `error: String` |
 
 ### Methods
 
@@ -255,16 +266,22 @@ The plugin bundles a pre-compiled engine in `addons/godot_mini_game/engine/` (Go
 
 | Priority | Source | Notes |
 |----------|--------|-------|
-| 1 | `addons/godot_mini_game/godot.js` + `godot.wasm.br` | Manual override |
-| 2 | `addons/godot_mini_game/engine/` | Bundled (default) |
-| 3 | `~/.config/godot_mini_game/templates/{version}/` | Imported via dock |
-| 4 | Standard Godot Web export template | DevTools only, warns |
+| 1 | `addons/godot_mini_game/` | Complete manifest-backed project override |
+| 2 | `{Godot config}/godot_mini_game/templates/v1/...` | Imported identity-keyed packs; highest revision, then newest Emscripten identity |
+| 3 | `addons/godot_mini_game/engine/` | Bundled certified pack |
+| 4 | Legacy exact/major-minor stores | Read-only compatibility, accepted only with a complete exact manifest |
+
+Every runtime source is an indivisible `template.json` + `version.txt` +
+`godot.js` + `godot.wasm.br` bundle; imported ZIPs must also carry
+`GODOT_COPYRIGHT.txt`. The editor version, Godot source commit, Emscripten version, profile, target,
+Bridge ABI, feature flags, and artifact SHA-256 values must all match. The
+standard Godot Web template is never used as a production fallback.
 
 ### Building for a different Godot version
 
 ```bash
 # Local build (~5 min on Apple Silicon)
-./scripts/build_wasm_template.sh 4.x.x-stable
+TEMPLATE_REVISION=1 ./scripts/build_wasm_template.sh 4.7.0-stable
 
 # Then import the zip via the dock's "Import Engine Template" button
 ```
@@ -279,7 +296,8 @@ addons/godot_mini_game/
 ├── export_dock.gd / .tscn          # Export UI dock
 ├── exporter.gd                     # Export pipeline
 ├── MiniGameSDK.gd                  # GDScript SDK autoload
-├── engine/                          # Bundled engine (godot.js + godot.wasm.br)
+├── core/                            # Template contract + output ownership guard
+├── engine/                          # Manifest-backed bundled engine pack
 └── templates/
     ├── common/
     │   ├── adapter.js               # DOM/BOM/Canvas/Audio/Input polyfills
@@ -293,20 +311,20 @@ addons/godot_mini_game/
 
 ## Requirements
 
-- **Godot 4.6.x** — the bundled engine template is compiled against 4.6.1-stable.
-  Other 4.x versions will likely fail at runtime because `.pck` bytecode and the
-  bundled WASM must be from the same Godot version. To use a different version
-  you must rebuild a matching template (see "Building for a different Godot
-  version" below) and import it via the dock.
+- **Godot 4.6.1.stable** — this is the exact certified version bundled by
+  v0.2.0. A different editor build is supported only after importing a template
+  pack built from that exact version and source commit.
 - **WeChat DevTools** or **Douyin DevTools**
-- **Node.js** *required* (used for built-in Brotli compression) or `brotli` CLI
-  (`brew install brotli`). Without one of these the export will fail —
-  uncompressed WASM exceeds WeChat's 4 MB single-package limit.
+
+Normal export has no Node.js, Brotli CLI, or Emscripten dependency. Those tools
+are needed only by maintainers who build or validate a new engine pack.
 
 ## Documentation
 
 - [Usage guide](docs/USAGE.md) — detailed walkthrough of the dock, SDK, subpackages, troubleshooting, and custom engine builds.
 - [使用文档（中文）](docs/USAGE_zh.md)
+- [Architecture and versioning](docs/ARCHITECTURE.md) — contracts, transaction boundaries, and the multi-version template layout.
+- [Searchable API reference](https://anrans.github.io/godot_for_minigame/api/)
 
 ## Contributing
 

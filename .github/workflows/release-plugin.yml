@@ -6,29 +6,62 @@ on:
       - "v*"
 
 jobs:
+  smoke:
+    uses: ./.github/workflows/smoke-test-export.yml
+
   package:
+    needs: smoke
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@v4
 
-      - name: Read version from plugin.cfg
+      - name: Validate release version
         id: version
         run: |
-          VERSION=$(grep 'version=' addons/godot_mini_game/plugin.cfg | head -1 | cut -d'"' -f2)
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          set -euo pipefail
+          version=$(grep 'version=' addons/godot_mini_game/plugin.cfg | head -1 | cut -d'"' -f2)
+          tag_version="${GITHUB_REF_NAME#v}"
+          matrix_version=$(jq -r '.pluginVersion' support-matrix.json)
+          if [ "$tag_version" != "$version" ] || [ "$version" != "$matrix_version" ]; then
+            echo "Tag, plugin.cfg, and support-matrix.json versions must match" >&2
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
 
-      - name: Check tag matches plugin version
+      - name: Refuse an existing release
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          TAG_VERSION="${GITHUB_REF_NAME#v}"
-          if [ "$TAG_VERSION" != "${{ steps.version.outputs.version }}" ]; then
-            echo "::error::Tag version ($TAG_VERSION) does not match plugin.cfg (${{ steps.version.outputs.version }})"
+          set -euo pipefail
+          if response="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${GITHUB_REF_NAME}" 2>&1)"; then
+            echo "Release $GITHUB_REF_NAME already exists and is immutable" >&2
+            exit 1
+          fi
+          if ! printf '%s\n' "$response" | grep -q 'HTTP 404'; then
+            echo "Unable to verify whether release $GITHUB_REF_NAME exists:" >&2
+            printf '%s\n' "$response" >&2
             exit 1
           fi
 
       - name: Package plugin
         run: scripts/package_plugin.sh
+
+      - name: Verify install archive
+        run: |
+          set -euo pipefail
+          archive="dist/godot_mini_game_v${{ steps.version.outputs.version }}.zip"
+          unzip -t "$archive"
+          unzip -l "$archive" | grep 'addons/godot_mini_game/LICENSE'
+          unzip -l "$archive" | grep 'addons/godot_mini_game/GODOT_COPYRIGHT.txt'
+          unzip -l "$archive" | grep 'addons/godot_mini_game/THIRD_PARTY_NOTICES.md'
+          unzip -l "$archive" | grep 'addons/godot_mini_game/engine/template.json'
+          unzip -l "$archive" | grep 'addons/godot_mini_game/plugin.cfg'
+          test -s "${archive}.sha256"
+          archive_name=$(basename "$archive")
+          (cd "$(dirname "$archive")" && sha256sum -c "${archive_name}.sha256")
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -37,13 +70,13 @@ jobs:
           body: |
             ## Godot Mini Game Plugin v${{ steps.version.outputs.version }}
 
-            ### Installation
-            1. Download `godot_mini_game_v${{ steps.version.outputs.version }}.zip`
-            2. Extract into your Godot project root
-            3. Enable the plugin in Project Settings > Plugins
+            - Transactional mini-game export with version-locked engine templates.
+            - WeChat and Douyin platform runtimes with a shared bridge ABI.
+            - Bundled certified engine template for the exact version listed in `support-matrix.json`.
 
-            Do not download GitHub's auto-generated Source code archives for plugin installation.
-
-            Includes bundled engine template for Godot 4.6 (mini-game compatible).
+            Download the installable ZIP below and extract it into the root of a Godot project.
           files: |
             dist/godot_mini_game_v${{ steps.version.outputs.version }}.zip
+            dist/godot_mini_game_v${{ steps.version.outputs.version }}.zip.sha256
+          draft: false
+          prerelease: false

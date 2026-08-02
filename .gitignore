@@ -1,6 +1,9 @@
 # Godot editor cache
 .godot/
 
+# Local editor configuration (preserve it, never publish it)
+.cursor/
+
 # Godot auto-generated import files
 *.import
 

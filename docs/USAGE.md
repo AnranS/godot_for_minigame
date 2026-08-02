@@ -26,16 +26,13 @@ This guide walks through every step from install to store submission, and docume
 
 | Tool | Version | Purpose |
 |------|---------|---------|
-| Godot | 4.3 – 4.6 (tested) | Engine |
+| Godot | 4.6.1 certified; exact template required otherwise | Engine |
 | WeChat DevTools | latest stable | Debug + upload WeChat mini games |
 | Douyin DevTools | latest stable | Debug + upload Douyin mini games |
-| Node.js | ≥ 16 LTS (recommended) | Built-in zlib Brotli compression |
-| brotli CLI | optional | Fallback when Node is unavailable |
 
-> macOS: `brew install brotli`
-> Ubuntu / Debian: `sudo apt install brotli`
-
-Brotli is used to compress `godot.wasm` (~20 MB) into `godot.wasm.br` (~6 MB) during export — mini-game runtimes decode it natively. Without Node or a brotli CLI the plugin ships the uncompressed `.wasm`, which blows past the 4 MB per-subpackage limit, so you really want one of the two.
+Normal export needs no Node.js, Brotli CLI, Emscripten, or standard Godot Web
+template. A Release already contains a validated Brotli engine bundle. The
+compiler and validation tools are maintainer dependencies only; see section 12.
 
 ---
 
@@ -43,7 +40,7 @@ Brotli is used to compress `godot.wasm` (~20 MB) into `godot.wasm.br` (~6 MB) du
 
 ### Option A: Download a release
 
-Grab the latest `godot_mini_game-*.zip` from [Releases](../../releases), unzip into your project:
+Grab the latest `godot_mini_game_v*.zip` from [Releases](https://github.com/AnranS/godot_for_minigame/releases), unzip into your project:
 
 ```
 your_project/
@@ -80,9 +77,14 @@ Godot editor → **Project > Project Settings > Plugins** → check **Godot Mini
 
 **Project > Export** → **Add...** → **Web**. Name it anything (e.g. `MiniGame`). Default settings are fine; you do NOT need to download a standard Web export template.
 
-> **Why no template download?** The plugin uses `--export-pack` to produce a bare `.pck`, then supplies its own engine binaries from `addons/godot_mini_game/engine/`. This sidesteps the WASM features (SIMD, exception tags) that `WXWebAssembly` on real devices refuses to compile.
+> **Why no standard template download?** The plugin uses `--export-pack` to
+> produce a bare `.pck`, then selects one complete manifest-backed mini-game
+> engine bundle. This sidesteps the WASM features (SIMD, exception tags) that
+> `WXWebAssembly` on real devices refuses to compile.
 
-> **Export filter is overridden:** the plugin forces `export_filter=all_resources` and clears `export_files` on the chosen preset. If you have a carefully curated filter preset for another purpose, create a dedicated preset for mini-game export.
+> **Your export filter is preserved:** the plugin reads the selected Web preset
+> without rewriting `export_presets.cfg`. Configure the resources you want in
+> that preset before exporting.
 
 ---
 
@@ -120,21 +122,37 @@ The dock scans `export_presets.cfg` and lists every defined preset. Pick the Web
 
 ### Output directory
 
-Pick an **empty folder**. Every export overwrites `engine/`, `subpacks/`, `js/`, `images/`, `game.js`, `game.json`, etc. Don't nest it inside the Godot project.
+For the first export, pick an **empty folder outside the Godot project**. A
+successful export writes a verified `.godot-mini-game-export.json` ownership
+manifest. Later exports may reuse that managed folder; an unrelated non-empty
+folder, a modified managed artifact, or unlisted content inside an exporter-owned
+directory is rejected instead of being adopted or overwritten. Unrelated files
+under other top-level names are preserved.
 
 ### Export
 
-Click — the dock log shows 5 steps:
+Click — the dock log shows seven transactional stages:
 
 ```
-Step 1/5: Export resource pack (.pck) ...
-Step 2/5: Obtain engine files (godot.js / godot.wasm) ...
-Step 3/5: Copy JS runtime templates ...
-Step 4/5: Generate platform configs (wechat) ...
-Step 5/5: Create placeholder files ...
+Step 1/7: export the resource pack to staging
+Step 2/7: copy one validated engine bundle
+Step 3/7: copy the shared JavaScript runtime
+Step 4/7: assemble WeChat or Douyin files
+Step 5/7: create required package placeholders
+Step 6/7: write and verify the artifact manifest
+Step 7/7: lock, recheck, and transactionally publish
 ```
 
 A modal shows the output path on success. Any failure is printed in red in the log.
+
+If an ordinary publish operation fails, the same process rolls the managed
+paths back from its sibling backup. A process or power failure is different:
+the exporter leaves `.name.godot-mini-game.lock/journal.json`, staging, and any
+backup beside the output and refuses another publish. Close Godot and the
+platform tools, keep all of those paths, and move the whole output plus recovery
+paths to a safe archive before exporting again to a new empty folder. Compare
+the archive and new export before removing anything; the exporter deliberately
+does not guess through a crash window.
 
 ---
 
@@ -144,22 +162,29 @@ The **Engine Template** strip at the top of the dock shows the current lookup re
 
 | Priority | Location | When it's used |
 |----------|----------|----------------|
-| 1 | `addons/godot_mini_game/godot.js` + `godot.wasm.br` | Manual override (debugging / custom builds) |
-| 2 | `addons/godot_mini_game/engine/` | Bundled default |
-| 3 | `~/.config/godot_mini_game/templates/{major.minor}/` | Imported via dock, shared across projects |
-| 4 | Godot's standard Web export template zip | Simulator-only fallback, with warning |
+| 1 | `addons/godot_mini_game/` | Complete project override with `template.json` |
+| 2 | `{config}/godot_mini_game/templates/v1/{version}/{commit}/emsdk-{emscripten}/2d_full/release/abi-{abi}/r{revision}/` | Imported exact bundles; highest matching revision first |
+| 3 | `addons/godot_mini_game/engine/` | Bundled certified bundle |
+| 4 | Old exact/major-minor store directories | Read-only compatibility, only with a complete exact manifest |
+
+The exporter never combines files from two sources and never falls back to the
+standard Web template. See [Architecture and versioning](ARCHITECTURE.md) for
+the complete compatibility contract.
+Within the exact-version store, revision wins first; equal revisions select the
+numerically newest Emscripten identity and then use a stable path tie-break.
 
 ### Import a new engine template
 
 Click **Import Template**, pick a zip:
-- Either the `minigame-template-*.zip` from GitHub Actions
+- Either a `godot_minigame_template_*_emsdk-*_2d-full_release_abi-*_r*.zip` from GitHub Actions
 - Or one you built locally with `scripts/build_wasm_template.sh`
 
 Steps performed:
-1. Scan the zip for `godot.js`, `godot.wasm` / `godot.wasm.br`
-2. Extract into `~/.config/godot_mini_game/templates/{4.x}/` (reusable across projects)
-3. If only an uncompressed `.wasm` is present, auto-run Node or brotli CLI to produce `.wasm.br`
-4. Write a `version.txt` marker
+1. Require exactly `template.json`, `version.txt`, `godot.js`, `godot.wasm.br`, and `GODOT_COPYRIGHT.txt` in the bundle
+2. Validate the exact version, full source commit, Emscripten version, profile,
+   target, revision, Bridge ABI, feature flags, and both SHA-256 values
+3. Stage the complete bundle under the schema-versioned multi-version store
+4. Transactionally publish it to the identity path encoded by its manifest
 
 ### Refresh
 
@@ -184,17 +209,18 @@ If a file has already been patched, the patch is skipped.
 
 ```
 <output>/
+├── .godot-mini-game-export.json   # ownership, template identity, artifact hashes
 ├── game.js                # platform entry (wechat/douyin-specific)
 ├── game.json              # platform manifest
 ├── project.config.json
 ├── project.private.config.json   # WeChat only
 ├── adapter.js             # DOM/BOM/Audio/Input polyfill
 ├── fetch.js               # fetch/XHR polyfill
+├── audio/
+│   └── demo-tone.wav      # runtime audio probe asset
 ├── engine/                # engine subpackage
 │   ├── godot.wasm.br      # Brotli-compressed WASM
 │   ├── godot.zip          # renamed .pck
-│   ├── godot.audio.worklet.js
-│   ├── godot.audio.position.worklet.js
 │   └── game.js            # placeholder (subpackages need a game.js)
 ├── subpacks/              # reserved empty subpackage
 │   └── game.js            # placeholder
@@ -202,7 +228,9 @@ If a file has already been patched, the patch is skipped.
 │   ├── libs/
 │   │   ├── godot.js       # patched Emscripten glue
 │   │   └── sdk.js         # GDScript ↔ JS bridge
+│   ├── image_loader.js    # host image loader
 │   ├── loader.js          # loading screen + engine startup
+│   ├── platform_runtime.js # wx/tt provider + capability contract
 │   └── worker/
 │       └── position_reporting.js  # required by game.json → workers.path
 └── images/
@@ -212,8 +240,8 @@ If a file has already been patched, the patch is skipped.
 
 ### Contracts worth noting
 
-- **`engine/` is the `engine` subpackage**: declared in `game.json` as `{"root":"engine/","name":"engine"}`. The loader calls `wx.loadSubpackage({name:"engine"})` so cold-start only downloads the main bundle upfront.
-- **`subpacks/` is reserved**: empty by default. Drop large assets (levels, videos) here and extend `game.json → subpackages` if you need to stay under the 4 MB per-subpackage limit.
+- **`engine/` is the `engine` subpackage**: declared in `game.json` as `{"root":"engine/","name":"engine"}`. The loader calls the selected `wx`/`tt` provider's `loadSubpackage({name:"engine"})`, so cold-start only downloads the main bundle upfront.
+- **The listed top-level files and `audio/`, `engine/`, `images/`, `js/`, `subpacks/` are exporter-owned.** Do not add custom files inside them: preflight rejects unlisted content instead of silently deleting it. Put sidecar files under a different top-level name, or package game assets through the Godot export preset/PCK.
 - **`js/worker/` must exist**: WeChat's `game.json` declares `workers.path: js/worker`; even if you never spawn a Worker, the directory must be there or upload/real device errors out.
 
 ---
@@ -1412,23 +1440,25 @@ MiniGameSDK.call_api("getStorageSync", {"_args": ["level"]})
 | `engine` | `engine/` | `godot.wasm.br` + `godot.zip` (the `.pck`) |
 | `subpacks` | `subpacks/` | Reserved, empty by default |
 
-WeChat limits: main 4 MB, each subpackage 4 MB, total 20 MB (as of 2026 Q1). The plugin keeps WASM + assets in `engine`, so the main bundle is usually < 500 KB.
+The exporter keeps the engine and the selected Godot resources in `engine`, and
+CI checks the generated WeChat main package against its configured size limit.
+Always confirm current per-package and total limits in the target platform's
+developer console before submission.
 
-### Splitting large assets into `subpacks/`
+### Large assets and `subpacks/`
 
-If `godot.zip` overflows 4 MB you need to shard assets:
-
-1. Group heavy assets (videos, audio, hi-res textures) under e.g. `res://heavy/`
-2. The plugin currently forces `all_resources` on the preset, so sharding via the preset alone is not possible yet
-3. Advanced: run `Godot --headless --export-pack` manually multiple times to produce separate `.pck` files, place them in `subpacks/`, and add an entry to `game.json → subpackages` (the `subpacks` root is already declared)
-
-> Tracked as a follow-up: the exporter only produces a single `.pck` today. Multi-pack export requires extending `exporter.gd::_export_pck`.
+Version 0.2 produces one `.pck` and does not yet expose a managed multi-pack
+input. Use the selected Web preset's export filters (the plugin preserves them)
+and normal Godot asset compression to reduce `godot.zip`. Do not place a custom
+PCK in the exported `subpacks/` or edit `game.json`: both paths are exporter-owned
+and the next preflight correctly rejects changed or unlisted output. Supporting
+custom packages requires extending the exporter to copy them into staging and
+record them in the ownership manifest.
 
 ### Static assets
 
-- `images/logo.png` and `images/background.png` are written as placeholders on first export. To customise:
-  - Drop PNGs into `addons/godot_mini_game/templates/common/images/` to override
-  - Or replace them in the output directory after each export
+- `images/logo.png` is copied from `addons/godot_mini_game/templates/common/images/logo.png`; replace that source asset before export to customise it.
+- `images/background.png` is generated by the current exporter. A supported custom background needs a source-template option; editing the managed output makes the next preflight fail closed.
 
 ---
 
@@ -1438,8 +1468,8 @@ If `godot.zip` overflows 4 MB you need to shard assets:
 
 Godot `user://` normally maps to IDBFS. Inside a mini-game host the loader bridges it:
 
-- At startup `godotSdk.copyLocalToFS(p)` restores every persistent path from `wx.getStorage` into the Emscripten FS
-- Every 5s a `setInterval` calls `godotSdk.syncfs()` to push the FS back into `wx.setStorage`
+- At startup `godotSdk.copyLocalToFS(p)` restores persistent paths from the selected `wx`/`tt` provider into the Emscripten FS
+- Every 5s a `setInterval` calls `godotSdk.syncfs()` to push the FS back into host storage
 
 To force a flush at a critical moment (no dedicated API yet):
 
@@ -1488,7 +1518,9 @@ Enable CLI / HTTP access in **WeChat DevTools → Settings → Security Settings
 
 ## 12. Building a custom engine template
 
-`scripts/build_wasm_template.sh` can build a mini-game-compatible template for any Godot 4.x.
+`scripts/build_wasm_template.sh` can build a mini-game-compatible template from
+an exact Godot 4.x tag. A new version is not certified until its bundle is added
+to `support-matrix.json` and passes both platform smoke exports.
 
 ```bash
 # Default: Godot 4.6.1-stable + Emscripten 4.0.3
@@ -1503,17 +1535,18 @@ Enable CLI / HTTP access in **WeChat DevTools → Settings → Security Settings
 
 Steps the script performs:
 
-1. Install/activate emsdk (default `~/Desktop/build_wasm/emsdk`)
-2. `git clone` Godot source
-3. `scons platform=web target=template_release production=yes threads=no wasm_simd=no SUPPORT_LONGJMP='emscripten'`
-4. Produces `build_wasm/output/minigame-template-{version}.zip`
-5. Back in the editor, click **Import Template** in the dock and pick the zip
+1. Installs and activates the exact emsdk release (cache: `build_wasm/emsdk`, or the directory selected with `GODOT_MINIGAME_BUILD_DIR`).
+2. Clones the exact Godot tag and refuses a dirty or mismatched cached source tree.
+3. Temporarily enforces Emscripten longjmp mode, then builds the Web release template with `wasm_simd=no`, `threads=no`, dynamic linking disabled, and the WebRTC/XR modules disabled. The source patch is restored on exit.
+4. Validates JavaScript syntax, Brotli/WASM structure, disabled features, provenance, and hashes with the shared verifier.
+5. Produces `build_wasm/output/{tag}/emsdk-{version}/2d_full/release/abi-{abi}/r{revision}/godot_minigame_template_{tag}_emsdk-{version}_2d-full_release_abi-{abi}_r{revision}.zip`.
+6. Back in the editor, click **Import Template** in the dock and pick that ZIP.
 
 > Apple Silicon: ~5 min. Intel / Linux: ~8–15 min.
 
 ### GitHub Actions
 
-The repo ships `.github/workflows/build_wasm_template.yml`. Trigger it manually from **Actions > Build Mini-Game WASM Template > Run workflow** when you don't have emcc locally.
+The repo ships `.github/workflows/build-template.yml`. Trigger it manually from **Actions > Build Mini-Game WASM Template > Run workflow** when you don't have emcc locally. The workflow publishes nothing by default; a release is created only when the explicit publish input is enabled and every binary validation passes.
 
 ---
 
@@ -1521,21 +1554,23 @@ The repo ships `.github/workflows/build_wasm_template.yml`. Trigger it manually 
 
 ### Q: Export says "missing godot.js"
 
-A: Check the **Engine Template** status at the top of the dock. Four scenarios:
+A: Check the **Engine Template** status at the top of the dock:
 - Bundled missing: make sure `addons/godot_mini_game/engine/` has both `godot.js` and `godot.wasm.br`
-- Custom override not picked up: double-check filenames at `addons/godot_mini_game/godot.js` / `godot.wasm.br`
+- Custom override not picked up: it must also include a matching `template.json`
 - Template store empty: click **Import Template** and pick a zip
-- Only the standard template is found: will run but simulator-only; import a compatible one for real devices
+- Version or commit mismatch: build/import a bundle for the exact editor build
 
 ### Q: Export works on simulator, but real device throws `CompileError: OOM / magic Tag section`
 
-A: You're on the priority-4 fallback (standard Web template) which carries SIMD / exception tags. Build a compatible template via `./scripts/build_wasm_template.sh` or download `minigame-template-*.zip` from Releases and import it.
+A: The running project contains an incompatible or externally replaced engine.
+The 0.2 exporter no longer selects the standard Web template. Re-export with a
+validated exact bundle, or build one with `./scripts/build_wasm_template.sh`.
 
-### Q: Node is installed, but the log still says "not found"
+### Q: Why is an older template ZIP rejected?
 
-A: On macOS the plugin checks `/usr/local/bin/node`, `/opt/homebrew/bin/node`, `/usr/bin/node`, and `which node`. If your Node lives elsewhere (e.g. nvm under `~/.nvm/versions/...`):
-- Symlink it: `ln -s $(which node) /usr/local/bin/node`
-- Or install brotli CLI: `brew install brotli`
+A: Version 0.2 requires a complete `template.json` and does not synthesize one
+from unknown binaries. Rebuild the template with the current script or download
+a validated bundle from Releases.
 
 ### Q: Can I just use the standard Web export?
 
@@ -1555,7 +1590,7 @@ A: Prefix your keys with an account id, e.g. `"user:%s:level" % openid`. `wx.set
 
 ### Q: Where do I file bugs or PRs?
 
-A: Please use [issues](../../issues) and [discussions](../../discussions). Bug reports benefit from:
+A: Please use [issues](https://github.com/AnranS/godot_for_minigame/issues) and [discussions](https://github.com/AnranS/godot_for_minigame/discussions). Bug reports benefit from:
 - Godot version
 - Platform (WeChat / Douyin)
 - Base library version

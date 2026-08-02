@@ -4,24 +4,22 @@ set -euo pipefail
 # Create a GitHub Release and upload the installable Godot plugin zip.
 #
 # Usage:
-#   scripts/release_plugin.sh 0.1.1
-#   scripts/release_plugin.sh v0.1.1 --draft
-#   scripts/release_plugin.sh 0.1.1 --allow-dirty
+#   scripts/release_plugin.sh 0.2.0
+#   scripts/release_plugin.sh 0.2.0 --no-push
 #
 # Requirements:
-#   - gh CLI installed and authenticated (`gh auth login`)
 #   - plugin.cfg version already updated and committed
 
 usage() {
     cat <<'EOF'
-Usage: scripts/release_plugin.sh <version> [--draft] [--prerelease] [--allow-dirty] [--no-push]
+Usage: scripts/release_plugin.sh <version> [--no-push]
 
 Examples:
-  scripts/release_plugin.sh 0.1.1
-  scripts/release_plugin.sh v0.2.0 --draft
+  scripts/release_plugin.sh 0.2.0
+  scripts/release_plugin.sh v0.2.0 --no-push
 
-The script packages addons/godot_mini_game into dist/godot_mini_game_vX.Y.Z.zip,
-creates or reuses git tag vX.Y.Z, pushes it, and uploads the zip to GitHub Release assets.
+The script verifies the package, creates a new immutable git tag vX.Y.Z, and
+pushes it. The tag-driven GitHub Actions workflow is the only release publisher.
 EOF
 }
 
@@ -38,16 +36,10 @@ fi
 VERSION="${1#v}"
 shift
 
-DRAFT=false
-PRERELEASE=false
-ALLOW_DIRTY=false
 NO_PUSH=false
 
 while [ "$#" -gt 0 ]; do
     case "$1" in
-        --draft) DRAFT=true ;;
-        --prerelease) PRERELEASE=true ;;
-        --allow-dirty) ALLOW_DIRTY=true ;;
         --no-push) NO_PUSH=true ;;
         -h|--help)
             usage
@@ -62,9 +54,9 @@ while [ "$#" -gt 0 ]; do
     shift
 done
 
-if ! [[ "$VERSION" =~ ^[0-9]+(\.[0-9]+){1,3}([.-][0-9A-Za-z]+)?$ ]]; then
+if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
     echo "Invalid version: $VERSION" >&2
-    echo "Expected something like 0.1.1 or v0.1.1" >&2
+    echo "Expected something like 0.2.0 or v0.2.0" >&2
     exit 1
 fi
 
@@ -73,10 +65,11 @@ PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 TAG="v${VERSION}"
 ZIP_PATH="${PROJECT_DIR}/dist/godot_mini_game_v${VERSION}.zip"
 PLUGIN_CFG="${PROJECT_DIR}/addons/godot_mini_game/plugin.cfg"
+SUPPORT_MATRIX="${PROJECT_DIR}/support-matrix.json"
 
 cd "$PROJECT_DIR"
 
-for cmd in git gh zip; do
+for cmd in git jq zip; do
     if ! command -v "$cmd" >/dev/null 2>&1; then
         echo "Missing required command: $cmd" >&2
         exit 1
@@ -85,6 +78,10 @@ done
 
 if [ ! -f "$PLUGIN_CFG" ]; then
     echo "Missing plugin config: $PLUGIN_CFG" >&2
+    exit 1
+fi
+if [ ! -s "$SUPPORT_MATRIX" ]; then
+    echo "Missing support matrix: $SUPPORT_MATRIX" >&2
     exit 1
 fi
 
@@ -97,13 +94,20 @@ if [ "$CFG_VERSION" != "$VERSION" ]; then
     exit 1
 fi
 
-if [ "$ALLOW_DIRTY" = false ] && [ -n "$(git status --porcelain)" ]; then
-    echo "Working tree is not clean. Commit changes first, or pass --allow-dirty." >&2
-    git status --short
+MATRIX_VERSION="$(jq -er '.pluginVersion | select(type == "string" and length > 0)' "$SUPPORT_MATRIX")"
+if [ "$MATRIX_VERSION" != "$VERSION" ]; then
+    echo "Version mismatch:" >&2
+    echo "  requested:           $VERSION" >&2
+    echo "  support-matrix.json: $MATRIX_VERSION" >&2
+    echo "Update support-matrix.json before releasing." >&2
     exit 1
 fi
 
-gh auth status >/dev/null
+if [ -n "$(git status --porcelain)" ]; then
+    echo "Working tree is not clean. Commit the exact release contents first." >&2
+    git status --short
+    exit 1
+fi
 
 "${SCRIPT_DIR}/package_plugin.sh"
 
@@ -112,48 +116,32 @@ if [ ! -f "$ZIP_PATH" ]; then
     exit 1
 fi
 
-if git rev-parse "$TAG" >/dev/null 2>&1; then
-    echo "Using existing local tag: $TAG"
-else
-    git tag -a "$TAG" -m "Release $TAG"
-    echo "Created tag: $TAG"
+if git rev-parse --verify "refs/tags/$TAG" >/dev/null 2>&1; then
+    echo "Refusing to reuse existing local tag: $TAG" >&2
+    exit 1
 fi
+
+if ! REMOTE_REFS="$(git ls-remote --tags origin "refs/tags/${TAG}" "refs/tags/${TAG}^{}")"; then
+    echo "Unable to verify whether remote tag $TAG exists; refusing to publish." >&2
+    exit 1
+fi
+if [ -n "$REMOTE_REFS" ]; then
+    echo "Refusing to reuse existing remote tag: $TAG" >&2
+    exit 1
+fi
+
+git tag -a "$TAG" -m "Release $TAG"
+echo "Created tag: $TAG"
 
 if [ "$NO_PUSH" = false ]; then
     git push origin "$TAG"
 fi
 
-NOTES_FILE="$(mktemp)"
-trap 'rm -f "${NOTES_FILE}"' EXIT
-cat > "$NOTES_FILE" <<EOF
-## Godot Mini Game Plugin ${TAG}
-
-### Installation
-
-1. Download \`godot_mini_game_v${VERSION}.zip\` from the Assets section below.
-2. Extract it into your Godot project root so it creates \`addons/godot_mini_game/\`.
-3. Open Godot and enable **Godot Mini Game Export** in **Project > Project Settings > Plugins**.
-
-Do not download GitHub's auto-generated Source code archives for plugin installation.
-EOF
-
-RELEASE_FLAGS=(--title "$TAG" --notes-file "$NOTES_FILE")
-if [ "$DRAFT" = true ]; then
-    RELEASE_FLAGS+=(--draft)
-fi
-if [ "$PRERELEASE" = true ]; then
-    RELEASE_FLAGS+=(--prerelease)
-fi
-
-if gh release view "$TAG" >/dev/null 2>&1; then
-    gh release edit "$TAG" "${RELEASE_FLAGS[@]}"
-    gh release upload "$TAG" "$ZIP_PATH" --clobber
-    echo "Updated GitHub Release: $TAG"
-else
-    gh release create "$TAG" "$ZIP_PATH" "${RELEASE_FLAGS[@]}"
-    echo "Created GitHub Release: $TAG"
-fi
-
 echo ""
-echo "Release asset:"
+echo "Local package verified:"
 echo "  $ZIP_PATH"
+if [ "$NO_PUSH" = false ]; then
+    echo "GitHub Actions will publish the immutable release for $TAG."
+else
+    echo "Tag was not pushed; review it and run: git push origin $TAG"
+fi

@@ -1,10 +1,20 @@
 name: Deploy Website to GitHub Pages
 
 on:
+  pull_request:
+    paths:
+      - "website/**"
+      - "addons/godot_mini_game/MiniGameSDK.gd"
+      - "addons/godot_mini_game/plugin.cfg"
+      - "support-matrix.json"
+      - ".github/workflows/deploy-pages.yml"
   push:
     branches: [main]
     paths:
       - "website/**"
+      - "addons/godot_mini_game/MiniGameSDK.gd"
+      - "addons/godot_mini_game/plugin.cfg"
+      - "support-matrix.json"
       - ".github/workflows/deploy-pages.yml"
   workflow_dispatch:
 
@@ -14,7 +24,7 @@ permissions:
   id-token: write
 
 concurrency:
-  group: pages
+  group: pages-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -35,18 +45,20 @@ jobs:
         working-directory: website
         run: npm ci
 
-      - name: Build static website
+      - name: Build and test the static website
         working-directory: website
         env:
           NEXT_PUBLIC_BASE_PATH: /godot_for_minigame
-        run: npm run build
+        run: npm test
 
       - name: Upload Pages artifact
+        if: github.event_name != 'pull_request'
         uses: actions/upload-pages-artifact@v3
         with:
           path: website/dist/client
 
   deploy:
+    if: github.event_name != 'pull_request'
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}

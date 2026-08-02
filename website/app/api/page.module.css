@@ -185,7 +185,7 @@
 
 .heroStats {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   gap: 1px;
   margin-top: 36px;
   overflow: hidden;
@@ -319,6 +319,7 @@
   display: block;
   color: #8dccfb;
   font-size: 12px;
+  overflow-wrap: anywhere;
 }
 
 .conventionGrid p {

@@ -4,149 +4,262 @@ on:
   workflow_dispatch:
     inputs:
       godot_version:
-        description: "Godot version tag (e.g. 4.4.1-stable)"
+        description: "Exact Godot tag, for example 4.6.1-stable"
         required: true
         type: string
-      godot_branch:
-        description: "Godot branch/tag to checkout (e.g. 4.4.1-stable)"
-        required: true
-        type: string
+        default: "4.6.1-stable"
       emscripten_version:
-        description: "Emscripten version (leave empty for auto-detect from Godot)"
-        required: false
-        type: string
-        default: ""
-      build_profile:
-        description: "Build profile"
+        description: "Exact Emscripten SDK version"
         required: true
-        type: choice
-        options:
-          - "2d_full"
-          - "2d_tiny"
-          - "3d_full"
-        default: "2d_full"
+        type: string
+        default: "4.0.3"
+      template_revision:
+        description: "Immutable template revision"
+        required: true
+        type: string
+        default: "1"
+      publish_release:
+        description: "Publish after every validation passes"
+        required: true
+        type: boolean
+        default: false
 
 jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 120
-
+    permissions:
+      contents: write
+    env:
+      GODOT_TAG: ${{ inputs.godot_version }}
+      EMSDK_VERSION: ${{ inputs.emscripten_version }}
+      TEMPLATE_REVISION: ${{ inputs.template_revision }}
+      BUILD_PROFILE: 2d_full
+      BUILD_TARGET: release
     steps:
-      - name: Checkout this repo
+      - name: Checkout plugin repository
         uses: actions/checkout@v4
 
-      - name: Checkout Godot source
+      - name: Validate immutable inputs
+        id: contract
+        run: |
+          set -euo pipefail
+          if ! [[ "$GODOT_TAG" =~ ^[0-9]+\.[0-9]+\.[0-9]+-[0-9A-Za-z]+$ ]]; then
+            echo "Godot tag must be exact, for example 4.6.1-stable: $GODOT_TAG" >&2
+            exit 1
+          fi
+          if ! [[ "$EMSDK_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z][0-9A-Za-z.-]*)?$ ]]; then
+            echo "Emscripten SDK version must be exact, for example 4.0.3: $EMSDK_VERSION" >&2
+            exit 1
+          fi
+          if ! [[ "$TEMPLATE_REVISION" =~ ^[1-9][0-9]*$ ]]; then
+            echo "Template revision must be a positive integer: $TEMPLATE_REVISION" >&2
+            exit 1
+          fi
+          bridge_abi=$(jq -er '.bridgeAbi | select(type == "number" and . > 0 and (. % 1 == 0))' support-matrix.json)
+          template_schema=$(jq -er '.templateSchema | select(type == "number" and . > 0 and (. % 1 == 0))' support-matrix.json)
+          release_tag="template-${GODOT_TAG}-emsdk-${EMSDK_VERSION}-2d-full-release-abi-${bridge_abi}-r${TEMPLATE_REVISION}"
+          echo "bridge_abi=$bridge_abi" >> "$GITHUB_OUTPUT"
+          echo "template_schema=$template_schema" >> "$GITHUB_OUTPUT"
+          echo "release_tag=$release_tag" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout exact Godot source tag
         uses: actions/checkout@v4
         with:
           repository: godotengine/godot
-          ref: ${{ inputs.godot_branch }}
+          ref: ${{ inputs.godot_version }}
           path: godot-src
 
-      - name: Detect Emscripten version
-        id: emver
+      - name: Verify source identity
+        id: source
+        working-directory: godot-src
         run: |
-          if [ -n "${{ inputs.emscripten_version }}" ]; then
-            echo "version=${{ inputs.emscripten_version }}" >> "$GITHUB_OUTPUT"
-          else
-            # Try to detect from Godot's platform/web/detect.py
-            VER=$(grep -oP 'emscripten_version\s*=\s*"(\K[^"]+)' godot-src/platform/web/detect.py || echo "")
-            if [ -z "$VER" ]; then
-              # Fallback: check misc/ci/requirements.txt
-              VER=$(grep -oP 'emsdk==\K[\d.]+' godot-src/misc/ci/requirements.txt 2>/dev/null || echo "3.1.64")
-            fi
-            echo "version=$VER" >> "$GITHUB_OUTPUT"
+          set -euo pipefail
+          actual_tag=$(git describe --tags --exact-match)
+          if [ "$actual_tag" != "$GODOT_TAG" ]; then
+            echo "Checked-out tag $actual_tag does not match requested version $GODOT_TAG" >&2
+            exit 1
           fi
-          echo "Emscripten version: $(cat "$GITHUB_OUTPUT" | grep version | cut -d= -f2)"
+          test -z "$(git status --porcelain --untracked-files=all)"
+          echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Set up Emscripten
         uses: mymindstorm/setup-emsdk@v14
         with:
-          version: ${{ steps.emver.outputs.version }}
+          version: ${{ inputs.emscripten_version }}
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
-      - name: Install SCons
-        run: pip install scons
+      - name: Install build and validation tools
+        run: |
+          pip install scons==4.9.1
+          sudo apt-get update
+          sudo apt-get install -y brotli jq wabt
 
-      - name: Build Godot WASM (mini-game compatible)
+      - name: Enforce mini-game longjmp mode
         working-directory: godot-src
         run: |
-          # Key flags for mini-game compatibility:
-          #   use_exceptions=yes     -> -fexceptions (JS-based, NOT -fwasm-exceptions)
-          #   threads=no             -> single-threaded (mini-game requirement)
-          #   dlink_enabled=no       -> no dynamic linking
-          #   module_webrtc_enabled=no, module_webxr_enabled=no -> strip unused modules
+          set -euo pipefail
+          detect_py=platform/web/detect.py
+          if grep -q "SUPPORT_LONGJMP='emscripten'" "$detect_py"; then
+            expected_change=""
+          elif grep -q "SUPPORT_LONGJMP='wasm'" "$detect_py"; then
+            sed -i "s/SUPPORT_LONGJMP='wasm'/SUPPORT_LONGJMP='emscripten'/g" "$detect_py"
+            expected_change="$detect_py"
+          else
+            echo "Godot source has an unknown SUPPORT_LONGJMP configuration" >&2
+            exit 1
+          fi
+          grep -q "SUPPORT_LONGJMP='emscripten'" "$detect_py"
+          changed_files=$(git diff --name-only)
+          if [ "$changed_files" != "$expected_change" ]; then
+            echo "Unexpected Godot source changes: ${changed_files:-<none>}" >&2
+            exit 1
+          fi
+
+      - name: Build exact 2D full template
+        working-directory: godot-src
+        run: |
           scons platform=web target=template_release \
             arch=wasm32 \
             optimize=size \
-            use_exceptions=yes \
+            wasm_simd=no \
             threads=no \
             dlink_enabled=no \
+            javascript_eval=yes \
             module_webrtc_enabled=no \
             module_webxr_enabled=no \
             module_openxr_enabled=no \
-            javascript_eval=no \
-            -j$(nproc)
+            -j"$(nproc)"
 
-      - name: Locate build artifacts
+      - name: Locate unique build artifacts
         id: artifacts
         run: |
-          cd godot-src/bin
-          JS_FILE=$(ls godot.web.template_release.wasm32.nothreads.js 2>/dev/null || ls godot.web.template_release.wasm32.js 2>/dev/null || ls *.js | head -1)
-          WASM_FILE=$(ls godot.web.template_release.wasm32.nothreads.wasm 2>/dev/null || ls godot.web.template_release.wasm32.wasm 2>/dev/null || ls *.wasm | head -1)
-          echo "js=$JS_FILE" >> "$GITHUB_OUTPUT"
-          echo "wasm=$WASM_FILE" >> "$GITHUB_OUTPUT"
-          echo "Found JS: $JS_FILE ($(du -h $JS_FILE | cut -f1))"
-          echo "Found WASM: $WASM_FILE ($(du -h $WASM_FILE | cut -f1))"
+          set -euo pipefail
+          shopt -s nullglob
+          js_candidates=(godot-src/bin/godot.web.template_release.wasm32*.js)
+          wasm_candidates=(godot-src/bin/godot.web.template_release.wasm32*.wasm)
+          shopt -u nullglob
+          if [ "${#js_candidates[@]}" -ne 1 ] || [ "${#wasm_candidates[@]}" -ne 1 ]; then
+            echo "Expected exactly one JavaScript artifact and one WASM artifact" >&2
+            printf 'JavaScript candidates (%s): %s\n' "${#js_candidates[@]}" "${js_candidates[*]:-<none>}" >&2
+            printf 'WASM candidates (%s): %s\n' "${#wasm_candidates[@]}" "${wasm_candidates[*]:-<none>}" >&2
+            exit 1
+          fi
+          js_file="${js_candidates[0]}"
+          wasm_file="${wasm_candidates[0]}"
+          test -s "$js_file"
+          test -s "$wasm_file"
+          if [ "${js_file%.js}" != "${wasm_file%.wasm}" ]; then
+            echo "JavaScript and WASM artifact stems do not match" >&2
+            exit 1
+          fi
+          echo "js=$js_file" >> "$GITHUB_OUTPUT"
+          echo "wasm=$wasm_file" >> "$GITHUB_OUTPUT"
 
-      - name: Install Brotli
-        run: sudo apt-get install -y brotli
-
-      - name: Compress WASM with Brotli
+      - name: Assemble versioned template bundle
+        id: bundle
+        env:
+          GODOT_COMMIT: ${{ steps.source.outputs.commit }}
+          BRIDGE_ABI: ${{ steps.contract.outputs.bridge_abi }}
+          TEMPLATE_SCHEMA: ${{ steps.contract.outputs.template_schema }}
         run: |
-          cd godot-src/bin
-          brotli --quality=11 --force --output=godot.wasm.br "${{ steps.artifacts.outputs.wasm }}"
-          echo "Original: $(du -h ${{ steps.artifacts.outputs.wasm }} | cut -f1)"
-          echo "Compressed: $(du -h godot.wasm.br | cut -f1)"
-
-      - name: Package template
-        run: |
+          set -euo pipefail
           mkdir -p template-package
-          cp "godot-src/bin/${{ steps.artifacts.outputs.js }}" template-package/godot.js
-          cp godot-src/bin/godot.wasm.br template-package/godot.wasm.br
-          echo "${{ inputs.godot_version }}" > template-package/version.txt
+          cp "${{ steps.artifacts.outputs.js }}" template-package/godot.js
+          cp godot-src/COPYRIGHT.txt template-package/GODOT_COPYRIGHT.txt
+          brotli --quality=11 --force --output=template-package/godot.wasm.br "${{ steps.artifacts.outputs.wasm }}"
+          canonical_version="${GODOT_TAG//-/.}"
+          printf '%s\n' "$canonical_version" > template-package/version.txt
+          js_sha=$(sha256sum template-package/godot.js | cut -d' ' -f1)
+          wasm_sha=$(sha256sum template-package/godot.wasm.br | cut -d' ' -f1)
+          jq -n \
+            --arg version "$canonical_version" \
+            --arg commit "$GODOT_COMMIT" \
+            --arg emscripten "$EMSDK_VERSION" \
+            --arg js_sha "$js_sha" \
+            --arg wasm_sha "$wasm_sha" \
+            --argjson schema "$TEMPLATE_SCHEMA" \
+            --argjson revision "$TEMPLATE_REVISION" \
+            --argjson bridge_abi "$BRIDGE_ABI" \
+            '{
+              schema: $schema,
+              godot: {version: $version, commit: $commit},
+              emscriptenVersion: $emscripten,
+              profile: "2d_full",
+              target: "release",
+              revision: $revision,
+              bridgeAbi: $bridge_abi,
+              features: {simd: false, threads: false, wasmExceptions: false},
+              artifacts: {
+                "godot.js": {sha256: $js_sha},
+                "godot.wasm.br": {sha256: $wasm_sha}
+              }
+            }' > template-package/template.json
+          find template-package -type f -exec chmod 0644 {} +
+          find template-package -type f -exec touch -t 198001010000 {} +
+          bundle="godot_minigame_template_${GODOT_TAG}_emsdk-${EMSDK_VERSION}_2d-full_release_abi-${BRIDGE_ABI}_r${TEMPLATE_REVISION}.zip"
+          rm -f "$bundle" "${bundle}.sha256"
+          (cd template-package && zip -X -9 "../$bundle" godot.js godot.wasm.br version.txt template.json GODOT_COPYRIGHT.txt)
+          sha256sum "$bundle" > "${bundle}.sha256"
+          echo "path=$bundle" >> "$GITHUB_OUTPUT"
+          echo "name=${bundle%.zip}" >> "$GITHUB_OUTPUT"
 
-          cd template-package
-          zip -9 "../minigame.${{ inputs.build_profile }}_${{ inputs.godot_version }}.zip" \
-            godot.js godot.wasm.br version.txt
+      - name: Validate template bundle with the shared verifier
+        env:
+          BUNDLE_PATH: ${{ steps.bundle.outputs.path }}
+        run: |
+          set -euo pipefail
+          scripts/verify_wasm_template.sh "$BUNDLE_PATH"
+          bundle_dir=$(dirname "$BUNDLE_PATH")
+          bundle_name=$(basename "$BUNDLE_PATH")
+          (cd "$bundle_dir" && sha256sum -c "${bundle_name}.sha256")
+          unzip -t "$BUNDLE_PATH"
 
-      - name: Upload artifact
+      - name: Upload validated artifact
         uses: actions/upload-artifact@v4
         with:
-          name: "minigame-template-${{ inputs.build_profile }}-${{ inputs.godot_version }}"
-          path: "minigame.${{ inputs.build_profile }}_${{ inputs.godot_version }}.zip"
+          name: ${{ steps.bundle.outputs.name }}
+          path: |
+            ${{ steps.bundle.outputs.path }}
+            ${{ steps.bundle.outputs.path }}.sha256
 
-      - name: Create or update release
-        if: github.event_name == 'workflow_dispatch'
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: "template-${{ inputs.godot_version }}"
-          name: "Mini-Game Template for Godot ${{ inputs.godot_version }}"
-          body: |
-            Pre-compiled mini-game compatible WASM template for Godot ${{ inputs.godot_version }}.
+      - name: Refuse mutable template release
+        if: inputs.publish_release
+        env:
+          RELEASE_TAG: ${{ steps.contract.outputs.release_tag }}
+        run: |
+          set -euo pipefail
+          if git rev-parse --verify "refs/tags/$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "Template tag $RELEASE_TAG already exists locally and is immutable" >&2
+            exit 1
+          fi
+          if ! remote_refs=$(git ls-remote --tags origin "refs/tags/$RELEASE_TAG" "refs/tags/$RELEASE_TAG^{}"); then
+            echo "Unable to verify whether remote template tag $RELEASE_TAG exists" >&2
+            exit 1
+          fi
+          if [ -n "$remote_refs" ]; then
+            echo "Template tag $RELEASE_TAG already exists remotely and is immutable" >&2
+            exit 1
+          fi
 
-            **Changes from standard Godot web export:**
-            - Uses `-fexceptions` (JS-based) instead of `-fwasm-exceptions` for WXWebAssembly compatibility
-            - Single-threaded (`threads=no`)
-            - Stripped modules: WebRTC, WebXR, OpenXR, JavaScript eval
-
-            **Usage:**
-            1. Download the `.zip` file
-            2. In Godot, open the Mini-Game Export dock
-            3. Click "Import Engine Template" and select the downloaded zip
-          files: "minigame.${{ inputs.build_profile }}_${{ inputs.godot_version }}.zip"
-          draft: false
-          prerelease: false
+      - name: Publish validated template release
+        if: inputs.publish_release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.contract.outputs.release_tag }}
+          BUNDLE_PATH: ${{ steps.bundle.outputs.path }}
+          GODOT_COMMIT: ${{ steps.source.outputs.commit }}
+          BRIDGE_ABI: ${{ steps.contract.outputs.bridge_abi }}
+          TEMPLATE_SCHEMA: ${{ steps.contract.outputs.template_schema }}
+        run: |
+          set -euo pipefail
+          gh release create "$RELEASE_TAG" \
+            "$BUNDLE_PATH" \
+            "${BUNDLE_PATH}.sha256" \
+            --target "$GITHUB_SHA" \
+            --title "Mini-Game Template ${GODOT_TAG} / Emscripten ${EMSDK_VERSION} / ABI ${BRIDGE_ABI} / r${TEMPLATE_REVISION}" \
+            --notes "Validated profile=${BUILD_PROFILE}, target=${BUILD_TARGET}, templateSchema=${TEMPLATE_SCHEMA}. Exact Godot source commit: ${GODOT_COMMIT}."

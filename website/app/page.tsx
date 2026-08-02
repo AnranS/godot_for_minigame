@@ -1,25 +1,34 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { releaseData } from "./site-data.generated";
 import { sitePath } from "./site-path";
 
 type Language = "zh" | "en";
 
 const REPO = "https://github.com/AnranS/godot_for_minigame";
-const RELEASE = `${REPO}/releases/latest`;
+const VERSION = releaseData.pluginVersion;
+const BRIDGE_ABI = releaseData.bridgeAbi;
+const CERTIFIED = releaseData.bundled;
+const GODOT_VERSION = CERTIFIED.godotVersion;
+const GODOT_COMMIT_SHORT = CERTIFIED.godotCommit.slice(0, 7);
+const EMSCRIPTEN_VERSION = CERTIFIED.emscriptenVersion;
+const TEMPLATE_REVISION = CERTIFIED.templateRevision;
+const RELEASE = `${REPO}/releases/tag/v${VERSION}`;
+const PACKAGE_FILENAME = `godot_mini_game_v${VERSION}.zip`;
 
 const copy = {
   zh: {
     nav: ["产品特性", "导出流程", "SDK 能力", "API 参考", "快速开始"],
     language: "EN",
     menu: "打开导航",
-    badge: "开源 · MIT License · v0.1.1",
+    badge: `开源 · MIT License · v${VERSION}`,
     eyebrow: "Godot 4.x 小游戏导出插件",
     heroA: "把 Godot 游戏，",
     heroB: "一键发布到微信与抖音",
     heroBody:
       "内置真机兼容的 WASM 引擎、平台适配层与原生能力桥接。从 Godot 项目到开发者工具，只需一次导出。",
-    download: "下载 v0.1.1",
+    download: `下载 v${VERSION}`,
     docs: "查看中文文档",
     github: "GitHub",
     supports: "已支持",
@@ -58,17 +67,47 @@ const copy = {
       ["03", "选择目标平台", "在 Dock 中填写 App ID、方向与输出目录。"],
       ["04", "打开开发者工具", "点击导出，直接用微信或抖音开发者工具打开。"],
     ],
+    architectureKicker: "可验证的导出内核",
+    architectureTitle: "从一次点击，到一次事务发布",
+    architectureBody:
+      "Dock 与无界面自动化脚本进入同一条事务式导出管线。构建失败只影响 staging；进程内发布错误会回滚，崩溃则保留 lock、backup 与 journal 供人工归档比对。",
+    architectureCaption:
+      "Godot Mini Game 产品架构：Dock 或无界面脚本进入 exporter.gd，依次经过预检、模板解析、资源包构建、平台装配与输出验证，最后从 staging 目录事务式发布。",
+    architectureEntry: "统一入口",
+    architectureEntryBody: "编辑器操作与自动化脚本共享同一控制面。",
+    architectureControllerBody: "持有一次导出事务，统一调度、日志与错误边界。",
+    architecturePipeline: "构建管线",
+    architectureServices: [
+      ["预检", "校验项目、预设、输出所有权与目标参数"],
+      ["模板解析", "匹配版本、提交、Emscripten、ABI 与 revision"],
+      ["资源构建", "在 staging 中生成游戏资源包"],
+      ["平台装配", "装配微信或抖音运行时与配置"],
+      ["输出验证", "校验结构、体积与每个产物的 SHA-256"],
+    ],
+    architectureDelivery: "安全交付",
+    architectureOutputs: [
+      ["staging/", "所有构建产物先写入隔离目录"],
+      ["transaction publish", "加锁复核后替换封闭的受管顶层路径，失败时回滚"],
+    ],
+    architectureFoundation: "支撑层与运行时契约",
+    architectureFoundationBody: "稳定内核与可替换能力包，为上层管线提供明确边界。",
+    architectureSupports: [
+      ["Plugin Core", "插件生命周期、输出所有权、进程内回滚与崩溃日志", "plugin.gd · output_guard.gd · exporter.gd"],
+      ["Engine Packs", "由版本、提交、工具链、ABI 与校验和锁定", "template_bundle.gd"],
+      ["Bridge ABI", "PlatformRuntime 统一能力；SDK 两端完成版本握手", "platform_runtime.js · sdk.js ↔ MiniGameSDK.gd"],
+    ],
+    architecturePlatforms: "平台适配器",
     techKicker: "真实设备优先",
     techTitle: "不是“模拟器能跑”，而是真机可用",
     techBody:
-      "官方 Web 模板包含部分小游戏运行时不支持的 WASM 特性。项目内置针对 WXWebAssembly 调整的 Godot 4.6.1 引擎，并自动注入小游戏运行时补丁。",
+      `官方 Web 模板包含部分小游戏运行时不支持的 WASM 特性。项目内置针对 WXWebAssembly 调整的 Godot ${GODOT_VERSION} 引擎，并自动注入小游戏运行时补丁。`,
     techPoints: [
       ["wasm_simd=no", "避开真机 SIMD 编译错误"],
       ["threads=no", "适配小游戏线程限制"],
       ["Brotli", "引擎压缩后约 6 MB"],
-      ["Subpackages", "引擎与资源支持分包加载"],
+      ["Subpackages", "引擎模板通过独立分包加载"],
     ],
-    templateNote: "Godot 4.6.1 开箱即用；其他 Godot 4.x 版本可导入同版本自定义模板。",
+    templateNote: `v${VERSION} 认证 Godot ${GODOT_VERSION} · commit ${GODOT_COMMIT_SHORT}… · Emscripten ${EMSCRIPTEN_VERSION} · Bridge ABI ${BRIDGE_ABI} · r${TEMPLATE_REVISION}；其它编辑器构建必须导入身份完全匹配的版本化模板包。`,
     sdkKicker: "MiniGameSDK",
     sdkTitle: "小游戏原生能力，用 GDScript 调用",
     sdkBody:
@@ -85,7 +124,7 @@ const copy = {
     startGuide: "阅读完整指南",
     faqTitle: "常见问题",
     faqs: [
-      ["支持哪些 Godot 版本？", "内置模板匹配 Godot 4.6.1。Godot 4.3–4.6 已经过流程验证，其他版本需要导入同版本自定义引擎模板。"],
+      ["支持哪些 Godot 版本？", `当前内置模板与自动化流程认证 Godot ${GODOT_VERSION}。其它编辑器构建必须导入版本、提交、工具链与 ABI 完全匹配的模板包。`],
       ["需要自己安装 Emscripten 吗？", "日常使用不需要。Release 已带预编译引擎；只有构建自定义 Godot 版本模板时才需要完整编译环境。"],
       ["为什么不能直接使用 Godot 官方 Web 模板？", "小游戏真机的 WXWebAssembly 对 SIMD、异常处理 Tag 与线程支持有限，官方模板可能在真机编译阶段失败。"],
       ["导出后还需要做什么？", "用对应平台的开发者工具打开输出目录，完成 App ID、域名、隐私与平台审核相关配置即可。"],
@@ -99,13 +138,13 @@ const copy = {
     nav: ["Features", "Workflow", "SDK", "API Reference", "Quick Start"],
     language: "中文",
     menu: "Open navigation",
-    badge: "Open source · MIT License · v0.1.1",
+    badge: `Open source · MIT License · v${VERSION}`,
     eyebrow: "Mini-game exporter for Godot 4.x",
     heroA: "Ship your Godot game",
     heroB: "to WeChat & Douyin in one click",
     heroBody:
       "A device-ready WASM engine, platform adapters, and native API bridge—bundled into one clear export workflow.",
-    download: "Download v0.1.1",
+    download: `Download v${VERSION}`,
     docs: "Read English docs",
     github: "GitHub",
     supports: "Supports",
@@ -140,21 +179,51 @@ const copy = {
     flowBody: "The plugin owns the repetitive build details, so you can stay focused on the game.",
     steps: [
       ["01", "Install", "Drop addons/godot_mini_game from the latest Release into your project."],
-      ["02", "Enable & configure", "Enable the plugin and add a standard Godot Web export preset."],
+      ["02", "Enable & configure", "Enable the plugin and add a Godot Web export preset."],
       ["03", "Choose a platform", "Set the App ID, orientation, and output folder in the Dock."],
       ["04", "Open DevTools", "Export once, then open the result in WeChat or Douyin DevTools."],
     ],
+    architectureKicker: "Verifiable export core",
+    architectureTitle: "From one command to one transactional publish",
+    architectureBody:
+      "The Dock and headless automation enter one transactional pipeline. Build failures affect staging only; in-process publish errors roll back, while a crash preserves its lock, backup, and journal for operator review.",
+    architectureCaption:
+      "Godot Mini Game product architecture: the Dock or a headless script enters exporter.gd, then passes through preflight, template resolution, pack building, platform assembly, and output validation before a transactional publish from staging.",
+    architectureEntry: "Shared entry points",
+    architectureEntryBody: "Editor actions and automation use one control plane.",
+    architectureControllerBody: "Owns one export transaction, orchestration, logs, and error boundaries.",
+    architecturePipeline: "Build pipeline",
+    architectureServices: [
+      ["Preflight", "Validate the project, preset, output ownership, and target"],
+      ["Template resolution", "Match version, commit, Emscripten, ABI, and revision"],
+      ["Pack build", "Build the game pack inside staging"],
+      ["Platform assembly", "Add WeChat or Douyin runtime and configuration"],
+      ["Output validation", "Verify structure, size, and artifact SHA-256 hashes"],
+    ],
+    architectureDelivery: "Safe delivery",
+    architectureOutputs: [
+      ["staging/", "Write every generated artifact to an isolated directory"],
+      ["transaction publish", "Lock, recheck, replace closed managed top-level paths, and roll back"],
+    ],
+    architectureFoundation: "Foundation and runtime contracts",
+    architectureFoundationBody: "A stable core and replaceable capability packs give the pipeline explicit boundaries.",
+    architectureSupports: [
+      ["Plugin Core", "Plugin lifecycle, output ownership, in-process rollback, and crash journals", "plugin.gd · output_guard.gd · exporter.gd"],
+      ["Engine Packs", "Pinned by version, commit, toolchain, ABI, and checksums", "template_bundle.gd"],
+      ["Bridge ABI", "PlatformRuntime owns capabilities; both SDK ends negotiate versions", "platform_runtime.js · sdk.js ↔ MiniGameSDK.gd"],
+    ],
+    architecturePlatforms: "Platform adapters",
     techKicker: "Real devices first",
     techTitle: "Beyond “it works in the simulator”",
     techBody:
-      "Standard Web templates can include WASM features unavailable in mini-game runtimes. The bundled Godot 4.6.1 engine is tuned for WXWebAssembly, with runtime patches applied automatically.",
+      `Standard Web templates can include WASM features unavailable in mini-game runtimes. The bundled Godot ${GODOT_VERSION} engine is tuned for WXWebAssembly, with runtime patches applied automatically.`,
     techPoints: [
       ["wasm_simd=no", "Avoid device-side SIMD compile errors"],
       ["threads=no", "Respect mini-game thread limits"],
       ["Brotli", "Compress the engine to about 6 MB"],
-      ["Subpackages", "Load engine and assets in packages"],
+      ["Subpackages", "The engine ships as a separate package"],
     ],
-    templateNote: "Godot 4.6.1 works out of the box. Other Godot 4.x versions can use an imported matching template.",
+    templateNote: `v${VERSION} certifies Godot ${GODOT_VERSION} · commit ${GODOT_COMMIT_SHORT}… · Emscripten ${EMSCRIPTEN_VERSION} · Bridge ABI ${BRIDGE_ABI} · r${TEMPLATE_REVISION}. Other editor builds need a fully identity-matched versioned pack.`,
     sdkKicker: "MiniGameSDK",
     sdkTitle: "Native mini-game APIs, from GDScript",
     sdkBody:
@@ -171,7 +240,7 @@ const copy = {
     startGuide: "Read the full guide",
     faqTitle: "Frequently asked questions",
     faqs: [
-      ["Which Godot versions are supported?", "The bundled template matches Godot 4.6.1. The workflow has been tested across Godot 4.3–4.6; other versions need a matching custom template."],
+      ["Which Godot versions are supported?", `The bundled template and automated workflow certify Godot ${GODOT_VERSION}. Other editor builds must import a pack with an exact version, commit, toolchain, and ABI match.`],
       ["Do I need to install Emscripten?", "Not for normal use. Releases include a prebuilt engine. A compiler toolchain is only required when building a custom Godot template."],
       ["Why not use the standard Godot Web template?", "WXWebAssembly on real devices has limited support for SIMD, exception tags, and threads, so a standard template can fail during compilation."],
       ["What happens after export?", "Open the output folder in platform DevTools, then complete the App ID, domain, privacy, and review settings required by that platform."],
@@ -299,7 +368,7 @@ export default function Home() {
               <div className="window-bar">
                 <div className="traffic-lights"><span /><span /><span /></div>
                 <span className="window-title">Godot Engine — game_project</span>
-                <span className="window-version">4.6.1</span>
+                <span className="window-version">{GODOT_VERSION}</span>
               </div>
               <div className="window-content">
                 <aside className="project-rail">
@@ -407,6 +476,92 @@ export default function Home() {
         </div>
       </section>
 
+      <section className="section architecture-section" id="architecture" aria-labelledby="architecture-title">
+        <div className="container">
+          <div className="split-heading architecture-heading reveal">
+            <div>
+              <p className="section-kicker">{t.architectureKicker}</p>
+              <h2 id="architecture-title">{t.architectureTitle}</h2>
+            </div>
+            <p>{t.architectureBody}</p>
+          </div>
+
+          <figure className="architecture-figure reveal" aria-label={t.architectureCaption}>
+            <figcaption className="sr-only">{t.architectureCaption}</figcaption>
+
+            <ol className="architecture-flow">
+              <li className="architecture-stage architecture-entry">
+                <div className="architecture-stage-head"><span>01</span><small>ENTRY</small></div>
+                <h3>{t.architectureEntry}</h3>
+                <p>{t.architectureEntryBody}</p>
+                <ul className="architecture-entry-points" aria-label={t.architectureEntry}>
+                  <li><span aria-hidden="true">◫</span><code>Godot Dock</code></li>
+                  <li><span aria-hidden="true">›_</span><code>Headless script</code></li>
+                </ul>
+              </li>
+
+              <li className="architecture-stage architecture-controller">
+                <div className="architecture-stage-head"><span>02</span><small>CONTROL</small></div>
+                <div className="architecture-controller-mark" aria-hidden="true"><i /><b>CTRL</b></div>
+                <h3><code>exporter.gd</code></h3>
+                <p>{t.architectureControllerBody}</p>
+              </li>
+
+              <li className="architecture-stage architecture-pipeline">
+                <div className="architecture-stage-head"><span>03</span><small>PIPELINE</small></div>
+                <h3>{t.architecturePipeline}</h3>
+                <ul className="architecture-services">
+                  {t.architectureServices.map(([name, detail], index) => (
+                    <li key={name}>
+                      <span aria-hidden="true">0{index + 1}</span>
+                      <div><code>{name}</code><p>{detail}</p></div>
+                      <i aria-hidden="true">✓</i>
+                    </li>
+                  ))}
+                </ul>
+              </li>
+
+              <li className="architecture-stage architecture-delivery">
+                <div className="architecture-stage-head"><span>04</span><small>COMMIT</small></div>
+                <h3>{t.architectureDelivery}</h3>
+                <div className="architecture-output-path">
+                  {t.architectureOutputs.map(([name, detail], index) => (
+                    <div className="architecture-output-node" key={name}>
+                      <code>{name}</code>
+                      <p>{detail}</p>
+                      {index === 0 && <span className="architecture-output-arrow" aria-hidden="true">↓</span>}
+                    </div>
+                  ))}
+                </div>
+              </li>
+            </ol>
+
+            <aside className="architecture-foundation" aria-labelledby="architecture-foundation-title">
+              <div className="architecture-foundation-heading">
+                <div><span aria-hidden="true">DEPENDENCIES</span><h3 id="architecture-foundation-title">{t.architectureFoundation}</h3></div>
+                <p>{t.architectureFoundationBody}</p>
+              </div>
+              <div className="architecture-support-grid">
+                {t.architectureSupports.map(([name, detail, target], index) => (
+                  <article className={`architecture-support-card architecture-support-${index + 1}`} key={name}>
+                    <div className="architecture-support-top"><span>{index === 0 ? "CORE" : index === 1 ? "ENGINE" : "RUNTIME"}</span><i aria-hidden="true" /></div>
+                    <h4><code>{name}</code></h4>
+                    <p>{detail}</p>
+                    {name === "Bridge ABI" && (
+                      <div className="architecture-platforms" aria-label={t.architecturePlatforms}>
+                        <span><i aria-hidden="true" />WeChat</span>
+                        <span><i aria-hidden="true" />Douyin</span>
+                      </div>
+                    )}
+                    <div className="architecture-binding"><span aria-hidden="true">↳</span><code>{target}</code></div>
+                  </article>
+                ))}
+              </div>
+            </aside>
+          </figure>
+        </div>
+      </section>
+
       <section className="section tech-section">
         <div className="container tech-layout">
           <div className="tech-copy reveal">
@@ -458,9 +613,9 @@ export default function Home() {
             </div>
           </div>
           <div className="install-card reveal">
-            <div className="install-bar"><span>INSTALLATION</span><b>v0.1.1</b></div>
+            <div className="install-bar"><span>INSTALLATION</span><b>v{VERSION}</b></div>
             <ol>
-              <li><span>1</span><div><strong>Download</strong><code>godot_mini_game_v0.1.1.zip</code></div></li>
+              <li><span>1</span><div><strong>Download</strong><code>{PACKAGE_FILENAME}</code></div></li>
               <li><span>2</span><div><strong>Extract to project</strong><code>res://addons/godot_mini_game/</code></div></li>
               <li><span>3</span><div><strong>Enable plugin</strong><code>Project Settings → Plugins</code></div></li>
               <li><span>4</span><div><strong>Export</strong><code>Mini Game Export → Export</code></div></li>

@@ -4,6 +4,7 @@ const sourceUrl = new URL("../../addons/godot_mini_game/MiniGameSDK.gd", import.
 const outputUrl = new URL("../app/api/api-data.generated.ts", import.meta.url);
 
 const categories = [
+  { id: "bridge", title: "Bridge 运行时", titleEn: "Bridge runtime", summary: "版本化 JS/GDScript 桥接身份、ABI 握手与初始化状态。", platform: "dual" },
   { id: "storage", title: "本地存储", titleEn: "Storage", summary: "同步读写小游戏本地键值存储。", platform: "bridge" },
   { id: "auth", title: "登录与会话", titleEn: "Authentication", summary: "登录、会话校验与用户资料。", platform: "bridge" },
   { id: "privacy", title: "隐私授权", titleEn: "Privacy", summary: "隐私协议查询、授权和隐私弹窗回调。", platform: "wechat" },
@@ -144,6 +145,7 @@ function refineMethodCategory(name, category) {
 
 function categoryForSignal(name) {
   const rules = [
+    [/^bridge_/, "bridge"],
     [/^(login_|session_|user_info_)/, "auth"],
     [/^privacy_/, "privacy"],
     [/^(setting_|authorization_)/, "authorization"],

@@ -26,16 +26,12 @@
 
 | 工具 | 版本 | 用途 |
 |------|------|------|
-| Godot | 4.3 – 4.6（测试过） | 引擎本体 |
+| Godot | 4.6.1 已认证；其他版本必须精确匹配模板 | 引擎本体 |
 | 微信开发者工具 | latest stable | 调试/上传微信小游戏 |
 | 抖音开发者工具 | latest stable | 调试/上传抖音小游戏 |
-| Node.js | ≥ 16 LTS（推荐） | 使用内置 zlib 做 Brotli 压缩 |
-| brotli CLI | 可选 | Node 不可用时的回退方案 |
 
-> macOS 安装 Brotli：`brew install brotli`
-> Ubuntu / Debian：`sudo apt install brotli`
-
-Brotli 用于在导出时把 `godot.wasm` 压缩成 `godot.wasm.br`（小游戏平台默认用 Brotli 解码 WASM，可以把包从 ~20 MB 压到 ~6 MB）。没有 Node 和 brotli CLI 时插件会跳过压缩，改为发布未压缩的 `.wasm`，体积会超过单包 4 MB 上限，不建议这么做。
+日常导出不需要 Node.js、Brotli CLI、Emscripten 或 Godot 标准 Web 模板。
+Release 已包含经过验证的 Brotli 引擎包；编译与验证工具只属于维护者依赖，见第 12 节。
 
 ---
 
@@ -43,7 +39,7 @@ Brotli 用于在导出时把 `godot.wasm` 压缩成 `godot.wasm.br`（小游戏�
 
 ### 方式 A：下载 Release
 
-从 [Releases 页](../../releases) 下载最新 `godot_mini_game-*.zip`，解压后把 `addons/godot_mini_game/` 放到项目根目录：
+从 [Releases 页](https://github.com/AnranS/godot_for_minigame/releases) 下载最新 `godot_mini_game_v*.zip`，解压后把 `addons/godot_mini_game/` 放到项目根目录：
 
 ```
 your_project/
@@ -80,9 +76,12 @@ Godot 编辑器 → **Project > Project Settings > Plugins** → 勾选 **Godot 
 
 **Project > Export** → **Add...** → 选 **Web**。名字随便起（例如 `MiniGame`），其它参数保持默认即可，不需要下载 Web 导出模板。
 
-> **为什么不需要下载模板？** 插件用 `--export-pack` 只导出 `.pck`，引擎二进制从 `addons/godot_mini_game/engine/` 读取。这绕开了 Godot 官方 Web 模板的 WASM 特性限制（SIMD / 异常 Tag 在真机 `WXWebAssembly` 上跑不起来）。
+> **为什么不需要下载官方标准模板？** 插件用 `--export-pack` 只导出 `.pck`，
+> 再选择一份有完整 manifest 的小游戏引擎包。这绕开了官方 Web 模板的 WASM
+> 特性限制（SIMD / 异常 Tag 在真机 `WXWebAssembly` 上跑不起来）。
 
-> **导出过滤会被覆盖**：插件会把所选预设的 `export_filter` 强制改成 `all_resources`，并清掉 `export_files`，确保所有资源都被打包。如果你有严格的资源筛选需求，建议专门建一个供插件使用的预设。
+> **导出过滤会被保留**：插件只读取所选 Web 预设，不再改写
+> `export_presets.cfg`。请在导出前把需要的资源过滤规则配置在该预设中。
 
 ---
 
@@ -120,21 +119,32 @@ Dock 自动扫描 `export_presets.cfg` 里的所有预设，选择第 3 步创�
 
 ### 输出目录 Output
 
-点 **浏览** 选一个**空目录**，每次导出都会覆盖里面的 `engine/`、`subpacks/`、`js/`、`images/`、`game.js`、`game.json` 等。为了避免冲突，不要把输出目录放在 Godot 项目内。
+第一次导出请选择 Godot 项目之外的**空目录**。成功后插件会写入
+经过完整校验的 `.godot-mini-game-export.json` 所有权 manifest；以后可继续复用这个
+受管目录。无有效 manifest 的非空目录、被修改的受管产物，或受管目录内未列出的
+内容都会被拒绝，不会被自动接管或覆盖。其它顶层名称下的旁路文件会保留。
 
 ### 导出 Export
 
-点击后，Dock 日志区会输出 5 个步骤进度：
+点击后，Dock 日志区会输出七个事务阶段：
 
 ```
-步骤 1/5: 导出资源包 (.pck) ...
-步骤 2/5: 获取引擎文件 (godot.js / godot.wasm) ...
-步骤 3/5: 复制 JS 运行时模板 ...
-步骤 4/5: 生成平台配置 (wechat) ...
-步骤 5/5: 创建占位文件 ...
+步骤 1/7: 在 staging 导出资源包
+步骤 2/7: 复制一个经过验证的完整引擎包
+步骤 3/7: 复制公共 JavaScript 运行时
+步骤 4/7: 装配微信或抖音平台文件
+步骤 5/7: 创建平台要求的占位文件
+步骤 6/7: 写入并验证产物 manifest
+步骤 7/7: 加锁、复核并事务发布
 ```
 
 完成后会弹窗提示导出路径。任何步骤报错都会在日志里用红色标出。
+
+普通发布错误会在同一进程内用同级 backup 回滚受管路径。进程或系统突然中断则不同：
+导出器会保留输出旁的 `.name.godot-mini-game.lock/journal.json`、staging 和可能存在的
+backup，并拒绝继续发布。此时先关闭 Godot 与平台工具，完整保留这些路径，把输出和
+恢复路径一起移到安全归档，再导出到新的空目录；比对归档与新结果后再人工清理。导出器
+不会跨越崩溃窗口猜测并自动删除文件。
 
 ---
 
@@ -144,22 +154,27 @@ Dock 顶部的 **引擎模板** 栏显示当前查找结果。插件按以下顺
 
 | 优先级 | 位置 | 使用场景 |
 |--------|------|---------|
-| 1 | `addons/godot_mini_game/godot.js` + `godot.wasm.br` | 手动覆盖（调试/定制） |
-| 2 | `addons/godot_mini_game/engine/` | 插件内置，默认走这里 |
-| 3 | `~/.config/godot_mini_game/templates/{major.minor}/` | 通过 Dock 导入的模板库 |
-| 4 | Godot 官方 Web 导出模板 zip | 仅开发者工具模拟器可用，带警告 |
+| 1 | `addons/godot_mini_game/` | 带 `template.json` 的完整项目覆盖包 |
+| 2 | `{config}/godot_mini_game/templates/v1/{version}/{commit}/emsdk-{emscripten}/2d_full/release/abi-{abi}/r{revision}/` | 精确版本导入包，优先最高匹配 revision |
+| 3 | `addons/godot_mini_game/engine/` | 内置认证模板包 |
+| 4 | 旧版精确版本 / major-minor 目录 | 只读兼容，仅接受有完整精确 manifest 的模板 |
+
+导出器不会混用两个来源里的文件，也不会回退到官方标准 Web 模板。完整兼容契约见
+[架构与多版本策略](ARCHITECTURE.md)。
+精确版本模板库先选最高 revision；revision 相同则选数值上更新的 Emscripten 身份，
+最后用稳定路径打破平局。
 
 ### 导入新版引擎模板
 
 点 **导入模板**，选一个 zip：
-- 可以是 GitHub Actions 产出的 `minigame-template-*.zip`
+- 可以是 GitHub Actions 产出的 `godot_minigame_template_*_emsdk-*_2d-full_release_abi-*_r*.zip`
 - 也可以是自己用 `scripts/build_wasm_template.sh` 编出来的 zip
 
 导入流程：
-1. 插件扫描 zip 里的 `godot.js`、`godot.wasm` / `godot.wasm.br`
-2. 解压到 `~/.config/godot_mini_game/templates/{4.x}/`（跨项目复用）
-3. 如果只找到未压缩的 `.wasm`，会自动调 Node/brotli CLI 生成 `.wasm.br`
-4. 写入 `version.txt` 做版本标记
+1. 强制要求包内恰好包含 `template.json`、`version.txt`、`godot.js`、`godot.wasm.br` 与 `GODOT_COPYRIGHT.txt`
+2. 验证精确版本、完整源码提交、Emscripten 版本、profile、target、revision、Bridge ABI、特性开关和两个 SHA-256
+3. 把完整模板先写入 schema 版本化的多版本 staging
+4. 按 manifest 编码的身份路径事务发布
 
 ### 刷新
 
@@ -184,17 +199,18 @@ Dock 顶部的 **引擎模板** 栏显示当前查找结果。插件按以下顺
 
 ```
 <output>/
+├── .godot-mini-game-export.json   # 所有权、模板身份与产物哈希
 ├── game.js                # 平台入口（wechat/douyin 专属）
 ├── game.json              # 平台 manifest
 ├── project.config.json
 ├── project.private.config.json   # 仅微信
 ├── adapter.js             # DOM/BOM/Audio/Input 适配层
 ├── fetch.js               # fetch/XHR polyfill
+├── audio/
+│   └── demo-tone.wav      # 运行时音频探测资源
 ├── engine/                # 引擎子包
 │   ├── godot.wasm.br      # Brotli 压缩的 WASM
 │   ├── godot.zip          # 由 .pck 重命名而来的资源包
-│   ├── godot.audio.worklet.js
-│   ├── godot.audio.position.worklet.js
 │   └── game.js            # 占位（子包必须有 game.js）
 ├── subpacks/              # 预留的额外子包目录
 │   └── game.js            # 占位
@@ -202,7 +218,9 @@ Dock 顶部的 **引擎模板** 栏显示当前查找结果。插件按以下顺
 │   ├── libs/
 │   │   ├── godot.js       # 打过补丁的 Emscripten 胶水
 │   │   └── sdk.js         # GDScript ↔ JS 桥
+│   ├── image_loader.js    # 宿主图片加载器
 │   ├── loader.js          # 加载动画 + 启动引擎
+│   ├── platform_runtime.js # wx/tt provider 与能力契约
 │   └── worker/
 │       └── position_reporting.js  # 微信 game.json 要求的 worker 目录
 └── images/
@@ -212,8 +230,8 @@ Dock 顶部的 **引擎模板** 栏显示当前查找结果。插件按以下顺
 
 ### 重要约定
 
-- **`engine/` 是微信分包 `engine`**：`game.json` 里声明 `{"root":"engine/","name":"engine"}`，loader 在启动时用 `wx.loadSubpackage({name:"engine"})` 拉取，冷启动更快。
-- **`subpacks/` 是预留分包**：暂时空着。如果你有大额资源（比如关卡数据、视频），可以把它们放进 `subpacks/` 并在 `game.json` 里扩展 `subpackages`。
+- **`engine/` 是分包 `engine`**：`game.json` 里声明 `{"root":"engine/","name":"engine"}`，loader 启动时通过已选择的 `wx`/`tt` provider 调 `loadSubpackage({name:"engine"})`，只先下载主包。
+- **上述顶层文件和 `audio/`、`engine/`、`images/`、`js/`、`subpacks/` 整体归导出器管理。** 不要在其中添加自定义文件；预检会拒绝未列入 manifest 的内容，而不是静默删除。旁路文件请放在其它顶层名称下，游戏资源应通过 Godot 导出预设/PCK 打包。
 - **`js/worker/` 必须存在**：微信 `game.json` 里声明了 `workers.path: js/worker`，哪怕不真用 Worker 也要有这个目录，否则上传 / 真机会报错。
 
 ---
@@ -1413,23 +1431,21 @@ MiniGameSDK.call_api("getStorageSync", {"_args": ["level"]})
 | `engine` | `engine/` | `godot.wasm.br` + `godot.zip`（资源 `.pck`） |
 | `subpacks` | `subpacks/` | 预留，默认空 |
 
-微信主包上限 4 MB，分包上限 4 MB，总包上限 20 MB（截至 2026 Q1）。插件把 WASM 和资源塞进 `engine` 分包，主包通常 < 500 KB。
+导出器把引擎和所选 Godot 资源放入 `engine`，CI 会按已配置的微信主包限制检查
+产物。提交前仍应在目标平台开发者后台确认当时适用的单包与总包限制。
 
-### 拆大资源到 `subpacks/`
+### 大资源与 `subpacks/`
 
-如果 `godot.zip` 超过 4 MB，需要切分资源。最简单的做法：
-
-1. 在 Godot 里把大资源（视频、音频、高清贴图）放到一个单独的目录，例如 `res://heavy/`
-2. 导出预设里暂时不过滤——插件强制 `all_resources`，因此当前无法在插件内拆分
-3. 进阶做法：导出后手动把 `engine/godot.zip` 里的部分资源（用 `Godot --headless --export-pack` 分多次生成）移到 `subpacks/`，并在 `game.json` 里新增 `{"root":"subpacks/","name":"subpacks"}`（插件已经声明好）
-
-> TODO（issue 跟踪）：当前插件只生成一个 `.pck`。多包导出需要自己扩展 `exporter.gd::_export_pck`。
+v0.2 只生成一个 `.pck`，暂未提供受管的多包输入。请使用所选 Web 预设的资源过滤
+（插件会保留它）和 Godot 资源压缩来缩小 `godot.zip`。不要把自定义 PCK 手工放进导出后的
+`subpacks/`，也不要修改 `game.json`：它们归导出器管理，下一次预检会正确拒绝被修改或
+未列入清单的输出。要正式支持自定义分包，需要扩展 exporter，把输入复制到 staging 并
+写入所有权 manifest。
 
 ### 静态资源
 
-- `images/logo.png`、`images/background.png` 由插件在首次导出时写入占位。想自定义：
-  - 把 PNG 丢到 `addons/godot_mini_game/templates/common/images/` 里覆盖
-  - 或者每次导出完手动替换输出目录里的图
+- `images/logo.png` 来自 `addons/godot_mini_game/templates/common/images/logo.png`；要自定义请在导出前替换该源文件。
+- `images/background.png` 当前由 exporter 生成。正式自定义需要增加源模板选项；直接修改受管输出会让下一次预检按设计失败。
 
 ---
 
@@ -1439,8 +1455,8 @@ MiniGameSDK.call_api("getStorageSync", {"_args": ["level"]})
 
 Godot 的 `user://` 默认存到 IDBFS（IndexedDB），在小游戏环境下会被 loader 拦截：
 
-- 启动时 loader 调 `godotSdk.copyLocalToFS(p)` 把持久化路径从 `wx.getStorage` 恢复到 emscripten FS
-- 每 5 秒 `setInterval` 一次 `godotSdk.syncfs()` 把 FS 落回 `wx.setStorage`
+- 启动时 loader 调 `godotSdk.copyLocalToFS(p)`，从已选择的 `wx`/`tt` provider 恢复持久化路径到 emscripten FS
+- 每 5 秒 `setInterval` 一次 `godotSdk.syncfs()`，把 FS 写回宿主存储
 
 如果你想立刻落盘（比如在关键节点），可以：
 
@@ -1491,7 +1507,8 @@ JavaScriptBridge.eval("GameGlobal.godotSdk.syncfs(null, ()=>{})")
 
 ## 12. 编译自定义引擎模板
 
-仓库内 `scripts/build_wasm_template.sh` 可以为任意 Godot 4.x 编译小游戏兼容模板。
+仓库内 `scripts/build_wasm_template.sh` 可以从一个精确 Godot 4.x tag 编译小游戏
+兼容模板。新版本只有写入 `support-matrix.json` 并通过微信、抖音双平台冒烟后才算认证。
 
 ```bash
 # 默认 Godot 4.6.1-stable + Emscripten 4.0.3
@@ -1506,17 +1523,18 @@ JavaScriptBridge.eval("GameGlobal.godotSdk.syncfs(null, ()=>{})")
 
 流程：
 
-1. 安装 / 激活 emsdk（默认装到 `~/Desktop/build_wasm/emsdk`）
-2. `git clone` Godot 源码
-3. `scons platform=web target=template_release production=yes threads=no wasm_simd=no SUPPORT_LONGJMP='emscripten'`
-4. 产物在 `build_wasm/output/minigame-template-{version}.zip`
-5. 回到编辑器，点 Dock 里的 **导入模板** 选这个 zip
+1. 安装并激活精确的 emsdk 版本（缓存默认位于 `build_wasm/emsdk`，也可用 `GODOT_MINIGAME_BUILD_DIR` 指定）。
+2. 克隆精确 Godot tag；缓存源码只要 tag 不符或存在本地改动，脚本就拒绝继续。
+3. 临时强制 Emscripten longjmp 模式，并用 `wasm_simd=no`、`threads=no`、禁用动态链接及 WebRTC/XR 模块等参数编译 Web release 模板；退出时自动恢复源码补丁。
+4. 使用共享校验器检查 JavaScript 语法、Brotli/WASM 结构、禁用特性、来源身份与哈希。
+5. 产物位于 `build_wasm/output/{tag}/emsdk-{version}/2d_full/release/abi-{abi}/r{revision}/godot_minigame_template_{tag}_emsdk-{version}_2d-full_release_abi-{abi}_r{revision}.zip`。
+6. 回到编辑器，点 Dock 里的 **导入模板** 选择该 ZIP。
 
 > Apple Silicon 约 5 分钟；Intel / Linux 约 8-15 分钟。
 
 ### 通过 GitHub Actions 构建
 
-仓库有 `.github/workflows/build_wasm_template.yml`，可以手动触发（**Actions > Build Mini-Game WASM Template > Run workflow**）。适合没有本地 emcc 环境的场景。
+仓库有 `.github/workflows/build-template.yml`，可以手动触发（**Actions > Build Mini-Game WASM Template > Run workflow**）。默认只生成经过验证的构建产物；只有显式打开发布选项且全部二进制检查通过后才会创建 Release。
 
 ---
 
@@ -1524,21 +1542,22 @@ JavaScriptBridge.eval("GameGlobal.godotSdk.syncfs(null, ()=>{})")
 
 ### Q: 导出时提示「缺少 godot.js」
 
-A: 查看 Dock 上方的 **引擎模板** 状态。四种情况：
+A: 查看 Dock 上方的 **引擎模板** 状态：
 - 内置缺失：检查 `addons/godot_mini_game/engine/` 是否有 `godot.js` 和 `godot.wasm.br`
-- 自定义没找到：看下 `addons/godot_mini_game/godot.js` / `godot.wasm.br` 拼写
+- 自定义没找到：除了两个文件，还必须有匹配的 `template.json`
 - 模板库为空：点 **导入模板** 导一份
-- 只有官方模板：能跑但仅限模拟器，真机可能崩。点 **导入模板** 换兼容版
+- 版本或提交不匹配：为当前精确编辑器构建导入对应模板
 
 ### Q: 导出能跑但真机提示 `CompileError: OOM / magic Tag section`
 
-A: 走的是官方 Web 模板（Priority 4），WASM 带了 SIMD 或异常 Tag。跑 `./scripts/build_wasm_template.sh` 编一份，或从 Release 下 `minigame-template-*.zip` 导入。
+A: 当前运行工程包含不兼容或被外部替换的引擎。0.2 导出器不会再选择官方
+Web 模板；请用精确匹配、验证通过的模板重新导出，或运行
+`./scripts/build_wasm_template.sh` 构建对应版本。
 
-### Q: Node 已经装了，但日志还是说未找到
+### Q: 为什么旧版模板 ZIP 被拒绝？
 
-A: 插件在 macOS 上只检查了 `/usr/local/bin/node`、`/opt/homebrew/bin/node`、`/usr/bin/node` 这几处，以及 `which node`。如果你的 Node 装在别处（比如 nvm 的 `~/.nvm/versions/...`），可以：
-- 做一个软链：`ln -s $(which node) /usr/local/bin/node`
-- 或者装 brotli CLI：`brew install brotli`
+A: 0.2 强制要求完整 `template.json`，不会根据来源未知的二进制文件自动生成
+manifest。请用当前脚本重新构建，或从 Releases 下载经过验证的模板包。
 
 ### Q: 我能直接用标准 Web 导出吗？
 
@@ -1558,7 +1577,7 @@ A: `storage_set/get` 的 key 自己加用户前缀，例如 `"user:%s:level" % o
 
 ### Q: PR / issue 反馈在哪里？
 
-A: 欢迎 [issue](../../issues) 和 [discussion](../../discussions)。提 bug 请附上：
+A: 欢迎 [issue](https://github.com/AnranS/godot_for_minigame/issues) 和 [discussion](https://github.com/AnranS/godot_for_minigame/discussions)。提 bug 请附上：
 - Godot 版本
 - 平台（微信/抖音）
 - 基础库版本

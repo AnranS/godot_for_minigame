@@ -6,45 +6,135 @@ on:
       - "addons/godot_mini_game/**"
       - "scenes/**"
       - "scripts/**"
+      - "test/**"
+      - "support-matrix.json"
       - "project.godot"
-      - ".github/workflows/smoke-test-export.yml"
+      - ".github/workflows/*.yml"
   push:
     branches: [main]
+  workflow_call: {}
   workflow_dispatch: {}
 
-# End-to-end smoke check: install Godot 4.6, run the exporter against the
-# in-repo demo project for both platforms, then validate that every artifact
-# the WeChat / Douyin DevTools needs is present, the right size, and parses.
-# This is the test the project was missing — CI previously only verified that
-# a custom engine could be compiled, never that the export pipeline produced
-# anything loadable.
 jobs:
-  export:
+  matrix:
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        platform: [wechat, douyin]
+    outputs:
+      bundled_godot_tag: ${{ steps.contract.outputs.bundled_godot_tag }}
+      export_matrix: ${{ steps.contract.outputs.export_matrix }}
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Brotli
-        run: sudo apt-get update && sudo apt-get install -y brotli jq
-
-      - name: Install Godot 4.6.1-stable (headless)
+      - name: Resolve every certified automated target
+        id: contract
+        shell: bash
         run: |
-          set -e
-          GODOT_VERSION=4.6.1-stable
-          URL="https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}/Godot_v${GODOT_VERSION}_linux.x86_64.zip"
-          curl -sSL -o godot.zip "$URL"
-          unzip -q godot.zip
-          chmod +x Godot_v${GODOT_VERSION}_linux.x86_64
-          sudo mv Godot_v${GODOT_VERSION}_linux.x86_64 /usr/local/bin/godot
+          set -euo pipefail
+          jq -e '
+            (.certified | length > 0) and
+            ([.certified[] | select(.template.source == "bundled")] | length == 1) and
+            all(.certified[];
+              (.template.source == "bundled") or
+              (
+                .template.source == "release" and
+                (.template.releaseTag | type == "string" and length > 0) and
+                (.template.asset | type == "string" and test("^[0-9A-Za-z._-]+\\.zip$"))
+              )
+            )
+          ' support-matrix.json >/dev/null
+          bundled_godot_tag="$(jq -er '.certified[] | select(.template.source == "bundled") | .godotTag' support-matrix.json)"
+          export_matrix="$(jq -ce '
+            . as $matrix
+            | {
+              include: [
+                $matrix.certified[] as $target
+                | $target.platforms
+                | to_entries[]
+                | select(.value == "automated")
+                | {
+                    platform: .key,
+                    godotTag: $target.godotTag,
+                    godotVersion: $target.godotVersion,
+                    godotCommit: $target.godotCommit,
+                    emscriptenVersion: $target.emscriptenVersion,
+                    profile: $target.profile,
+                    target: $target.target,
+                    templateRevision: $target.templateRevision,
+                    bridgeAbi: $matrix.bridgeAbi,
+                    templateSchema: $matrix.templateSchema,
+                    outputManifestSchema: $matrix.outputManifestSchema,
+                    templateSource: $target.template.source,
+                    templateReleaseTag: ($target.template.releaseTag // ""),
+                    templateAsset: ($target.template.asset // "")
+                  }
+              ]
+            }
+            | select(.include | length > 0)
+          ' support-matrix.json)"
+          echo "bundled_godot_tag=$bundled_godot_tag" >> "$GITHUB_OUTPUT"
+          echo "export_matrix=$export_matrix" >> "$GITHUB_OUTPUT"
+
+  unit:
+    needs: matrix
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      GODOT_VERSION: ${{ needs.matrix.outputs.bundled_godot_tag }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Godot
+        run: |
+          set -euo pipefail
+          url="https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}/Godot_v${GODOT_VERSION}_linux.x86_64.zip"
+          curl -fsSL -o /tmp/godot.zip "$url"
+          unzip -q /tmp/godot.zip -d /tmp/godot
+          chmod +x "/tmp/godot/Godot_v${GODOT_VERSION}_linux.x86_64"
+          sudo mv "/tmp/godot/Godot_v${GODOT_VERSION}_linux.x86_64" /usr/local/bin/godot
           godot --version
 
-      - name: Create a Web export preset
-        # The exporter rewrites this anyway (to all_resources). We only need
-        # a preset to exist with the name "MiniGame".
+      - name: Import project
+        run: godot --headless --log-file /tmp/godot-import.log --import --quit
+
+      - name: Run all JavaScript tests
+        run: |
+          set -euo pipefail
+          for test_file in test/*.test.mjs; do
+            node "$test_file"
+          done
+
+      - name: Run all GDScript tests
+        run: |
+          set -euo pipefail
+          for test_file in test/*_test.gd; do
+            godot --headless --log-file /tmp/godot-test.log --path . --script "res://${test_file}"
+          done
+
+  export:
+    needs: [matrix, unit]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      GODOT_VERSION: ${{ matrix.godotTag }}
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.matrix.outputs.export_matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install validation tools
+        run: sudo apt-get update && sudo apt-get install -y brotli jq wabt
+
+      - name: Install Godot
+        run: |
+          set -euo pipefail
+          url="https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}/Godot_v${GODOT_VERSION}_linux.x86_64.zip"
+          curl -fsSL -o /tmp/godot.zip "$url"
+          unzip -q /tmp/godot.zip -d /tmp/godot
+          chmod +x "/tmp/godot/Godot_v${GODOT_VERSION}_linux.x86_64"
+          sudo mv "/tmp/godot/Godot_v${GODOT_VERSION}_linux.x86_64" /usr/local/bin/godot
+          godot --version
+
+      - name: Create Web export preset
         run: |
           cat > export_presets.cfg <<'EOF'
           [preset.0]
@@ -78,119 +168,198 @@ jobs:
           progressive_web_app/enabled=false
           EOF
 
-      - name: Import project (populate .godot cache)
-        run: |
-          godot --headless --import --quit 2>&1 | tail -20 || true
+      - name: Import project
+        run: godot --headless --log-file /tmp/godot-import.log --import --quit
 
-      - name: Run focused unit tests
+      - name: Install certified release template
+        if: matrix.templateSource == 'release'
+        env:
+          TEMPLATE_RELEASE_TAG: ${{ matrix.templateReleaseTag }}
+          TEMPLATE_ASSET: ${{ matrix.templateAsset }}
         run: |
-          set -e
-          node test/sdk_bridge.test.mjs
-          godot --headless --path . --script res://test/exporter_version_test.gd
-          godot --headless --path . --script res://test/minigame_sdk_test.gd
-
-      - name: Run exporter for ${{ matrix.platform }}
-        run: |
-          mkdir -p /tmp/export_out
-          # Drive the exporter directly from a one-shot SceneTree script so we
-          # exercise the same code path the dock uses (incl. async _export_pck).
-          cat > /tmp/run_export.gd <<EOF
+          set -euo pipefail
+          curl -fsSL \
+            -o /tmp/godot-minigame-template.zip \
+            "https://github.com/${GITHUB_REPOSITORY}/releases/download/${TEMPLATE_RELEASE_TAG}/${TEMPLATE_ASSET}"
+          cat > /tmp/import_template.gd <<'EOF'
           extends SceneTree
           func _init() -> void:
               var Exporter := load("res://addons/godot_mini_game/exporter.gd")
-              var ex = Exporter.new()
-              ex.log_callback = func(msg: String) -> void: print("[export] ", msg)
-              var err = await ex.export_mini_game(
+              var exporter = Exporter.new()
+              var error = exporter.import_template_zip("/tmp/godot-minigame-template.zip")
+              quit(0 if error == OK else 1)
+          EOF
+          godot --headless --log-file /tmp/godot-template-import.log --path . --script /tmp/import_template.gd
+
+      - name: Verify selected certified template identity
+        env:
+          EXPECTED_SOURCE: ${{ matrix.templateSource }}
+          EXPECTED_GODOT_VERSION: ${{ matrix.godotVersion }}
+          EXPECTED_GODOT_COMMIT: ${{ matrix.godotCommit }}
+          EXPECTED_EMSCRIPTEN_VERSION: ${{ matrix.emscriptenVersion }}
+          EXPECTED_PROFILE: ${{ matrix.profile }}
+          EXPECTED_TARGET: ${{ matrix.target }}
+          EXPECTED_REVISION: ${{ matrix.templateRevision }}
+          EXPECTED_BRIDGE_ABI: ${{ matrix.bridgeAbi }}
+          EXPECTED_TEMPLATE_SCHEMA: ${{ matrix.templateSchema }}
+        run: |
+          set -euo pipefail
+          cat > /tmp/verify_template_identity.gd <<'EOF'
+          extends SceneTree
+          func _init() -> void:
+              var Exporter := load("res://addons/godot_mini_game/exporter.gd")
+              var TemplateBundle := load("res://addons/godot_mini_game/core/template_bundle.gd")
+              var status: Dictionary = Exporter.get_template_status()
+              var expected_source := "bundled" if OS.get_environment("EXPECTED_SOURCE") == "bundled" else "store"
+              var valid := (
+                  bool(status.get("ready", false))
+                  and str(status.get("source", "")) == expected_source
+                  and str(status.get("template_version", "")) == OS.get_environment("EXPECTED_GODOT_VERSION")
+                  and str(status.get("template_commit", "")) == OS.get_environment("EXPECTED_GODOT_COMMIT")
+                  and str(status.get("emscripten_version", "")) == OS.get_environment("EXPECTED_EMSCRIPTEN_VERSION")
+                  and str(status.get("profile", "")) == OS.get_environment("EXPECTED_PROFILE")
+                  and str(status.get("target", "")) == OS.get_environment("EXPECTED_TARGET")
+                  and int(status.get("template_revision", 0)) == int(OS.get_environment("EXPECTED_REVISION"))
+                  and int(status.get("bridge_abi", 0)) == int(OS.get_environment("EXPECTED_BRIDGE_ABI"))
+                  and TemplateBundle.SCHEMA_VERSION == int(OS.get_environment("EXPECTED_TEMPLATE_SCHEMA"))
+              )
+              print(JSON.stringify(status))
+              quit(0 if valid else 1)
+          EOF
+          godot --headless --log-file /tmp/godot-template-identity.log --path . --script /tmp/verify_template_identity.gd
+
+      - name: Run exporter for ${{ matrix.platform }}
+        run: |
+          set -euo pipefail
+          cat > /tmp/run_export.gd <<'EOF'
+          extends SceneTree
+          func _init() -> void:
+              var Exporter := load("res://addons/godot_mini_game/exporter.gd")
+              var exporter = Exporter.new()
+              exporter.log_callback = func(message: String) -> void: print("[export] ", message)
+              var error = await exporter.export_mini_game(
                   "${{ matrix.platform }}",
                   "wxtest123",
                   "portrait",
                   "MiniGame",
                   "/tmp/export_out"
               )
-              if err != OK:
-                  push_error("Export failed: %s" % error_string(err))
-                  quit(1)
-              quit(0)
+              quit(0 if error == OK else 1)
           EOF
-          godot --headless --path . --script /tmp/run_export.gd
-          echo "---"
-          echo "Tree:"
+          godot --headless --log-file /tmp/godot-export.log --path . --script /tmp/run_export.gd
           find /tmp/export_out -maxdepth 3 -type f | sort
 
-      - name: Verify common artifacts
+      - name: Verify output contract
         run: |
-          set -e
-          OUT=/tmp/export_out
-          MUST_EXIST=(
+          set -euo pipefail
+          out=/tmp/export_out
+          required=(
             adapter.js
+            audio/demo-tone.wav
             fetch.js
             game.js
             game.json
             project.config.json
-            engine/godot.js
             engine/godot.wasm.br
             engine/godot.zip
+            js/image_loader.js
+            js/libs/godot.js
             js/libs/sdk.js
             js/loader.js
+            js/platform_runtime.js
             js/worker/position_reporting.js
             images/logo.png
             images/background.png
           )
-          for f in "${MUST_EXIST[@]}"; do
-            if [ ! -f "$OUT/$f" ]; then
-              echo "::error::MISSING: $f"
-              exit 1
-            fi
-            size=$(stat -c%s "$OUT/$f")
-            echo "OK: $f ($size bytes)"
+          for relative_path in "${required[@]}"; do
+            test -s "$out/$relative_path"
+            echo "OK: $relative_path ($(stat -c%s "$out/$relative_path") bytes)"
           done
+          test -s "$out/engine/game.js" || test -f "$out/engine/game.js"
+          test -s "$out/subpacks/game.js" || test -f "$out/subpacks/game.js"
 
-      - name: Verify wechat-only artifacts
-        if: matrix.platform == 'wechat'
+      - name: Verify exported certified identity
+        env:
+          EXPECTED_GODOT_VERSION: ${{ matrix.godotVersion }}
+          EXPECTED_GODOT_COMMIT: ${{ matrix.godotCommit }}
+          EXPECTED_EMSCRIPTEN_VERSION: ${{ matrix.emscriptenVersion }}
+          EXPECTED_PROFILE: ${{ matrix.profile }}
+          EXPECTED_TARGET: ${{ matrix.target }}
+          EXPECTED_REVISION: ${{ matrix.templateRevision }}
+          EXPECTED_BRIDGE_ABI: ${{ matrix.bridgeAbi }}
+          EXPECTED_OUTPUT_SCHEMA: ${{ matrix.outputManifestSchema }}
         run: |
-          set -e
-          test -f /tmp/export_out/project.private.config.json
-          echo "OK: project.private.config.json"
+          set -euo pipefail
+          jq -e \
+            --arg version "$EXPECTED_GODOT_VERSION" \
+            --arg commit "$EXPECTED_GODOT_COMMIT" \
+            --arg emscripten "$EXPECTED_EMSCRIPTEN_VERSION" \
+            --arg profile "$EXPECTED_PROFILE" \
+            --arg target "$EXPECTED_TARGET" \
+            --argjson revision "$EXPECTED_REVISION" \
+            --argjson bridge_abi "$EXPECTED_BRIDGE_ABI" \
+            --argjson output_schema "$EXPECTED_OUTPUT_SCHEMA" \
+            '
+              .schema_version == $output_schema and
+              .template.godot_version == $version and
+              .template.godot_commit == $commit and
+              .template.emscripten_version == $emscripten and
+              .template.profile == $profile and
+              .template.target == $target and
+              .template.revision == $revision and
+              .template.bridge_abi == $bridge_abi
+            ' /tmp/export_out/.godot-mini-game-export.json >/dev/null
 
-      - name: Validate JSON files parse
+      - name: Verify platform contract
         run: |
-          set -e
-          for f in /tmp/export_out/game.json /tmp/export_out/project.config.json; do
-            jq empty "$f" || (echo "::error::$f is not valid JSON" && exit 1)
-            echo "OK JSON: $f"
+          set -euo pipefail
+          if [ "${{ matrix.platform }}" = "wechat" ]; then
+            test -s /tmp/export_out/project.private.config.json
+          else
+            test ! -e /tmp/export_out/project.private.config.json
+          fi
+
+      - name: Validate generated configuration
+        run: |
+          set -euo pipefail
+          for json_file in /tmp/export_out/*.json; do
+            jq empty "$json_file"
           done
-
-      - name: Validate wasm.br size is sane
-        run: |
-          set -e
-          SIZE=$(stat -c%s /tmp/export_out/engine/godot.wasm.br)
-          echo "godot.wasm.br = $SIZE bytes"
-          # Bundled WASM is ~6 MB compressed; allow 1MB–15MB range.
-          # Below 1MB indicates a truncated download; above 15MB indicates
-          # compression was skipped or the wrong engine was bundled.
-          if [ "$SIZE" -lt 1048576 ] || [ "$SIZE" -gt 15728640 ]; then
-            echo "::error::godot.wasm.br size $SIZE is outside expected 1MB..15MB"
+          if grep -R -n -E '\{\{[A-Z_]+\}\}' /tmp/export_out; then
+            echo "Generated output still contains template placeholders" >&2
             exit 1
           fi
 
-      - name: Validate WeChat single-package limit
-        if: matrix.platform == 'wechat'
+      - name: Validate engine artifacts
         run: |
-          set -e
-          # Mini-game main package (everything outside the declared subpackages
-          # engine/ and subpacks/) must be < 4 MB.
-          MAIN_SIZE=$(find /tmp/export_out -maxdepth 1 -type f -printf '%s\n' | awk '{s+=$1} END {print s+0}')
-          MAIN_SIZE=$((MAIN_SIZE + $(find /tmp/export_out/js /tmp/export_out/images -type f -printf '%s\n' 2>/dev/null | awk '{s+=$1} END {print s+0}')))
-          echo "Main package size: $MAIN_SIZE bytes"
-          if [ "$MAIN_SIZE" -gt 4194304 ]; then
-            echo "::error::Main package exceeds WeChat 4 MB limit ($MAIN_SIZE bytes)"
+          set -euo pipefail
+          brotli --decompress --force --output=/tmp/godot.wasm /tmp/export_out/engine/godot.wasm.br
+          test "$(xxd -p -l 4 /tmp/godot.wasm)" = "0061736d"
+          # WABT disables threads and exception handling by default.
+          wasm-validate --disable-simd /tmp/godot.wasm
+          unzip -t /tmp/export_out/engine/godot.zip
+          size=$(stat -c%s /tmp/export_out/engine/godot.wasm.br)
+          if [ "$size" -lt 1048576 ] || [ "$size" -gt 15728640 ]; then
+            echo "godot.wasm.br size is outside the supported 1MB..15MB range: $size" >&2
             exit 1
           fi
 
-      - name: Upload export artifact for inspection
+      - name: Validate WeChat main-package limit
+        if: matrix.platform == 'wechat'
+        run: |
+          set -euo pipefail
+          root_size=$(find /tmp/export_out -maxdepth 1 -type f -printf '%s\n' | awk '{sum += $1} END {print sum + 0}')
+          asset_size=$(find /tmp/export_out/js /tmp/export_out/images /tmp/export_out/audio -type f -printf '%s\n' | awk '{sum += $1} END {print sum + 0}')
+          main_size=$((root_size + asset_size))
+          if [ "$main_size" -gt 4194304 ]; then
+            echo "WeChat main package exceeds 4 MB: $main_size" >&2
+            exit 1
+          fi
+
+      - name: Upload export artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: export-${{ matrix.platform }}
+          name: export-${{ matrix.godotTag }}-${{ matrix.platform }}
           path: /tmp/export_out
           retention-days: 7

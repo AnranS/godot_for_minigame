@@ -6,6 +6,12 @@
   <a href="README.md">English</a> · <strong>简体中文</strong>
 </p>
 
+<p align="center">
+  <a href="https://anrans.github.io/godot_for_minigame/">官方网站</a> ·
+  <a href="https://anrans.github.io/godot_for_minigame/api/">API 参考</a> ·
+  <a href="https://github.com/AnranS/godot_for_minigame/releases">版本发布</a>
+</p>
+
 ---
 
 一个 Godot 4.x 编辑器插件，把你的游戏一键打包成可直接提审的**微信小游戏**或**抖音小游戏**。内置预编译引擎模板——装好插件、点导出、用开发者工具打开即可。
@@ -37,19 +43,20 @@ your_project/
 或者克隆本仓库后，把 `addons/godot_mini_game/` 复制到你的项目里：
 
 ```bash
-git clone https://github.com/<owner>/<repo>.git
-cp -R <repo>/addons/godot_mini_game your_project/addons/
+git clone https://github.com/AnranS/godot_for_minigame.git
+cp -R godot_for_minigame/addons/godot_mini_game your_project/addons/
 ```
 
-> 维护者发布新版本时：先安装并登录 GitHub CLI（`gh auth login`），更新
-> `addons/godot_mini_game/plugin.cfg` 里的 `version`，提交后运行：
+> 维护者发布新版本时：同步更新 `plugin.cfg` 与 `support-matrix.json`
+> 中的版本并提交，然后运行：
 >
 > ```bash
-> scripts/release_plugin.sh 0.1.1
+> scripts/release_plugin.sh 0.2.0
 > ```
 >
-> 脚本会打包插件、创建/推送 `v0.1.1` tag，并把可安装的
-> `godot_mini_game_v0.1.1.zip` 上传到 GitHub Release 附件。
+> 脚本会校验安装包并推送一个全新的、不可复用的 `v0.2.0` tag。随后由
+> tag 工作流运行完整测试和双平台导出矩阵，并独占发布
+> `godot_mini_game_v0.2.0.zip`。
 
 ### 2. 启用插件
 
@@ -73,6 +80,8 @@ cp -R <repo>/addons/godot_mini_game your_project/addons/
 ## SDK API
 
 插件会把 `MiniGameSDK` 注册为 autoload，所有异步结果都通过信号回来。在非小游戏环境（比如编辑器里）所有方法都是安全的空实现，可以照常开发调试。
+启动时 autoload 会先协商 Bridge ABI 1，握手成功后才进入可用状态；排查运行时集成时可查看
+`is_mini_game`、`bridge_info` 与 `bridge_initialization_error`。
 
 ```gdscript
 # 登录
@@ -187,6 +196,7 @@ MiniGameSDK.vibrate_short("medium")
 | `app_shown` | `options_json: String` |
 | `app_hidden` | — |
 | `app_error` | `message: String` |
+| `bridge_initialization_failed` | `error: String` |
 
 ### 方法
 
@@ -254,16 +264,21 @@ MiniGameSDK.vibrate_short("medium")
 
 | 优先级 | 来源 | 说明 |
 |--------|------|------|
-| 1 | `addons/godot_mini_game/godot.js` + `godot.wasm.br` | 手动覆盖（最高） |
-| 2 | `addons/godot_mini_game/engine/` | 插件内置（默认） |
-| 3 | `~/.config/godot_mini_game/templates/{version}/` | 通过 Dock 导入 |
-| 4 | Godot 官方 Web 导出模板 | 仅开发者工具模拟器可用，会给出警告 |
+| 1 | `addons/godot_mini_game/` | 带完整 manifest 的项目级覆盖包 |
+| 2 | `{Godot config}/godot_mini_game/templates/v1/...` | Dock 导入的身份隔离包；优先最高 revision，再选更新的 Emscripten 身份 |
+| 3 | `addons/godot_mini_game/engine/` | 内置认证模板包 |
+| 4 | 旧版精确版本 / major-minor 模板库 | 只读兼容；仅接受具备完整精确 manifest 的模板 |
+
+每个运行时来源都必须是不可拆分的 `template.json` + `version.txt` + `godot.js` +
+`godot.wasm.br` 模板包；导入 ZIP 还必须带 `GODOT_COPYRIGHT.txt`。编辑器版本、Godot 源码提交、Emscripten 版本、profile、target、
+Bridge ABI、特性开关和产物 SHA-256 必须全部匹配；官方标准 Web 模板不再作为
+生产回退。
 
 ### 为其它 Godot 版本编译模板
 
 ```bash
 # 本地构建（Apple Silicon 约 5 分钟）
-./scripts/build_wasm_template.sh 4.x.x-stable
+TEMPLATE_REVISION=1 ./scripts/build_wasm_template.sh 4.7.0-stable
 
 # 然后在 Dock 里点「Import Engine Template」导入生成的 zip
 ```
@@ -278,7 +293,8 @@ addons/godot_mini_game/
 ├── export_dock.gd / .tscn          # 导出 UI Dock
 ├── exporter.gd                     # 导出流水线
 ├── MiniGameSDK.gd                  # GDScript SDK autoload
-├── engine/                          # 内置引擎（godot.js + godot.wasm.br）
+├── core/                            # 模板契约与输出目录所有权守卫
+├── engine/                          # 带 manifest 的内置引擎包
 └── templates/
     ├── common/
     │   ├── adapter.js               # DOM/BOM/Canvas/Audio/Input 适配层
@@ -292,17 +308,19 @@ addons/godot_mini_game/
 
 ## 依赖
 
-- **Godot 4.6.x** — 内置引擎模板基于 4.6.1-stable 编译。其它 4.x 版本几乎一定会在运行时挂掉，
-  因为 `.pck` 字节码和内置 WASM 必须来自同一个 Godot 版本。要用别的版本必须
-  自己重编一份匹配的模板（见"为其它 Godot 版本编译模板"），然后通过 Dock 导入。
+- **Godot 4.6.1.stable** — v0.2.0 内置并认证的是这一精确版本。使用其它
+  编辑器构建时，必须先导入由相同精确版本和源码提交构建的模板包。
 - **微信开发者工具** 或 **抖音开发者工具**
-- **Node.js** *必需*（用于内置 Brotli 压缩）或 `brotli` CLI（`brew install brotli`）。
-  两者都没有时导出会失败 —— 未压缩的 WASM 超过微信单包 4 MB 上限。
+
+日常导出不依赖 Node.js、Brotli CLI 或 Emscripten；只有维护者构建、验证新引擎
+模板包时才需要这些工具。
 
 ## 文档
 
 - [使用文档（中文）](docs/USAGE_zh.md)——Dock 面板、SDK、分包、排错、自建引擎模板的完整说明
 - [Usage guide (English)](docs/USAGE.md)
+- [架构与多版本策略](docs/ARCHITECTURE.md)——契约、事务边界与版本化模板目录
+- [可搜索 API 参考](https://anrans.github.io/godot_for_minigame/api/)
 
 ## 参与贡献
 

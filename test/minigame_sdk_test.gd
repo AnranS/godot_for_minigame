@@ -13,6 +13,42 @@ func _assert_eq(actual: Variant, expected: Variant, message: String) -> void:
 
 func _init() -> void:
 	var sdk := MiniGameSDKScript.new()
+	_assert_eq(MiniGameSDKScript.BRIDGE_ABI_VERSION, 1, "Bridge ABI contract")
+	_assert_eq(
+		MiniGameSDKScript.BRIDGE_GLOBAL_NAME,
+		"godotMiniGameBridgeV1",
+		"Versioned Bridge global")
+	_assert_eq(sdk.bridge_initialization_error, "", "Bridge error should start empty")
+	var valid_bridge_info := {
+		"brand": MiniGameSDKScript.BRIDGE_BRAND,
+		"globalName": MiniGameSDKScript.BRIDGE_GLOBAL_NAME,
+		"abiVersion": MiniGameSDKScript.BRIDGE_ABI_VERSION,
+	}
+	_assert_eq(
+		MiniGameSDKScript._bridge_validation_error(
+			{"ok": true, "error": ""}, valid_bridge_info),
+		"",
+		"A matching Bridge identity should validate",
+	)
+	var identity_error := MiniGameSDKScript._bridge_validation_error(
+		{"ok": true, "error": ""},
+		{
+			"brand": "wrong-brand",
+			"globalName": MiniGameSDKScript.BRIDGE_GLOBAL_NAME,
+			"abiVersion": MiniGameSDKScript.BRIDGE_ABI_VERSION,
+		},
+	)
+	_assert_eq(
+		identity_error.begins_with("Bridge identity is incompatible:"),
+		true,
+		"Identity mismatches must produce a diagnostic error",
+	)
+	_assert_eq(
+		MiniGameSDKScript._bridge_validation_error(
+			{"ok": false, "error": "missing method"}, valid_bridge_info),
+		"missing method",
+		"Bridge validation errors should be preserved",
+	)
 	var holder := {
 		"generic": [],
 		"privacy_setting": [],

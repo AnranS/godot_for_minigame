@@ -1,0 +1,2 @@
+# Keep the documentation website and its generated assets out of Godot's
+# resource scanner and exported PCK.

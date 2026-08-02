@@ -55,6 +55,18 @@ img {
   max-width: 100%;
 }
 
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 ::selection {
   background: rgba(71, 140, 191, 0.4);
   color: #fff;
@@ -1188,6 +1200,519 @@ img {
   letter-spacing: 0.11em;
 }
 
+.architecture-section {
+  position: relative;
+  overflow: hidden;
+  border-top: 1px solid rgba(255, 255, 255, 0.055);
+  background:
+    radial-gradient(circle at 72% 12%, rgba(71, 140, 191, 0.1), transparent 31%),
+    radial-gradient(circle at 12% 88%, rgba(7, 193, 96, 0.055), transparent 28%),
+    #0b1017;
+}
+
+.architecture-heading {
+  margin-bottom: 54px;
+}
+
+.architecture-heading > p {
+  max-width: 500px;
+}
+
+.architecture-figure {
+  position: relative;
+  isolation: isolate;
+  min-width: 0;
+  margin: 0;
+  padding: 28px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.105);
+  border-radius: 26px;
+  background: linear-gradient(145deg, rgba(16, 24, 36, 0.96), rgba(7, 11, 17, 0.98));
+  box-shadow: 0 42px 100px rgba(0, 0, 0, 0.3), inset 0 1px rgba(255, 255, 255, 0.045);
+}
+
+.architecture-figure::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  opacity: 0.32;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.026) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.026) 1px, transparent 1px);
+  background-size: 36px 36px;
+  mask-image: linear-gradient(to bottom, black, transparent 72%);
+}
+
+.architecture-flow {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 0.72fr) minmax(0, 0.82fr) minmax(380px, 1.75fr) minmax(0, 0.95fr);
+  gap: 28px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.architecture-stage {
+  position: relative;
+  min-width: 0;
+  min-height: 344px;
+  display: flex;
+  flex-direction: column;
+  padding: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 18px;
+  background: linear-gradient(155deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.017));
+  box-shadow: inset 0 1px rgba(255, 255, 255, 0.035);
+}
+
+.architecture-stage:not(:last-child)::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  right: -23px;
+  width: 17px;
+  height: 1px;
+  background: linear-gradient(90deg, rgba(100, 181, 246, 0.2), rgba(100, 181, 246, 0.75));
+}
+
+.architecture-stage:not(:last-child)::before {
+  content: "";
+  position: absolute;
+  z-index: 2;
+  top: calc(50% - 3px);
+  right: -24px;
+  border-top: 3px solid transparent;
+  border-bottom: 3px solid transparent;
+  border-left: 5px solid #76bcec;
+}
+
+.architecture-stage-head {
+  min-height: 25px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 22px;
+  color: #526176;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+}
+
+.architecture-stage-head > span {
+  width: 26px;
+  height: 25px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(100, 181, 246, 0.14);
+  border-radius: 7px;
+  background: rgba(71, 140, 191, 0.06);
+  color: #7abbe9;
+}
+
+.architecture-stage-head small {
+  color: #718298;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+}
+
+.architecture-stage h3 {
+  margin: 0;
+  color: #dbe7f2;
+  font-size: 16px;
+  letter-spacing: -0.025em;
+}
+
+.architecture-stage h3 code {
+  color: #bfe3fb;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.architecture-stage > p {
+  margin: 12px 0 0;
+  color: #8b9aaf;
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.architecture-entry-points {
+  display: grid;
+  gap: 8px;
+  margin: auto 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.architecture-entry-points li {
+  min-width: 0;
+  min-height: 49px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 11px;
+  border: 1px solid rgba(255, 255, 255, 0.075);
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.13);
+}
+
+.architecture-entry-points span {
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  border-radius: 7px;
+  background: rgba(100, 181, 246, 0.08);
+  color: #7ebde8;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 9px;
+}
+
+.architecture-entry-points code,
+.architecture-output-node code,
+.architecture-support-card h4 code,
+.architecture-binding code {
+  min-width: 0;
+  color: #bdcddd;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
+.architecture-controller {
+  border-color: rgba(100, 181, 246, 0.16);
+  background: linear-gradient(155deg, rgba(71, 140, 191, 0.11), rgba(255, 255, 255, 0.018));
+}
+
+.architecture-controller-mark {
+  position: relative;
+  width: 82px;
+  height: 82px;
+  display: grid;
+  place-items: center;
+  margin: 22px auto 26px;
+  border: 1px solid rgba(100, 181, 246, 0.18);
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(71, 140, 191, 0.18), rgba(71, 140, 191, 0.025) 68%);
+  box-shadow: 0 0 36px rgba(71, 140, 191, 0.12);
+}
+
+.architecture-controller-mark::before,
+.architecture-controller-mark::after {
+  content: "";
+  position: absolute;
+  inset: 9px;
+  border: 1px dashed rgba(100, 181, 246, 0.2);
+  border-radius: 50%;
+}
+
+.architecture-controller-mark::after {
+  inset: -7px;
+  border-color: rgba(100, 181, 246, 0.08);
+}
+
+.architecture-controller-mark i {
+  position: absolute;
+  top: 10px;
+  right: 14px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #35dd7d;
+  box-shadow: 0 0 9px rgba(53, 221, 125, 0.75);
+}
+
+.architecture-controller-mark b {
+  color: #8dccf8;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 9px;
+  letter-spacing: 0.12em;
+}
+
+.architecture-controller h3,
+.architecture-controller > p {
+  text-align: center;
+}
+
+.architecture-services {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin: 18px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.architecture-services li {
+  min-width: 0;
+  min-height: 70px;
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) 16px;
+  align-items: center;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.075);
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.13);
+}
+
+.architecture-services li:last-child {
+  grid-column: 1 / -1;
+}
+
+.architecture-services li > span {
+  color: #718198;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 9px;
+}
+
+.architecture-services li > div {
+  min-width: 0;
+}
+
+.architecture-services code {
+  display: block;
+  color: #8dccf8;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
+.architecture-services p {
+  margin: 5px 0 0;
+  color: #8595aa;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.architecture-services li > i {
+  width: 16px;
+  height: 16px;
+  display: grid;
+  place-items: center;
+  color: #3bdc81;
+  border-radius: 50%;
+  background: rgba(48, 223, 123, 0.07);
+  font-size: 9px;
+  font-style: normal;
+}
+
+.architecture-output-path {
+  display: grid;
+  gap: 27px;
+  margin-top: auto;
+}
+
+.architecture-output-node {
+  position: relative;
+  min-width: 0;
+  min-height: 91px;
+  padding: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.085);
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.14);
+}
+
+.architecture-output-node:last-child {
+  border-color: rgba(48, 223, 123, 0.18);
+  background: rgba(48, 223, 123, 0.045);
+}
+
+.architecture-output-node code {
+  color: #8dccf8;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.architecture-output-node:last-child code {
+  color: #68dfa0;
+}
+
+.architecture-output-node p {
+  margin: 8px 0 0;
+  color: #8999ad;
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.architecture-output-arrow {
+  position: absolute;
+  left: 50%;
+  bottom: -23px;
+  color: #6aaee0;
+  font-size: 12px;
+  transform: translateX(-50%);
+}
+
+.architecture-foundation {
+  min-width: 0;
+  margin-top: 30px;
+  padding: 24px;
+  border: 1px solid rgba(255, 255, 255, 0.075);
+  border-radius: 18px;
+  background: rgba(4, 7, 11, 0.56);
+}
+
+.architecture-foundation-heading {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(260px, 1.1fr);
+  align-items: end;
+  gap: 48px;
+  margin-bottom: 20px;
+}
+
+.architecture-foundation-heading > div {
+  min-width: 0;
+}
+
+.architecture-foundation-heading span {
+  display: block;
+  margin-bottom: 7px;
+  color: #526176;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+}
+
+.architecture-foundation-heading h3 {
+  margin: 0;
+  color: #cdd9e5;
+  font-size: 15px;
+}
+
+.architecture-foundation-heading > p {
+  margin: 0;
+  color: #8898ac;
+  font-size: 12px;
+  line-height: 1.65;
+}
+
+.architecture-support-grid {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 0.9fr 1fr 1.35fr;
+  gap: 12px;
+}
+
+.architecture-support-card {
+  position: relative;
+  min-width: 0;
+  min-height: 181px;
+  display: flex;
+  flex-direction: column;
+  padding: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 13px;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.architecture-support-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.architecture-support-top > span {
+  color: #7e8ea3;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+}
+
+.architecture-support-top > i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--godot);
+  box-shadow: 0 0 9px rgba(100, 181, 246, 0.45);
+}
+
+.architecture-support-2 .architecture-support-top > i {
+  background: #f6bd60;
+  box-shadow: 0 0 9px rgba(246, 189, 96, 0.4);
+}
+
+.architecture-support-3 .architecture-support-top > i {
+  background: #38d87e;
+  box-shadow: 0 0 9px rgba(56, 216, 126, 0.4);
+}
+
+.architecture-support-card h4 {
+  margin: 18px 0 0;
+  line-height: 1;
+}
+
+.architecture-support-card h4 code {
+  color: #bcd6e9;
+  font-size: 11px;
+}
+
+.architecture-support-card > p {
+  margin: 9px 0 0;
+  color: #8999ad;
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.architecture-binding {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: auto;
+  padding-top: 13px;
+  color: #53718a;
+  border-top: 1px solid rgba(255, 255, 255, 0.055);
+  font-size: 10px;
+}
+
+.architecture-binding code {
+  color: #6daedb;
+  font-size: 10px;
+}
+
+.architecture-platforms {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 11px;
+}
+
+.architecture-platforms > span {
+  min-height: 25px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px;
+  color: #8493a5;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.025);
+  font-size: 10px;
+  font-weight: 650;
+}
+
+.architecture-platforms i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--green);
+}
+
+.architecture-platforms span:last-child i {
+  background: var(--red);
+}
+
 .tech-section {
   position: relative;
   border-block: 1px solid rgba(255, 255, 255, 0.06);
@@ -1808,6 +2333,20 @@ footer {
   .feature-card {
     min-height: 310px;
   }
+
+  .architecture-flow {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+  }
+
+  .architecture-stage {
+    min-height: 315px;
+  }
+
+  .architecture-stage::before,
+  .architecture-stage::after {
+    display: none;
+  }
 }
 
 @media (max-width: 900px) {
@@ -1925,6 +2464,63 @@ footer {
 
   .step-connector {
     display: none;
+  }
+
+  .architecture-figure {
+    padding: 20px;
+  }
+
+  .architecture-flow {
+    grid-template-columns: 1fr;
+    gap: 42px;
+  }
+
+  .architecture-stage {
+    min-height: auto;
+  }
+
+  .architecture-stage:not(:last-child)::after {
+    content: "↓";
+    right: 50%;
+    bottom: -32px;
+    top: auto;
+    width: auto;
+    height: auto;
+    display: block;
+    color: #6aaee0;
+    background: none;
+    font-size: 12px;
+    transform: translateX(50%);
+  }
+
+  .architecture-entry-points {
+    grid-template-columns: 1fr 1fr;
+    margin-top: 28px;
+  }
+
+  .architecture-controller-mark {
+    margin-top: 10px;
+  }
+
+  .architecture-services {
+    margin-top: 20px;
+  }
+
+  .architecture-output-path {
+    margin-top: 22px;
+  }
+
+  .architecture-foundation-heading {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .architecture-support-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .architecture-support-card {
+    min-height: 150px;
   }
 
   .tech-layout,
@@ -2078,6 +2674,45 @@ footer {
 
   .step-card {
     min-height: 275px;
+  }
+
+  .architecture-heading {
+    margin-bottom: 34px;
+  }
+
+  .architecture-figure {
+    padding: 12px;
+    border-radius: 18px;
+  }
+
+  .architecture-stage {
+    padding: 17px;
+    border-radius: 14px;
+  }
+
+  .architecture-stage-head {
+    margin-bottom: 16px;
+  }
+
+  .architecture-entry-points,
+  .architecture-services {
+    grid-template-columns: 1fr;
+  }
+
+  .architecture-services li:last-child {
+    grid-column: auto;
+  }
+
+  .architecture-foundation {
+    padding: 15px;
+  }
+
+  .architecture-foundation-heading h3 {
+    font-size: 14px;
+  }
+
+  .architecture-support-card {
+    min-height: 160px;
   }
 
   .tech-list > div {

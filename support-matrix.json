@@ -1,0 +1,26 @@
+{
+  "schema": 1,
+  "pluginVersion": "0.2.0",
+  "bridgeAbi": 1,
+  "templateSchema": 1,
+  "outputManifestSchema": 1,
+  "requiresExactEngineTemplate": true,
+  "certified": [
+    {
+      "godotVersion": "4.6.1.stable",
+      "godotTag": "4.6.1-stable",
+      "godotCommit": "14d19694e0c88a3f9e82d899a0400f27a24c176e",
+      "emscriptenVersion": "4.0.3",
+      "profile": "2d_full",
+      "target": "release",
+      "templateRevision": 1,
+      "template": {
+        "source": "bundled"
+      },
+      "platforms": {
+        "wechat": "automated",
+        "douyin": "automated"
+      }
+    }
+  ]
+}

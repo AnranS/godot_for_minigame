@@ -1,11 +1,21 @@
 /**
  * GodotSDK — Mini-game platform bridge.
  *
- * Provides a unified API surface over wx.* / tt.* for GDScript via JavaScriptBridge.
+ * Provides a unified API surface over the selected mini-game provider for
+ * GDScript via JavaScriptBridge.
  * Exposed as `GameGlobal.godotSdk`.
  */
 
-const _api = (typeof wx !== "undefined") ? wx : tt;
+import {
+  BRIDGE_ABI_VERSION,
+  PlatformRuntime,
+  RUNTIME_BRAND,
+  RUNTIME_SCHEMA_VERSION,
+} from "../platform_runtime";
+
+const _api = PlatformRuntime.api;
+const BRIDGE_BRAND = "godot-mini-game-bridge";
+const BRIDGE_GLOBAL_NAME = "godotMiniGameBridgeV1";
 
 // Best-effort error formatter. Default `console.warn("[SDK] ...", err)` outputs
 // "[SDK] ... [object Object]" or "[SDK] ... {}" for proxy-wrapped platform error
@@ -94,7 +104,7 @@ function _kvDataList(value) {
 }
 
 function _platformPrefix() {
-  return (typeof wx !== "undefined") ? "wx" : "tt";
+  return PlatformRuntime.apiPrefix;
 }
 
 function _unsupported(apiName) {
@@ -218,6 +228,46 @@ function _reasonToString(reason) {
 }
 
 class GodotSDK {
+
+  constructor() {
+    const info = PlatformRuntime.getBridgeInfo();
+    this.abiVersion = BRIDGE_ABI_VERSION;
+    this.platform = info.platform;
+    this.capabilities = info.capabilities;
+    this.bridgeInfo = Object.freeze({
+      brand: BRIDGE_BRAND,
+      globalName: BRIDGE_GLOBAL_NAME,
+      abiVersion: BRIDGE_ABI_VERSION,
+      runtimeBrand: RUNTIME_BRAND,
+      runtimeSchemaVersion: RUNTIME_SCHEMA_VERSION,
+      platform: info.platform,
+      capabilities: info.capabilities,
+    });
+  }
+
+  getBridgeInfo() { return _jsonSafe(this.bridgeInfo); }
+
+  validateBridge(expectedAbi, requiredMethodsJson = "[]") {
+    let requiredMethods = [];
+    try {
+      const parsed = JSON.parse(requiredMethodsJson || "[]");
+      if (Array.isArray(parsed)) requiredMethods = parsed.map(String);
+    } catch (_) {
+      return _jsonSafe({ ok: false, error: "required bridge methods must be a JSON array" });
+    }
+    const missingMethods = requiredMethods.filter((name) => typeof this[name] !== "function");
+    const abiMatches = Number(expectedAbi) === BRIDGE_ABI_VERSION;
+    return _jsonSafe({
+      ok: abiMatches && missingMethods.length === 0,
+      error: !abiMatches
+        ? `Bridge ABI ${BRIDGE_ABI_VERSION} does not match expected ABI ${expectedAbi}`
+        : missingMethods.length > 0
+          ? `Bridge is missing required methods: ${missingMethods.join(", ")}`
+          : "",
+      missingMethods,
+      bridgeInfo: this.bridgeInfo,
+    });
+  }
 
   // ── Engine binding ──────────────────────────────────────────────
 
@@ -515,7 +565,7 @@ class GodotSDK {
 
       const button = _api[def.createApi](options) || null;
       if (!button) {
-        callback(def.type, def.createApi, false, "", `wx.${def.createApi} returned no ${def.objectName}`);
+        callback(def.type, def.createApi, false, "", `${_platformPrefix()}.${def.createApi} returned no ${def.objectName}`);
         return;
       }
 
@@ -654,7 +704,7 @@ class GodotSDK {
     try {
       this._logManager = _api.getLogManager({ level: numericLevel }) || null;
       if (!this._logManager) {
-        callback("getLogManager", false, "", "wx.getLogManager returned no LogManager");
+        callback("getLogManager", false, "", `${_platformPrefix()}.getLogManager returned no LogManager`);
         return;
       }
       callback("getLogManager", true, _jsonSafe({ level: numericLevel }), "");
@@ -700,7 +750,7 @@ class GodotSDK {
       this._realtimeLogger = this._realtimeLogManager;
       if (!this._realtimeLogManager) {
         this._realtimeLogger = null;
-        callback("getRealtimeLogManager", false, "", "wx.getRealtimeLogManager returned no RealtimeLogManager");
+        callback("getRealtimeLogManager", false, "", `${_platformPrefix()}.getRealtimeLogManager returned no RealtimeLogManager`);
         return;
       }
       callback("getRealtimeLogManager", true, "{}", "");
@@ -1211,7 +1261,7 @@ class GodotSDK {
       const worker = _api.createWorker(scriptPath || "", options);
       this._worker = worker || null;
       if (!this._worker) {
-        callback("createWorker", false, "", "wx.createWorker returned no Worker");
+        callback("createWorker", false, "", `${_platformPrefix()}.createWorker returned no Worker`);
         return false;
       }
       if (typeof this._worker.onMessage === "function") {
@@ -1426,7 +1476,7 @@ class GodotSDK {
       });
       this._camera = camera || null;
       if (!this._camera) {
-        finish(false, null, "wx.createCamera returned no Camera");
+        finish(false, null, `${_platformPrefix()}.createCamera returned no Camera`);
         return false;
       }
       if (typeof this._camera.onAuthCancel === "function") {
@@ -1611,7 +1661,7 @@ class GodotSDK {
       this._video = _api.createVideo(_jsonObject(optionsJson)) || null;
       this._videoListeners = {};
       if (!this._video) {
-        callback("createVideo", false, "", "wx.createVideo returned no Video");
+        callback("createVideo", false, "", `${_platformPrefix()}.createVideo returned no Video`);
         return false;
       }
       if (typeof eventCallback === "function") {
@@ -1799,7 +1849,7 @@ class GodotSDK {
       this._recorderManager = _api.getRecorderManager() || null;
       this._recorderEventCallback = eventCallback;
       if (!this._recorderManager) {
-        callback("getRecorderManager", false, "", "wx.getRecorderManager returned no RecorderManager");
+        callback("getRecorderManager", false, "", `${_platformPrefix()}.getRecorderManager returned no RecorderManager`);
         return false;
       }
       this._registerRecorderManagerListeners();
@@ -1912,7 +1962,7 @@ class GodotSDK {
       this._videoDecoder = _api.createVideoDecoder() || null;
       this._videoDecoderListeners = {};
       if (!this._videoDecoder) {
-        callback("createVideoDecoder", false, "", "wx.createVideoDecoder returned no VideoDecoder");
+        callback("createVideoDecoder", false, "", `${_platformPrefix()}.createVideoDecoder returned no VideoDecoder`);
         return false;
       }
       callback("createVideoDecoder", true, "{}", "");
@@ -2073,7 +2123,7 @@ class GodotSDK {
       }
       this._mediaAudioPlayer = _api.createMediaAudioPlayer() || null;
       if (!this._mediaAudioPlayer) {
-        callback("createMediaAudioPlayer", false, "", "wx.createMediaAudioPlayer returned no MediaAudioPlayer");
+        callback("createMediaAudioPlayer", false, "", `${_platformPrefix()}.createMediaAudioPlayer returned no MediaAudioPlayer`);
         return false;
       }
       this._mediaAudioPlayer.volume = Math.max(0, Math.min(1, _num(volume)));
@@ -2201,7 +2251,7 @@ class GodotSDK {
       this._gameRecorder = _api.getGameRecorder() || null;
       this._gameRecorderListeners = this._gameRecorderListeners || {};
       if (!this._gameRecorder) {
-        callback("getGameRecorder", false, "", "wx.getGameRecorder returned no GameRecorder");
+        callback("getGameRecorder", false, "", `${_platformPrefix()}.getGameRecorder returned no GameRecorder`);
         return false;
       }
       callback("getGameRecorder", true, _jsonSafe(this._gameRecorderSupport()), "");
@@ -2358,7 +2408,7 @@ class GodotSDK {
       }
       this._gameRecorderShareButton = _api.createGameRecorderShareButton({ style, share }) || null;
       if (!this._gameRecorderShareButton) {
-        callback("createGameRecorderShareButton", false, "", "wx.createGameRecorderShareButton returned no GameRecorderShareButton");
+        callback("createGameRecorderShareButton", false, "", `${_platformPrefix()}.createGameRecorderShareButton returned no GameRecorderShareButton`);
         return false;
       }
       this._gameRecorderShareButtonTapListener = (res) => {
@@ -2553,7 +2603,7 @@ class GodotSDK {
       this._innerAudio = _api.createInnerAudioContext(_jsonObject(createOptionsJson)) || null;
       this._innerAudioListeners = {};
       if (!this._innerAudio) {
-        callback("createInnerAudioContext", false, "", "wx.createInnerAudioContext returned no InnerAudioContext");
+        callback("createInnerAudioContext", false, "", `${_platformPrefix()}.createInnerAudioContext returned no InnerAudioContext`);
         return;
       }
       this._applyInnerAudioProperties(_jsonObject(propertiesJson));
@@ -3499,15 +3549,21 @@ class GodotSDK {
   // ── Lifecycle ──────────────────────────────────────────────────
 
   onAppShow(callback) {
+    if (typeof _api.onShow !== "function") return false;
     _api.onShow((res) => callback(JSON.stringify(res || {})));
+    return true;
   }
 
   onAppHide(callback) {
+    if (typeof _api.onHide !== "function") return false;
     _api.onHide(() => callback(""));
+    return true;
   }
 
   onAppError(callback) {
+    if (typeof _api.onError !== "function") return false;
     _api.onError((msg) => callback(typeof msg === "string" ? msg : JSON.stringify(msg)));
+    return true;
   }
 
   // ── Clipboard ──────────────────────────────────────────────────
@@ -3654,4 +3710,4 @@ class GodotSDK {
   }
 }
 
-export { GodotSDK };
+export { BRIDGE_ABI_VERSION, BRIDGE_BRAND, BRIDGE_GLOBAL_NAME, GodotSDK };

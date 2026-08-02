@@ -102,10 +102,21 @@ signal generic_api_result(api_name: String, success: bool, data_json: String, er
 signal app_shown(options_json: String)
 signal app_hidden()
 signal app_error(message: String)
+signal bridge_initialization_failed(error: String)
 
 # ── State ──────────────────────────────────────────────────────────
 
 const NOT_IN_RUNTIME := "Not in mini-game environment"
+const BRIDGE_ABI_VERSION := 1
+const BRIDGE_GLOBAL_NAME := "godotMiniGameBridgeV1"
+const BRIDGE_BRAND := "godot-mini-game-bridge"
+const REQUIRED_BRIDGE_METHODS := [
+	"getBridgeInfo",
+	"validateBridge",
+	"onAppShow",
+	"onAppHide",
+	"onAppError",
+]
 const NATIVE_BUTTON_OBJECTS := {
 	"userInfo": "UserInfoButton",
 	"openSetting": "OpenSettingButton",
@@ -113,6 +124,8 @@ const NATIVE_BUTTON_OBJECTS := {
 }
 
 var _sdk: JavaScriptObject = null
+var bridge_info: Dictionary = {}
+var bridge_initialization_error := ""
 var _privacy_listener_started := false
 var _network_listener_started := false
 var _accelerometer_change_cb: JavaScriptObject = null
@@ -155,9 +168,64 @@ var is_mini_game: bool:
 func _ready() -> void:
 	if not OS.has_feature("web"):
 		return
-	_sdk = JavaScriptBridge.get_interface("godotSdk")
-	if _sdk:
-		_setup_lifecycle()
+	var candidate := JavaScriptBridge.get_interface(BRIDGE_GLOBAL_NAME)
+	if candidate == null:
+		_fail_bridge_initialization(
+			"Mini-game Bridge ABI %d (%s) is not available" % [
+				BRIDGE_ABI_VERSION, BRIDGE_GLOBAL_NAME])
+		return
+	var validation_raw: Variant = candidate.validateBridge(
+		BRIDGE_ABI_VERSION, JSON.stringify(REQUIRED_BRIDGE_METHODS))
+	var validation := _parse_json_object(validation_raw)
+	var info_value: Variant = validation.get("bridgeInfo", {})
+	var info: Dictionary = info_value if info_value is Dictionary else {}
+	var error := _bridge_validation_error(validation, info)
+	if not error.is_empty():
+		_fail_bridge_initialization(error)
+		return
+	_sdk = candidate
+	bridge_info = info.duplicate(true)
+	bridge_initialization_error = ""
+	_setup_lifecycle()
+
+
+static func _bridge_validation_error(
+	validation: Dictionary,
+	info: Dictionary,
+) -> String:
+	var identity_matches := (
+		str(info.get("brand", "")) == BRIDGE_BRAND
+		and str(info.get("globalName", "")) == BRIDGE_GLOBAL_NAME
+		and int(info.get("abiVersion", 0)) == BRIDGE_ABI_VERSION
+	)
+	if bool(validation.get("ok", false)) and identity_matches:
+		return ""
+	var reported_error := str(validation.get("error", "")).strip_edges()
+	if not reported_error.is_empty():
+		return reported_error
+	return (
+		"Bridge identity is incompatible: expected %s/%s ABI %d, got %s/%s ABI %d"
+		% [
+			BRIDGE_BRAND,
+			BRIDGE_GLOBAL_NAME,
+			BRIDGE_ABI_VERSION,
+			str(info.get("brand", "<missing>")),
+			str(info.get("globalName", "<missing>")),
+			int(info.get("abiVersion", 0)),
+		]
+	)
+
+
+func _fail_bridge_initialization(error: String) -> void:
+	_sdk = null
+	bridge_info.clear()
+	bridge_initialization_error = error
+	push_warning(error)
+	call_deferred("_emit_bridge_initialization_failed")
+
+
+func _emit_bridge_initialization_failed() -> void:
+	bridge_initialization_failed.emit(bridge_initialization_error)
 
 
 # ── Internal helpers ──────────────────────────────────────────────

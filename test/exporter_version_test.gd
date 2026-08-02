@@ -24,8 +24,13 @@ func _init() -> void:
 	)
 	_assert_eq(
 		Exporter._version_key_from_string("4.6"),
-		"4.6",
-		"legacy major.minor template versions should still parse"
+		"",
+		"non-exact major.minor template versions must be rejected"
+	)
+	_assert_eq(
+		Exporter._version_key_from_string("4.6.1"),
+		"",
+		"templates must declare an exact status as well as patch version"
 	)
 	if _failed:
 		quit(1)

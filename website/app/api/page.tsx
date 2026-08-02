@@ -2,12 +2,15 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { sitePath } from "../site-path";
+import { releaseData } from "../site-data.generated";
 import { apiCategories, apiMethods, apiSignals } from "./api-data.generated";
 import styles from "./page.module.css";
 
 const REPO = "https://github.com/AnranS/godot_for_minigame";
-const SOURCE = REPO + "/blob/main/addons/godot_mini_game/MiniGameSDK.gd";
-const GUIDE = REPO + "/blob/main/docs/USAGE_zh.md";
+const VERSION = releaseData.pluginVersion;
+const BRIDGE_ABI = releaseData.bridgeAbi;
+const SOURCE = `${REPO}/blob/v${VERSION}/addons/godot_mini_game/MiniGameSDK.gd`;
+const GUIDE = `${REPO}/blob/v${VERSION}/docs/USAGE_zh.md`;
 
 type ApiMethod = (typeof apiMethods)[number];
 type ApiSignal = (typeof apiSignals)[number];
@@ -362,15 +365,18 @@ export default function ApiReference() {
     const normalized = query.trim().toLowerCase();
     return apiCategories
       .map((category) => {
+        if (activeCategory !== "all" && category.id !== activeCategory) {
+          return { category, methods: [], signals: [] };
+        }
         const methods = apiMethods.filter((method) => {
           if (kind === "signal") return false;
-          if (activeCategory !== "all" && method.category !== activeCategory) return false;
+          if (method.category !== category.id) return false;
           const haystack = [method.name, method.signature, category.title, category.titleEn, describeMethod(method)].join(" ").toLowerCase();
           return !normalized || haystack.includes(normalized);
         });
         const signals = apiSignals.filter((signal) => {
           if (kind === "method") return false;
-          if (activeCategory !== "all" && signal.category !== activeCategory) return false;
+          if (signal.category !== category.id) return false;
           const haystack = [signal.name, signal.signature, category.title, category.titleEn, describeSignal(signal)].join(" ").toLowerCase();
           return !normalized || haystack.includes(normalized);
         });
@@ -415,14 +421,14 @@ export default function ApiReference() {
           <div className={styles.breadcrumb}><a href={sitePath("/")}>官网</a><span>/</span><strong>API 参考</strong></div>
           <div className={styles.heroLayout}>
             <div className={styles.heroCopy}>
-              <div className={styles.version}>MiniGameSDK · v0.1.1</div>
+              <div className={styles.version}>MiniGameSDK · v{VERSION} · Bridge ABI {BRIDGE_ABI}</div>
               <h1>每一个方法、<br /><em>每一个信号</em></h1>
               <p>从 GDScript 源码自动生成的完整接口索引。搜索方法与信号，核对参数默认值、同步返回、回调约定、平台兼容性和源码位置。</p>
               <div className={styles.heroStats}>
                 <div><strong>{apiMethods.length}</strong><span>公开方法</span></div>
                 <div><strong>{apiSignals.length}</strong><span>公开信号</span></div>
                 <div><strong>{apiCategories.length}</strong><span>能力分类</span></div>
-                <div><strong>1</strong><span>只读属性</span></div>
+                <div><strong>3</strong><span>运行时状态</span></div>
               </div>
             </div>
             <div className={styles.quickCode} id="overview">
@@ -439,7 +445,12 @@ export default function ApiReference() {
           <article>
             <span>READONLY PROPERTY</span>
             <code>is_mini_game: bool</code>
-            <p>当前是否运行在已加载 godotSdk 的小游戏环境中。</p>
+            <p>仅在版本化 Bridge 完成身份和 ABI 握手后为 true。</p>
+          </article>
+          <article>
+            <span>BRIDGE ABI STATE</span>
+            <code>bridge_info / bridge_initialization_error</code>
+            <p>读取已协商的 brand、globalName、ABI 与平台信息；失败原因也会通过 bridge_initialization_failed 发出。</p>
           </article>
           <article>
             <span>ERROR CONTRACT</span>
@@ -477,15 +488,15 @@ export default function ApiReference() {
 
       <section className={styles.reference} id="reference">
         <div className={styles.referenceShell}>
-          <aside className={styles.sidebar}>
+          <aside className={styles.sidebar} aria-label="API 能力分类筛选">
             <div className={styles.sidebarHeading}><span>{"// INDEX"}</span><strong>能力分类</strong></div>
-            <button className={activeCategory === "all" ? styles.activeCategory : ""} type="button" onClick={() => selectCategory("all")}>
+            <button aria-pressed={activeCategory === "all"} className={activeCategory === "all" ? styles.activeCategory : ""} type="button" onClick={() => selectCategory("all")}>
               <span>全部接口</span><b>{apiMethods.length + apiSignals.length}</b>
             </button>
             {apiCategories.map((category) => {
               const count = apiMethods.filter((method) => method.category === category.id).length + apiSignals.filter((signal) => signal.category === category.id).length;
               return (
-                <button className={activeCategory === category.id ? styles.activeCategory : ""} type="button" onClick={() => selectCategory(category.id)} key={category.id}>
+                <button aria-pressed={activeCategory === category.id} className={activeCategory === category.id ? styles.activeCategory : ""} type="button" onClick={() => selectCategory(category.id)} key={category.id}>
                   <span>{category.title}<small>{category.titleEn}</small></span><b>{count}</b>
                 </button>
               );
@@ -506,13 +517,13 @@ export default function ApiReference() {
                 />
                 <kbd>/</kbd>
               </label>
-              <div className={styles.kindTabs} aria-label="接口类型筛选">
+              <div className={styles.kindTabs} role="group" aria-label="接口类型筛选">
                 {([
                   ["all", "全部"],
                   ["method", "方法"],
                   ["signal", "信号"],
                 ] as const).map(([value, label]) => (
-                  <button className={kind === value ? styles.activeKind : ""} type="button" onClick={() => setKind(value)} key={value}>{label}</button>
+                  <button aria-pressed={kind === value} className={kind === value ? styles.activeKind : ""} type="button" onClick={() => setKind(value)} key={value}>{label}</button>
                 ))}
               </div>
             </div>

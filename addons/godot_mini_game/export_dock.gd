@@ -3,7 +3,14 @@ extends VBoxContainer
 
 const Exporter = preload("res://addons/godot_mini_game/exporter.gd")
 
-var editor_plugin: EditorPlugin
+const PLATFORM_OPTIONS := [
+	["微信小游戏", "wechat"],
+	["抖音小游戏", "douyin"],
+]
+const ORIENTATION_OPTIONS := [
+	["竖屏 (portrait)", "portrait"],
+	["横屏 (landscape)", "landscape"],
+]
 
 @onready var platform_option: OptionButton = $PlatformOption
 @onready var appid_input: LineEdit = $AppIdInput
@@ -22,12 +29,14 @@ var editor_plugin: EditorPlugin
 
 func _ready() -> void:
 	platform_option.clear()
-	platform_option.add_item("微信小游戏", 0)
-	platform_option.add_item("抖音小游戏", 1)
+	for option in PLATFORM_OPTIONS:
+		platform_option.add_item(str(option[0]))
+		platform_option.set_item_metadata(platform_option.item_count - 1, option[1])
 
 	orientation_option.clear()
-	orientation_option.add_item("竖屏 (portrait)", 0)
-	orientation_option.add_item("横屏 (landscape)", 1)
+	for option in ORIENTATION_OPTIONS:
+		orientation_option.add_item(str(option[0]))
+		orientation_option.set_item_metadata(orientation_option.item_count - 1, option[1])
 
 	_refresh_presets()
 	_refresh_template_status()
@@ -53,19 +62,38 @@ func _refresh_all() -> void:
 
 
 func _refresh_presets() -> void:
+	var previous := ""
+	if preset_option.item_count > 0 and preset_option.selected >= 0:
+		previous = str(preset_option.get_item_metadata(preset_option.selected))
 	preset_option.clear()
 	var cfg := ConfigFile.new()
 	var err := cfg.load("res://export_presets.cfg")
 	if err != OK:
-		preset_option.add_item("(未找到导出预设)", 0)
+		_set_no_preset("(未找到 export_presets.cfg)")
 		return
-	var idx := 0
+	var selected_index := -1
 	for section in cfg.get_sections():
 		if section.begins_with("preset."):
 			var preset_name: String = cfg.get_value(section, "name", "")
-			if preset_name != "":
-				preset_option.add_item(preset_name, idx)
-				idx += 1
+			var preset_platform: String = cfg.get_value(section, "platform", "")
+			if preset_name.is_empty() or preset_platform != "Web":
+				continue
+			preset_option.add_item(preset_name)
+			var index := preset_option.item_count - 1
+			preset_option.set_item_metadata(index, preset_name)
+			if preset_name == previous:
+				selected_index = index
+	if preset_option.item_count == 0:
+		_set_no_preset("(未找到 Web 导出预设)")
+		return
+	preset_option.disabled = false
+	preset_option.select(selected_index if selected_index >= 0 else 0)
+
+
+func _set_no_preset(label: String) -> void:
+	preset_option.add_item(label)
+	preset_option.set_item_metadata(0, "")
+	preset_option.disabled = true
 
 
 func _refresh_template_status() -> void:
@@ -74,15 +102,24 @@ func _refresh_template_status() -> void:
 	var ver_key := Exporter.get_godot_version_key()
 	var status := Exporter.get_template_status()
 	var template_version: String = status.get("template_version", "")
+	var template_commit: String = status.get("template_commit", "")
+	var emscripten_version: String = status.get("emscripten_version", "")
+	var bridge_abi: int = status.get("bridge_abi", 0)
+	var template_revision: int = status.get("template_revision", 0)
 	var version_note := ""
 	if not template_version.is_empty():
 		version_note = "模板 %s / 编辑器 %s" % [template_version, ver_key]
+		if not template_commit.is_empty():
+			version_note += " / commit %s" % template_commit.substr(0, 10)
+		if not emscripten_version.is_empty():
+			version_note += " / emsdk %s" % emscripten_version
+		if bridge_abi > 0:
+			version_note += " / ABI %d" % bridge_abi
+		if template_revision > 0:
+			version_note += " / r%d" % template_revision
 	else:
 		version_note = "编辑器 %s" % ver_key
 	template_status.clear()
-	if status.ready and not bool(status.get("version_match", false)):
-		template_status.append_text("[color=yellow]⚠ 模板版本不完全匹配[/color] (%s)\n建议导入当前 Godot 版本对应的小游戏模板" % version_note)
-		return
 	match status.source:
 		"addon":
 			template_status.append_text("[color=green]✓ 兼容模板就绪[/color] (自定义, %s)" % version_note)
@@ -92,10 +129,8 @@ func _refresh_template_status() -> void:
 			template_status.append_text("[color=green]✓ 兼容模板就绪[/color] (模板库, %s)" % version_note)
 		"store_legacy":
 			template_status.append_text("[color=green]✓ 兼容模板就绪[/color] (旧模板库, %s)" % version_note)
-		"standard":
-			template_status.append_text("[color=yellow]⚠ 仅标准模板[/color] (%s)\n模拟器可用，真机可能不兼容" % version_note)
 		_:
-			template_status.append_text("[color=red]✗ 未找到引擎模板[/color] (Godot %s)" % ver_key)
+			template_status.append_text("[color=red]✗ 未找到精确匹配的引擎模板[/color] (Godot %s)" % ver_key)
 
 
 func _on_import_template() -> void:
@@ -109,7 +144,7 @@ func _on_template_file_selected(path: String) -> void:
 	var err := exporter.import_template_zip(path)
 	if err == OK:
 		_log("[color=green][b]模板导入成功！[/b][/color]")
-		_show_toast("导入成功", "引擎模板已导入到:\n%s" % Exporter.get_template_store_dir())
+		_show_toast("导入成功", "已按 template.json 中的精确 Godot 版本归档。")
 	else:
 		_log("[color=red]模板导入失败[/color]")
 	_refresh_template_status()
@@ -130,17 +165,18 @@ func _on_export() -> void:
 	# where the user creates the preset *after* enabling the plugin.
 	_refresh_presets()
 
-	var platform_idx := platform_option.selected
-	var platform: String = "wechat" if platform_idx == 0 else "douyin"
+	var platform: String = str(platform_option.get_item_metadata(platform_option.selected))
 	var appid: String = appid_input.text.strip_edges()
-	var orientation: String = "portrait" if orientation_option.selected == 0 else "landscape"
+	var orientation: String = str(orientation_option.get_item_metadata(orientation_option.selected))
 	var output_dir: String = output_path.text.strip_edges()
-	var preset_name: String = preset_option.get_item_text(preset_option.selected)
+	var preset_name: String = ""
+	if preset_option.selected >= 0:
+		preset_name = str(preset_option.get_item_metadata(preset_option.selected))
 
 	if output_dir.is_empty():
 		_log("[color=red]请选择输出目录[/color]")
 		return
-	if preset_name.is_empty() or preset_name.begins_with("("):
+	if preset_name.is_empty():
 		_log("[color=red]请先在 Project → Export 中创建一个 Web 导出预设；如已创建请点击「刷新」按钮[/color]")
 		return
 
