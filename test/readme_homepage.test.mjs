@@ -100,7 +100,7 @@ function assertSafePng(png, sourceName, expectedSize, expectedColorType) {
 
 const english = read("README.md");
 const chinese = read("README_zh.md");
-const bannerDark = readBinary("assets/banner-dark.png");
+const bannerDark = readBinary("assets/banner-dark-v2.png");
 const bannerLight = readBinary("assets/banner-light.png");
 const architectureEnglish = read("assets/export-architecture.svg");
 const architectureChinese = read("assets/export-architecture-zh.svg");
@@ -115,7 +115,7 @@ assert.ok(english.split("\n").length <= 220, "English homepage should stay conci
 assert.ok(chinese.split("\n").length <= 220, "Chinese homepage should stay concise");
 
 for (const readme of [english, chinese]) {
-  assert.match(readme, /assets\/banner-dark\.png/);
+  assert.match(readme, /assets\/banner-dark-v2\.png/);
   assert.match(readme, /assets\/banner-light\.png/);
   assert.doesNotMatch(readme, /assets\/banner(?:-light)?\.svg/);
   assert.match(readme, /releases\/latest/);
@@ -147,7 +147,7 @@ const sourceMethodCount = sdkSource.match(/^func\s+[a-z][A-Za-z0-9_]*\(/gm)?.len
 const sourceSignalCount = sdkSource.match(/^signal\s+[A-Za-z0-9_]+\(/gm)?.length ?? 0;
 assert.equal(methods.length, sourceMethodCount, "generated API method count must match MiniGameSDK.gd");
 assert.equal(signals.length, sourceSignalCount, "generated API signal count must match MiniGameSDK.gd");
-assertSafePng(bannerDark, "assets/banner-dark.png", { width: 1440, height: 360 }, 6);
+assertSafePng(bannerDark, "assets/banner-dark-v2.png", { width: 1440, height: 360 }, 6);
 assertSafePng(bannerLight, "assets/banner-light.png", { width: 1440, height: 360 }, 2);
 assertSafeSvg(architectureEnglish, "assets/export-architecture.svg", { width: 720, height: 980 });
 assertSafeSvg(architectureChinese, "assets/export-architecture-zh.svg", { width: 720, height: 980 });
