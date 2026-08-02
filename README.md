@@ -1,7 +1,7 @@
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="assets/banner.svg" />
-    <img src="assets/banner-light.svg" width="720" alt="A Godot project exported through Godot Mini Game to WeChat and Douyin Mini Games" />
+    <source media="(prefers-color-scheme: dark)" srcset="assets/banner-dark.png" />
+    <img src="assets/banner-light.png" width="720" alt="A Godot project exported through Godot Mini Game to WeChat and Douyin Mini Games" />
   </picture>
 </p>
 

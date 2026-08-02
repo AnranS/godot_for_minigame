@@ -8,6 +8,10 @@ function read(relativePath) {
   return readFileSync(new URL(relativePath, root), "utf8");
 }
 
+function readBinary(relativePath) {
+  return readFileSync(new URL(relativePath, root));
+}
+
 function generatedArray(source, name) {
   const prefix = `export const ${name} = `;
   const start = source.indexOf(prefix);
@@ -57,10 +61,47 @@ function assertSafeSvg(svg, sourceName, expectedSize) {
   }
 }
 
+function pngChunks(png, sourceName) {
+  const chunks = [];
+  let offset = 8;
+  while (offset < png.length) {
+    assert.ok(offset + 12 <= png.length, `${sourceName} has a truncated PNG chunk`);
+    const length = png.readUInt32BE(offset);
+    const type = png.toString("ascii", offset + 4, offset + 8);
+    const next = offset + 12 + length;
+    assert.ok(next <= png.length, `${sourceName} has an invalid ${type} chunk length`);
+    chunks.push(type);
+    offset = next;
+    if (type === "IEND") break;
+  }
+  assert.equal(offset, png.length, `${sourceName} must end after IEND`);
+  return chunks;
+}
+
+function assertSafePng(png, sourceName, expectedSize) {
+  const signature = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
+  assert.ok(png.subarray(0, 8).equals(signature), `${sourceName} must be a real PNG`);
+  assert.ok(png.byteLength < 600_000, `${sourceName} should stay below 600 KB`);
+  assert.equal(png.toString("ascii", 12, 16), "IHDR");
+  assert.equal(png.readUInt32BE(16), expectedSize.width);
+  assert.equal(png.readUInt32BE(20), expectedSize.height);
+  assert.equal(png[24], 8, `${sourceName} must use 8-bit channels`);
+  assert.equal(png[25], 2, `${sourceName} must use RGB color`);
+  assert.equal(png[28], 0, `${sourceName} must be non-interlaced`);
+
+  const chunks = pngChunks(png, sourceName);
+  assert.equal(chunks[0], "IHDR");
+  assert.ok(chunks.includes("IDAT"), `${sourceName} must contain image data`);
+  assert.equal(chunks.at(-1), "IEND");
+  for (const metadata of ["acTL", "eXIf", "tEXt", "zTXt", "iTXt"]) {
+    assert.ok(!chunks.includes(metadata), `${sourceName} must not contain ${metadata} metadata`);
+  }
+}
+
 const english = read("README.md");
 const chinese = read("README_zh.md");
-const bannerDark = read("assets/banner.svg");
-const bannerLight = read("assets/banner-light.svg");
+const bannerDark = readBinary("assets/banner-dark.png");
+const bannerLight = readBinary("assets/banner-light.png");
 const architectureEnglish = read("assets/export-architecture.svg");
 const architectureChinese = read("assets/export-architecture-zh.svg");
 const sdkSource = read("addons/godot_mini_game/MiniGameSDK.gd");
@@ -74,8 +115,9 @@ assert.ok(english.split("\n").length <= 220, "English homepage should stay conci
 assert.ok(chinese.split("\n").length <= 220, "Chinese homepage should stay concise");
 
 for (const readme of [english, chinese]) {
-  assert.match(readme, /assets\/banner\.svg/);
-  assert.match(readme, /assets\/banner-light\.svg/);
+  assert.match(readme, /assets\/banner-dark\.png/);
+  assert.match(readme, /assets\/banner-light\.png/);
+  assert.doesNotMatch(readme, /assets\/banner(?:-light)?\.svg/);
   assert.match(readme, /releases\/latest/);
   assert.match(readme, /smoke-test-export\.yml/);
   assert.match(readme, /<h1 align="center">Godot Mini Game<\/h1>/);
@@ -105,14 +147,10 @@ const sourceMethodCount = sdkSource.match(/^func\s+[a-z][A-Za-z0-9_]*\(/gm)?.len
 const sourceSignalCount = sdkSource.match(/^signal\s+[A-Za-z0-9_]+\(/gm)?.length ?? 0;
 assert.equal(methods.length, sourceMethodCount, "generated API method count must match MiniGameSDK.gd");
 assert.equal(signals.length, sourceSignalCount, "generated API signal count must match MiniGameSDK.gd");
-assertSafeSvg(bannerDark, "assets/banner.svg", { width: 720, height: 180 });
-assertSafeSvg(bannerLight, "assets/banner-light.svg", { width: 720, height: 180 });
+assertSafePng(bannerDark, "assets/banner-dark.png", { width: 1440, height: 360 });
+assertSafePng(bannerLight, "assets/banner-light.png", { width: 1440, height: 360 });
 assertSafeSvg(architectureEnglish, "assets/export-architecture.svg", { width: 720, height: 980 });
 assertSafeSvg(architectureChinese, "assets/export-architecture-zh.svg", { width: 720, height: 980 });
-
-for (const banner of [bannerDark, bannerLight]) {
-  assert.doesNotMatch(banner, /Godot\s+\d+\.\d+|Bridge ABI\s+\d+|MIT|TikTok/);
-}
 
 const requiredArchitectureIds = [
   "stage-input",

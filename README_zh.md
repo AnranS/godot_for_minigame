@@ -1,7 +1,7 @@
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="assets/banner.svg" />
-    <img src="assets/banner-light.svg" width="720" alt="Godot 项目通过 Godot Mini Game 导出为微信与抖音小游戏" />
+    <source media="(prefers-color-scheme: dark)" srcset="assets/banner-dark.png" />
+    <img src="assets/banner-light.png" width="720" alt="Godot 项目通过 Godot Mini Game 导出为微信与抖音小游戏" />
   </picture>
 </p>
 
