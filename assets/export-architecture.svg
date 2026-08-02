@@ -1,0 +1,141 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="980" viewBox="0 0 720 980" role="img" aria-labelledby="architecture-title architecture-desc" preserveAspectRatio="xMidYMid meet" lang="en" xml:lang="en">
+  <title id="architecture-title">Godot Mini Game system architecture</title>
+  <desc id="architecture-desc">The export control plane validates an exact engine template, assembles one selected platform in staging, verifies ownership and hashes, and publishes managed paths under a lock. The exported package then runs through PlatformRuntime and the versioned JavaScript to GDScript bridge.</desc>
+  <defs>
+    <linearGradient id="architecture-bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#080f1a"/>
+      <stop offset="1" stop-color="#0d1726"/>
+    </linearGradient>
+    <linearGradient id="architecture-panel" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0f1b2b"/>
+      <stop offset="1" stop-color="#101a27"/>
+    </linearGradient>
+    <linearGradient id="architecture-card" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#152338"/>
+      <stop offset="1" stop-color="#111d2d"/>
+    </linearGradient>
+    <linearGradient id="architecture-accent" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#478cbf"/>
+      <stop offset="0.52" stop-color="#60a5fa"/>
+      <stop offset="1" stop-color="#34d399"/>
+    </linearGradient>
+    <pattern id="architecture-grid" width="28" height="28" patternUnits="userSpaceOnUse">
+      <path d="M28 0H0V28" fill="none" stroke="#233249" stroke-width="0.6" stroke-opacity="0.35"/>
+    </pattern>
+    <filter id="architecture-shadow" x="-20%" y="-30%" width="140%" height="160%">
+      <feDropShadow dx="0" dy="6" stdDeviation="7" flood-color="#000" flood-opacity="0.28"/>
+    </filter>
+    <marker id="architecture-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0L10 5L0 10Z" fill="#6e91ad"/>
+    </marker>
+    <clipPath id="architecture-clip">
+      <rect x="1" y="1" width="718" height="978" rx="22"/>
+    </clipPath>
+  </defs>
+
+  <g clip-path="url(#architecture-clip)">
+    <rect width="720" height="980" fill="url(#architecture-bg)"/>
+    <rect width="720" height="980" fill="url(#architecture-grid)"/>
+    <circle cx="70" cy="40" r="180" fill="#478cbf" fill-opacity="0.06"/>
+    <circle cx="690" cy="820" r="210" fill="#34d399" fill-opacity="0.045"/>
+  </g>
+  <rect x="0.5" y="0.5" width="719" height="979" rx="22" fill="none" stroke="#303d50"/>
+
+  <text x="36" y="43" fill="#f0f6fc" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif" font-size="27" font-weight="700">SYSTEM ARCHITECTURE</text>
+  <text x="36" y="68" fill="#9fb0c3" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif" font-size="15">One selected export target · two execution planes · explicit version contracts</text>
+  <rect x="36" y="78" width="648" height="2" rx="1" fill="url(#architecture-accent)"/>
+
+  <g id="plane-export">
+    <rect x="26" y="94" width="668" height="566" rx="20" fill="url(#architecture-panel)" stroke="#29445f"/>
+    <circle cx="50" cy="121" r="5" fill="#60a5fa"/>
+    <text x="64" y="127" fill="#79c0ff" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif" font-size="16" font-weight="700" letter-spacing="1.2">EXPORT CONTROL PLANE</text>
+
+    <g id="stage-input" filter="url(#architecture-shadow)">
+      <rect x="50" y="144" width="620" height="55" rx="14" fill="url(#architecture-card)" stroke="#2d4764"/>
+      <circle cx="76" cy="171" r="16" fill="#478cbf"/>
+      <text x="76" y="177" text-anchor="middle" fill="#fff" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif" font-size="15" font-weight="700">01</text>
+      <text x="104" y="166" fill="#f0f6fc" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif" font-size="20" font-weight="650">Project &amp; entry</text>
+      <text x="104" y="187" fill="#a9bacb" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif" font-size="15">Godot project + Web preset → Export Dock or headless script → exporter.gd</text>
+    </g>
+    <path d="M360 199V214" stroke="#6e91ad" stroke-width="2" marker-end="url(#architecture-arrow)"/>
+
+    <g id="stage-preflight" filter="url(#architecture-shadow)">
+      <rect x="50" y="219" width="620" height="67" rx="14" fill="url(#architecture-card)" stroke="#36526e"/>
+      <circle cx="76" cy="252" r="16" fill="#5b7fa3"/>
+      <text x="76" y="258" text-anchor="middle" fill="#fff" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif" font-size="15" font-weight="700">02</text>
+      <text x="104" y="246" fill="#f0f6fc" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif" font-size="20" font-weight="650">Preflight &amp; exact template resolution</text>
+      <text x="104" y="270" fill="#a9bacb" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif" font-size="15">OutputGuard + complete TemplateBundle; version or hash mismatch fails closed</text>
+    </g>
+    <path d="M360 286V301" stroke="#6e91ad" stroke-width="2" marker-end="url(#architecture-arrow)"/>
+
+    <g id="stage-staging" filter="url(#architecture-shadow)">
+      <rect x="50" y="306" width="620" height="76" rx="14" fill="url(#architecture-card)" stroke="#385a77"/>
+      <circle cx="76" cy="344" r="16" fill="#3975a5"/>
+      <text x="76" y="350" text-anchor="middle" fill="#fff" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif" font-size="15" font-weight="700">03</text>
+      <text x="104" y="336" fill="#f0f6fc" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif" font-size="20" font-weight="650">Sibling staging assembly</text>
+      <text x="104" y="359" fill="#a9bacb" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif" font-size="15">PCK + validated JS/WASM engine pair + shared runtime templates</text>
+      <text x="104" y="377" fill="#7f93a8" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif" font-size="14">Every artifact is assembled outside the final output directory.</text>
+    </g>
+    <path d="M360 382V397" stroke="#6e91ad" stroke-width="2" marker-end="url(#architecture-arrow)"/>
+
+    <g id="stage-assembly" filter="url(#architecture-shadow)">
+      <rect x="50" y="402" width="620" height="69" rx="14" fill="url(#architecture-card)" stroke="#3d6075"/>
+      <circle cx="76" cy="436" r="16" fill="#368c9a"/>
+      <text x="76" y="442" text-anchor="middle" fill="#fff" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif" font-size="15" font-weight="700">04</text>
+      <text x="104" y="430" fill="#f0f6fc" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif" font-size="20" font-weight="650">Choose one platform template set</text>
+      <text x="104" y="454" fill="#a9bacb" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif" font-size="15">One export transaction produces one target package.</text>
+      <g id="target-wechat">
+        <rect x="500" y="416" width="70" height="29" rx="14.5" fill="#07c160" fill-opacity="0.16" stroke="#218b52"/>
+        <text x="535" y="436" text-anchor="middle" fill="#58d68b" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif" font-size="14" font-weight="700">wx</text>
+      </g>
+      <text x="579" y="436" text-anchor="middle" fill="#71859a" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif" font-size="15" font-weight="700">OR</text>
+      <g id="target-douyin">
+        <rect x="602" y="416" width="48" height="29" rx="14.5" fill="#fe2c55" fill-opacity="0.14" stroke="#a4415a"/>
+        <text x="626" y="436" text-anchor="middle" fill="#ff7c97" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif" font-size="14" font-weight="700">tt</text>
+      </g>
+    </g>
+    <path d="M360 471V486" stroke="#6e91ad" stroke-width="2" marker-end="url(#architecture-arrow)"/>
+
+    <g id="stage-validation" filter="url(#architecture-shadow)">
+      <rect x="50" y="491" width="620" height="61" rx="14" fill="url(#architecture-card)" stroke="#3e6c72"/>
+      <circle cx="76" cy="521" r="16" fill="#24887b"/>
+      <text x="76" y="527" text-anchor="middle" fill="#fff" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif" font-size="15" font-weight="700">05</text>
+      <text x="104" y="515" fill="#f0f6fc" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif" font-size="20" font-weight="650">Manifest, hashes &amp; ownership validation</text>
+      <text x="104" y="539" fill="#a9bacb" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif" font-size="15">Validate the staged package, then lock and recheck the destination state.</text>
+    </g>
+    <path d="M360 552V567" stroke="#6e91ad" stroke-width="2" marker-end="url(#architecture-arrow)"/>
+
+    <g id="stage-publish" filter="url(#architecture-shadow)">
+      <rect x="50" y="572" width="620" height="67" rx="14" fill="#102a27" stroke="#2c7a68"/>
+      <circle cx="76" cy="605" r="16" fill="#1f9d73"/>
+      <text x="76" y="611" text-anchor="middle" fill="#fff" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif" font-size="15" font-weight="700">06</text>
+      <text x="104" y="599" fill="#eafff8" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif" font-size="20" font-weight="650">Locked managed-path publish</text>
+      <text x="104" y="623" fill="#a9d8c9" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif" font-size="15">Move old managed paths to backup; rollback in-process failures; preserve sidecars.</text>
+    </g>
+  </g>
+
+  <g id="plane-runtime">
+    <rect x="26" y="676" width="668" height="216" rx="20" fill="url(#architecture-panel)" stroke="#315546"/>
+    <circle cx="50" cy="704" r="5" fill="#34d399"/>
+    <text x="64" y="710" fill="#56d39b" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif" font-size="16" font-weight="700" letter-spacing="1.2">EXPORTED PACKAGE RUNTIME</text>
+
+    <g id="stage-runtime" filter="url(#architecture-shadow)">
+      <rect x="50" y="727" width="620" height="68" rx="14" fill="url(#architecture-card)" stroke="#356858"/>
+      <text x="72" y="755" fill="#f0f6fc" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif" font-size="20" font-weight="650">game.js → PlatformRuntime → one provider</text>
+      <text x="72" y="780" fill="#a9bacb" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif" font-size="15">The adapter, fetch layer, loader and SDK share the same wx or tt capability map.</text>
+    </g>
+    <path d="M360 795V810" stroke="#6e91ad" stroke-width="2" marker-end="url(#architecture-arrow)"/>
+
+    <g id="stage-bridge" filter="url(#architecture-shadow)">
+      <rect x="50" y="815" width="620" height="58" rx="14" fill="#142334" stroke="#46617a"/>
+      <text x="72" y="841" fill="#f0f6fc" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif" font-size="19" font-weight="650">Loader starts engine + PCK · GodotSDK ⇄ Bridge ABI ⇄ MiniGameSDK</text>
+      <text x="72" y="863" fill="#a9bacb" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif" font-size="14">Brand, global name, ABI and required methods must match before lifecycle binding.</text>
+    </g>
+  </g>
+
+  <g id="version-contract">
+    <rect x="26" y="912" width="668" height="49" rx="14" fill="#111c2b" stroke="#3f5268"/>
+    <text x="48" y="934" fill="#79c0ff" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif" font-size="14" font-weight="700">EXACT TEMPLATE CONTRACT</text>
+    <text x="48" y="953" fill="#a9bacb" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif" font-size="13">schema · Godot version + commit · Emscripten · profile · target · revision · ABI · feature flags · JS/WASM hashes</text>
+  </g>
+</svg>

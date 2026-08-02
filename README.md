@@ -1,28 +1,30 @@
 <p align="center">
-  <img src="assets/banner.svg" width="840" alt="Godot Mini Game — Export to WeChat and Douyin" />
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/banner.svg" />
+    <img src="assets/banner-light.svg" width="720" alt="A Godot project exported through Godot Mini Game to WeChat and Douyin Mini Games" />
+  </picture>
 </p>
 
+<h1 align="center">Godot Mini Game</h1>
+
 <p align="center">
-  <strong>Export Godot games to WeChat and Douyin Mini Games directly from the editor.</strong><br />
-  CI-validated WASM engine, transactional export pipeline, and one versioned GDScript SDK.
+  <strong>Export Godot games to WeChat and Douyin Mini Games.</strong><br />
+  CI-validated WASM engine · guarded export transaction · one versioned GDScript SDK
 </p>
 
 <p align="center">
   <a href="https://github.com/AnranS/godot_for_minigame/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/AnranS/godot_for_minigame?display_name=tag&style=flat-square" /></a>
-  <a href="https://github.com/AnranS/godot_for_minigame/actions/workflows/smoke-test-export.yml"><img alt="Smoke test" src="https://img.shields.io/github/actions/workflow/status/AnranS/godot_for_minigame/smoke-test-export.yml?branch=main&label=export%20tests&style=flat-square" /></a>
+  <a href="https://github.com/AnranS/godot_for_minigame/actions/workflows/smoke-test-export.yml"><img alt="Export tests" src="https://img.shields.io/github/actions/workflow/status/AnranS/godot_for_minigame/smoke-test-export.yml?branch=main&label=export%20tests&style=flat-square" /></a>
   <img alt="Godot 4.6.1" src="https://img.shields.io/badge/Godot-4.6.1-478CBF?logo=godot-engine&logoColor=white&style=flat-square" />
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/github/license/AnranS/godot_for_minigame?style=flat-square" /></a>
 </p>
 
 <p align="center">
-  <a href="https://anrans.github.io/godot_for_minigame/">Official website</a> ·
-  <a href="https://github.com/AnranS/godot_for_minigame/releases/latest">Download latest</a> ·
+  <strong><a href="https://github.com/AnranS/godot_for_minigame/releases/latest">Download latest →</a></strong> ·
+  <a href="https://anrans.github.io/godot_for_minigame/">Website</a> ·
   <a href="#quick-start">Quick start</a> ·
-  <a href="https://anrans.github.io/godot_for_minigame/api/">API reference</a>
-</p>
-
-<p align="center">
-  <strong>English</strong> · <a href="README_zh.md">简体中文</a>
+  <a href="https://anrans.github.io/godot_for_minigame/api/">API reference</a> ·
+  <a href="README_zh.md">简体中文</a>
 </p>
 
 ---
@@ -33,13 +35,29 @@ Emscripten, or a separate Godot Web template download.
 
 ## Why Godot Mini Game?
 
-- **Editor-native export** — build the PCK, assemble platform files, and publish the output from one dock.
-- **CI-validated engine pack** — the bundled engine has an exact Godot source identity and a mini-game-compatible WASM feature profile.
-- **One SDK, two platforms** — `MiniGameSDK` exposes 220 methods and 82 signals for storage, auth, ads, media, networking, platform UI, and more.
-- **Safe output ownership** — staging, hashes, manifests, and a publish lock replace only exporter-managed paths while preserving top-level sidecars.
-- **Repeatable versioning** — Godot, Emscripten, build profile, revision, schemas, and Bridge ABI are selected as one template tuple.
+| | |
+|---|---|
+| **Editor-native workflow**<br />Build the PCK, assemble platform files, validate, and publish from one Dock. | **Exact template identity**<br />Godot source, Emscripten, profile, revision, schemas, features, and hashes stay aligned. |
+| **One SDK, two providers**<br />`MiniGameSDK` exposes 220 methods and 82 signals over the shared `wx` / `tt` runtime contract. | **Guarded publishing**<br />Staging, ownership manifests, hashes, an output lock, backup, and rollback protect managed paths while preserving sidecars. |
 
-## Compatibility at a glance
+## Architecture
+
+<p align="center">
+  <a href="assets/export-architecture.svg">
+    <img src="assets/export-architecture.svg" width="720" alt="Architecture: one selected platform passes through preflight, exact template resolution, sibling staging, validation, locked managed-path publishing, then runs through PlatformRuntime and the versioned JavaScript-to-GDScript bridge" />
+  </a>
+</p>
+
+<p align="center"><sub>Click the diagram to open it at full size.</sub></p>
+
+- **Export control plane** — each transaction selects WeChat or Douyin, resolves one complete engine bundle, assembles outside the destination, validates every managed artifact, and publishes under a lock.
+- **Exported package runtime** — `game.js` selects exactly one `PlatformRuntime` provider; the loader starts the patched engine and PCK, while `GodotSDK` and `MiniGameSDK` negotiate the Bridge ABI.
+
+The publish step has in-process rollback and records recovery evidence, but is
+not a filesystem-wide crash-atomic primitive. Full boundaries are documented in
+[Architecture and versioning](docs/ARCHITECTURE.md).
+
+## Validated compatibility
 
 | Contract | Bundled value |
 |---|---|
@@ -49,51 +67,25 @@ Emscripten, or a separate Godot Web template download.
 | Build | `2d_full` · `release` · revision `1` |
 | Runtime contract | Bridge ABI `1` · template schema `1` · output schema `1` |
 
-| Target | Runtime provider | Automated validation |
-|---|---|---|
-| WeChat Mini Game | `wx` | Full export, manifest, WASM, and package checks |
-| Douyin Mini Game | `tt` | Full export, manifest, WASM, and package checks |
+- ✅ **WeChat Mini Game (`wx`)** — full export, manifest, WASM, and package checks.
+- ✅ **Douyin Mini Game (`tt`)** — full export, manifest, WASM, and package checks.
 
 > [!IMPORTANT]
-> The bundled engine is validated by this project for the exact identity above. Another Godot
-> editor build requires a matching template pack. Automated validation does not
-> replace final testing in the platform DevTools and on target devices.
+> The bundled engine is validated by this project only for the exact identity
+> above. Another Godot editor build requires a matching template pack.
+> Automated checks do not replace final testing in platform DevTools and on
+> target devices.
 
-[`support-matrix.json`](support-matrix.json) is the source of truth for supported
-template identities and platform status.
-
-## How it works
-
-```mermaid
-flowchart LR
-    project["Godot project<br/>+ Web preset"] --> dock["Mini Game Export dock"]
-    dock --> preflight["Preflight and exact<br/>template resolution"]
-    preflight --> pck["Godot Web PCK"]
-    preflight --> engine["Validated WASM<br/>engine pack"]
-    runtime["PlatformRuntime<br/>+ Bridge ABI 1"] --> staging["Staging package"]
-    pck --> staging
-    engine --> staging
-    staging --> platform{"Platform assembly"}
-    platform --> wechat["WeChat package"]
-    platform --> douyin["Douyin package"]
-    wechat --> validate["Manifest and ownership<br/>validation"]
-    douyin --> validate
-    validate --> publish["Locked managed publish"]
-```
-
-The selected engine identity, hashes, managed files, and output manifest are
-verified first. Under the output lock, exporter-owned top-level paths are then
-published from staging while other top-level sidecars remain in place. See
-[Architecture and versioning](docs/ARCHITECTURE.md) for the rollback and crash
-recovery boundaries.
+[`support-matrix.json`](support-matrix.json) is the release, CI, and website
+source of truth for validated identities and platform status.
 
 ## Quick start
 
-### 1. Install the release asset
+### 1 · Install the release asset
 
 Open the [latest release](https://github.com/AnranS/godot_for_minigame/releases/latest),
 download `godot_mini_game_vX.Y.Z.zip` from **Assets**, and extract it into the
-root of your Godot project. Do not use GitHub's auto-generated source archive.
+root of your Godot project. Do not use GitHub's generated source archive.
 
 ```text
 your_project/
@@ -112,28 +104,25 @@ cp -R godot_for_minigame/addons/godot_mini_game your_project/addons/godot_mini_g
 
 </details>
 
-### 2. Enable the plugin
+### 2 · Enable the plugin
 
-In Godot, open **Project > Project Settings > Plugins** and enable
+Open **Project > Project Settings > Plugins** and enable
 **Godot Mini Game Export**.
 
-### 3. Add a Web preset
+### 3 · Add a Web preset
 
 Open **Project > Export** and add a **Web** preset. Its name is up to you; the
 standard Web export templates do not need to be downloaded.
 
-### 4. Export
+### 4 · Export
 
-Open the **Mini Game Export** dock, then:
-
-1. Select WeChat or Douyin.
-2. Enter the App ID and choose an orientation.
-3. Select the Web preset and a dedicated output directory.
-4. Click **Export**, then open the result in the matching platform DevTools.
+Open the **Mini Game Export** Dock, then select one platform, enter the App ID,
+choose an orientation, Web preset, and dedicated output directory, and click
+**Export**. Open the result in the matching platform DevTools.
 
 ## SDK in 60 seconds
 
-`MiniGameSDK` is registered as an autoload. Async calls return through signals;
+`MiniGameSDK` is registered as an Autoload. Async calls return through signals;
 methods remain safe to call while developing outside a mini-game runtime.
 
 ```gdscript
@@ -148,8 +137,9 @@ var level := MiniGameSDK.storage_get("level", "1")
 MiniGameSDK.show_toast("Level %s" % level, "success")
 ```
 
-At startup the SDK negotiates Bridge ABI 1. Inspect `is_mini_game`, `bridge_info`,
-and `bridge_initialization_error` when diagnosing integration issues.
+At startup the SDK verifies the bridge brand, global name, ABI, and required
+methods before lifecycle binding. Inspect `bridge_info` and
+`bridge_initialization_error` when diagnosing integration issues.
 
 **[Browse all 220 methods and 82 signals →](https://anrans.github.io/godot_for_minigame/api/)**
 
@@ -159,8 +149,8 @@ and `bridge_initialization_error` when diagnosing integration issues.
 |---|---|
 | Install, configure, and export a game | [Usage guide](docs/USAGE.md) |
 | Find an SDK method or signal | [Searchable API reference](https://anrans.github.io/godot_for_minigame/api/) |
-| Understand the export transaction | [Architecture and versioning](docs/ARCHITECTURE.md) |
-| Build or import another engine pack | [Custom template guide](docs/USAGE.md) |
+| Understand transactions and versioning | [Architecture and versioning](docs/ARCHITECTURE.md) |
+| Build or import another engine pack | [Custom template guide](docs/USAGE.md#12-building-a-custom-engine-template) |
 | Publish a new plugin version | [Release process](docs/RELEASING.md) |
 | Report a problem or request a feature | [GitHub Issues](https://github.com/AnranS/godot_for_minigame/issues) |
 
@@ -168,8 +158,8 @@ Chinese documentation: [使用指南](docs/USAGE_zh.md) · [中文首页](README
 
 ## Contributing
 
-Issues and pull requests are welcome. Please keep platform-specific behavior
-behind the shared runtime/bridge contracts and run the export test suite before
+Issues and pull requests are welcome. Keep platform-specific behavior behind
+the shared runtime and bridge contracts, and run the export test suite before
 submitting a change. Maintainers should follow the immutable
 [release process](docs/RELEASING.md).
 
