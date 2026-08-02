@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { sitePath } from "./site-path";
 
 type Language = "zh" | "en";
 
@@ -9,7 +10,7 @@ const RELEASE = `${REPO}/releases/latest`;
 
 const copy = {
   zh: {
-    nav: ["产品特性", "导出流程", "SDK 能力", "快速开始"],
+    nav: ["产品特性", "导出流程", "SDK 能力", "API 参考", "快速开始"],
     language: "EN",
     menu: "打开导航",
     badge: "开源 · MIT License · v0.1.1",
@@ -76,6 +77,7 @@ const copy = {
     codeLabel: "GDScript · 激励视频广告",
     copyCode: "复制代码",
     copied: "已复制",
+    apiReference: "查看完整 API 参考",
     startKicker: "现在开始",
     startTitle: "让下一次发布少一点折腾",
     startBody: "下载插件、启用 Dock，几分钟内得到可被开发者工具直接打开的小游戏工程。",
@@ -94,7 +96,7 @@ const copy = {
     copyright: "Godot Mini Game · MIT License",
   },
   en: {
-    nav: ["Features", "Workflow", "SDK", "Quick Start"],
+    nav: ["Features", "Workflow", "SDK", "API Reference", "Quick Start"],
     language: "中文",
     menu: "Open navigation",
     badge: "Open source · MIT License · v0.1.1",
@@ -161,6 +163,7 @@ const copy = {
     codeLabel: "GDScript · Rewarded video",
     copyCode: "Copy code",
     copied: "Copied",
+    apiReference: "Open the full API reference",
     startKicker: "Get started",
     startTitle: "Spend less time wrestling with exports",
     startBody: "Download, enable the Dock, and produce a DevTools-ready mini-game project in minutes.",
@@ -193,7 +196,7 @@ MiniGameSDK.rewarded_ad_result.connect(func(done, err):
 MiniGameSDK.create_rewarded_ad("your-ad-unit-id")`;
 
 function asset(path: string) {
-  return `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}${path}`;
+  return sitePath(path);
 }
 
 export default function Home() {
@@ -255,7 +258,8 @@ export default function Home() {
             <a href="#features" onClick={() => setMenuOpen(false)}>{t.nav[0]}</a>
             <a href="#workflow" onClick={() => setMenuOpen(false)}>{t.nav[1]}</a>
             <a href="#sdk" onClick={() => setMenuOpen(false)}>{t.nav[2]}</a>
-            <a href="#start" onClick={() => setMenuOpen(false)}>{t.nav[3]}</a>
+            <a href={sitePath("/api/")} onClick={() => setMenuOpen(false)}>{t.nav[3]}</a>
+            <a href="#start" onClick={() => setMenuOpen(false)}>{t.nav[4]}</a>
           </nav>
 
           <div className="nav-actions">
@@ -437,6 +441,7 @@ export default function Home() {
             <div className="api-cloud">
               {t.apiGroups.map((group, index) => <span key={group}><i>{["AUTH", "ADS", "DATA", "MEDIA", "NET", "SENSOR", "SHARE", "FS"][index]}</i>{group}</span>)}
             </div>
+            <a className="sdk-api-link" href={sitePath("/api/")}>{t.apiReference}<span>→</span></a>
           </div>
         </div>
       </section>
@@ -494,7 +499,7 @@ export default function Home() {
       <footer>
         <div className="container footer-main">
           <div><a className="brand" href="#top"><span className="brand-mark"><img src={asset("/godot.svg")} alt="" /></span><span>Godot <b>Mini Game</b></span></a><p>{t.footer}</p></div>
-          <nav aria-label="Footer navigation"><a href={REPO} target="_blank" rel="noreferrer">GitHub</a><a href={RELEASE} target="_blank" rel="noreferrer">Releases</a><a href={docsLink} target="_blank" rel="noreferrer">Docs</a><a href={`${REPO}/issues`} target="_blank" rel="noreferrer">Issues</a></nav>
+          <nav aria-label="Footer navigation"><a href={sitePath("/api/")}>API</a><a href={REPO} target="_blank" rel="noreferrer">GitHub</a><a href={RELEASE} target="_blank" rel="noreferrer">Releases</a><a href={docsLink} target="_blank" rel="noreferrer">Docs</a><a href={`${REPO}/issues`} target="_blank" rel="noreferrer">Issues</a></nav>
         </div>
         <div className="container footer-bottom"><span>© 2026 {t.copyright}</span><span>{language === "zh" ? "非 Godot 官方关联项目" : "Not affiliated with the Godot Foundation"}</span></div>
       </footer>

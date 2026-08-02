@@ -1445,6 +1445,37 @@ img {
   font-weight: 700;
 }
 
+.sdk-api-link {
+  width: fit-content;
+  min-height: 42px;
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 20px;
+  padding: 0 14px;
+  color: #bfe3fb;
+  border: 1px solid rgba(100, 181, 246, 0.25);
+  border-radius: 10px;
+  background: rgba(71, 140, 191, 0.08);
+  font-size: 11px;
+  font-weight: 700;
+  transition: border-color 180ms ease, background 180ms ease, transform 180ms ease;
+}
+
+.sdk-api-link span {
+  transition: transform 180ms ease;
+}
+
+.sdk-api-link:hover {
+  border-color: rgba(100, 181, 246, 0.48);
+  background: rgba(71, 140, 191, 0.13);
+  transform: translateY(-1px);
+}
+
+.sdk-api-link:hover span {
+  transform: translateX(3px);
+}
+
 .start-section {
   position: relative;
   background:
