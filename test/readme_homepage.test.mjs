@@ -78,7 +78,7 @@ function pngChunks(png, sourceName) {
   return chunks;
 }
 
-function assertSafePng(png, sourceName, expectedSize) {
+function assertSafePng(png, sourceName, expectedSize, expectedColorType) {
   const signature = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
   assert.ok(png.subarray(0, 8).equals(signature), `${sourceName} must be a real PNG`);
   assert.ok(png.byteLength < 600_000, `${sourceName} should stay below 600 KB`);
@@ -86,7 +86,7 @@ function assertSafePng(png, sourceName, expectedSize) {
   assert.equal(png.readUInt32BE(16), expectedSize.width);
   assert.equal(png.readUInt32BE(20), expectedSize.height);
   assert.equal(png[24], 8, `${sourceName} must use 8-bit channels`);
-  assert.equal(png[25], 2, `${sourceName} must use RGB color`);
+  assert.equal(png[25], expectedColorType, `${sourceName} has an unexpected PNG color type`);
   assert.equal(png[28], 0, `${sourceName} must be non-interlaced`);
 
   const chunks = pngChunks(png, sourceName);
@@ -147,8 +147,8 @@ const sourceMethodCount = sdkSource.match(/^func\s+[a-z][A-Za-z0-9_]*\(/gm)?.len
 const sourceSignalCount = sdkSource.match(/^signal\s+[A-Za-z0-9_]+\(/gm)?.length ?? 0;
 assert.equal(methods.length, sourceMethodCount, "generated API method count must match MiniGameSDK.gd");
 assert.equal(signals.length, sourceSignalCount, "generated API signal count must match MiniGameSDK.gd");
-assertSafePng(bannerDark, "assets/banner-dark.png", { width: 1440, height: 360 });
-assertSafePng(bannerLight, "assets/banner-light.png", { width: 1440, height: 360 });
+assertSafePng(bannerDark, "assets/banner-dark.png", { width: 1440, height: 360 }, 6);
+assertSafePng(bannerLight, "assets/banner-light.png", { width: 1440, height: 360 }, 2);
 assertSafeSvg(architectureEnglish, "assets/export-architecture.svg", { width: 720, height: 980 });
 assertSafeSvg(architectureChinese, "assets/export-architecture-zh.svg", { width: 720, height: 980 });
 
