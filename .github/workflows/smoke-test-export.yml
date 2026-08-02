@@ -238,29 +238,8 @@ jobs:
           EXPECTED_TEMPLATE_SCHEMA: ${{ matrix.templateSchema }}
         run: |
           set -euo pipefail
-          cat > /tmp/verify_template_identity.gd <<'EOF'
-          extends SceneTree
-          func _init() -> void:
-              var Exporter := load("res://addons/godot_mini_game/exporter.gd")
-              var TemplateBundle := load("res://addons/godot_mini_game/core/template_bundle.gd")
-              var status: Dictionary = Exporter.get_template_status()
-              var expected_source := "bundled" if OS.get_environment("EXPECTED_SOURCE") == "bundled" else "store"
-              var valid := (
-                  bool(status.get("ready", false))
-                  and str(status.get("source", "")) == expected_source
-                  and str(status.get("template_version", "")) == OS.get_environment("EXPECTED_GODOT_VERSION")
-                  and str(status.get("template_commit", "")) == OS.get_environment("EXPECTED_GODOT_COMMIT")
-                  and str(status.get("emscripten_version", "")) == OS.get_environment("EXPECTED_EMSCRIPTEN_VERSION")
-                  and str(status.get("profile", "")) == OS.get_environment("EXPECTED_PROFILE")
-                  and str(status.get("target", "")) == OS.get_environment("EXPECTED_TARGET")
-                  and int(status.get("template_revision", 0)) == int(OS.get_environment("EXPECTED_REVISION"))
-                  and int(status.get("bridge_abi", 0)) == int(OS.get_environment("EXPECTED_BRIDGE_ABI"))
-                  and TemplateBundle.SCHEMA_VERSION == int(OS.get_environment("EXPECTED_TEMPLATE_SCHEMA"))
-              )
-              print(JSON.stringify(status))
-              quit(0 if valid else 1)
-          EOF
-          godot --headless --log-file /tmp/godot-template-identity.log --path . --script /tmp/verify_template_identity.gd
+          godot --headless --log-file /tmp/godot-template-identity.log \
+            --path . --script res://test/ci_verify_template_identity.gd
 
       - name: Run exporter for ${{ matrix.platform }}
         run: |

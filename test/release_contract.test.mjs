@@ -150,6 +150,10 @@ for (const identityField of [
   assert.ok(smokeWorkflow.includes(identityField), `smoke matrix must carry ${identityField}`);
 }
 assert.ok(smokeWorkflow.includes("Verify selected certified template identity"));
+assert.ok(
+  smokeWorkflow.includes("res://test/ci_verify_template_identity.gd"),
+  "CI must run the checked-in template identity verifier",
+);
 assert.ok(smokeWorkflow.includes("Verify exported certified identity"));
 assert.ok(
   smokeWorkflow.includes('".github/workflows/*.yml"'),
@@ -206,6 +210,23 @@ for (const requiredContract of [
   "GODOT_COPYRIGHT.txt",
 ]) {
   assert.ok(verifier.includes(requiredContract), `shared verifier must enforce ${requiredContract}`);
+}
+
+const identityVerifier = read("test/ci_verify_template_identity.gd");
+for (const requiredIdentity of [
+  "EXPECTED_GODOT_VERSION",
+  "EXPECTED_GODOT_COMMIT",
+  "EXPECTED_EMSCRIPTEN_VERSION",
+  "EXPECTED_PROFILE",
+  "EXPECTED_TARGET",
+  "EXPECTED_REVISION",
+  "EXPECTED_BRIDGE_ABI",
+  "EXPECTED_TEMPLATE_SCHEMA",
+]) {
+  assert.ok(
+    identityVerifier.includes(requiredIdentity),
+    `selected-template verifier must enforce ${requiredIdentity}`,
+  );
 }
 
 assert.match(read(".gitignore"), /^\.cursor\/$/m, "local Cursor state must never block a release");
