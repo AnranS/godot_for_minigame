@@ -21,12 +21,43 @@ assert.equal(supportMatrix.requiresExactEngineTemplate, true);
 assert.ok(Number.isInteger(supportMatrix.templateSchema) && supportMatrix.templateSchema > 0);
 assert.ok(Number.isInteger(supportMatrix.outputManifestSchema) && supportMatrix.outputManifestSchema > 0);
 assert.ok(Array.isArray(supportMatrix.certified) && supportMatrix.certified.length > 0);
+const expectedPlatforms = ["douyin", "tiktok", "wechat"];
+assert.deepEqual(
+  Object.keys(supportMatrix.platformContracts || {}).sort(),
+  expectedPlatforms,
+  "support matrix must define exactly the three exported platforms",
+);
+const { wechat: wechatContract, douyin: douyinContract, tiktok: tiktokContract } = supportMatrix.platformContracts;
+assert.equal(wechatContract.runtimeType, "native");
+assert.equal(wechatContract.apiNamespace, "wx");
+assert.equal(wechatContract.subpackageField, "subpackages");
+assert.equal(douyinContract.runtimeType, "native");
+assert.equal(douyinContract.apiNamespace, "tt");
+assert.equal(douyinContract.subpackageField, "subPackages");
+assert.equal(tiktokContract.runtimeType, "native");
+assert.equal(tiktokContract.supportTier, "beta");
+assert.equal(tiktokContract.apiNamespace, "TTMinis.game");
+assert.equal(tiktokContract.subpackageField, "subpackages");
+assert.equal(tiktokContract.devtool, "ttmg");
+assert.equal(tiktokContract.devtoolVersion, "0.4.1-beta.wasm1");
+assert.match(tiktokContract.minimumClientVersion, /^\d+\.\d+\.\d+$/);
+assert.ok(
+  tiktokContract.minimumClientVersion.localeCompare(
+    "43.4.0", undefined, { numeric: true, sensitivity: "base" },
+  ) >= 0,
+  "TikTok native WebAssembly support requires client 43.4.0 or newer",
+);
 for (const target of supportMatrix.certified) {
   assert.match(target.godotVersion, /^\d+\.\d+\.\d+\.[A-Za-z0-9]+$/);
   assert.match(target.godotCommit, /^[0-9a-f]{40}$/i);
   assert.match(target.emscriptenVersion, /^\d+\.\d+\.\d+$/);
   assert.equal(target.profile, "2d_full");
   assert.equal(target.target, "release");
+  assert.deepEqual(
+    Object.keys(target.platforms || {}).sort(),
+    expectedPlatforms,
+    "every certification row must classify all exported platforms",
+  );
   assert.ok(target.template && ["bundled", "release"].includes(target.template.source));
   if (target.template.source === "release") {
     assert.match(target.template.releaseTag, /^[0-9A-Za-z._-]+$/);
@@ -85,7 +116,11 @@ const loaderSource = read("addons/godot_mini_game/templates/common/js/loader.js"
 assert.ok(loaderSource.includes("this._loadPromise = this._loadOnce()"));
 assert.ok(loaderSource.includes("dispose()"));
 assert.ok(!loaderSource.includes("_canvas.width = _window.innerWidth *"));
-for (const [platform, expected] of [["wechat", "wechat"], ["douyin", "douyin"]]) {
+for (const [platform, expected] of [
+  ["wechat", "wechat"],
+  ["douyin", "douyin"],
+  ["tiktok", "tiktok"],
+]) {
   const entry = read(`addons/godot_mini_game/templates/${platform}/game.js`);
   assert.ok(
     entry.includes(`PlatformRuntime.requirePlatform("${expected}"`),
@@ -98,7 +133,7 @@ for (const requiredFlag of [
   "wasm_simd=no",
   "threads=no",
   "dlink_enabled=no",
-  "javascript_eval=yes",
+  "javascript_eval=no",
 ]) {
   assert.ok(buildWorkflow.includes(requiredFlag), `template build must include ${requiredFlag}`);
 }
@@ -129,6 +164,11 @@ assert.ok(buildWorkflow.includes("GODOT_COPYRIGHT.txt"));
 assert.ok(buildWorkflow.includes("touch -t 198001010000"));
 assert.ok(buildWorkflow.includes("pip install scons==4.9.1"));
 assert.ok(!buildWorkflow.includes("head -1"), "CI must reject ambiguous stale build artifacts");
+assert.match(
+  buildWorkflow,
+  /template_revision:[\s\S]*?default: "2"/,
+  "eval-free CI templates must default to a new immutable revision",
+);
 
 const smokeWorkflow = read(".github/workflows/smoke-test-export.yml");
 assert.ok(smokeWorkflow.includes("js/libs/godot.js"));
@@ -146,6 +186,7 @@ for (const identityField of [
   "bridgeAbi",
   "templateSchema",
   "outputManifestSchema",
+  "devtoolVersion",
 ]) {
   assert.ok(smokeWorkflow.includes(identityField), `smoke matrix must carry ${identityField}`);
 }
@@ -155,6 +196,9 @@ assert.ok(
   "CI must run the checked-in template identity verifier",
 );
 assert.ok(smokeWorkflow.includes("Verify exported certified identity"));
+assert.ok(smokeWorkflow.includes("ttmg-pack"), "TikTok exports must run the pinned DevTool package checks");
+assert.ok(smokeWorkflow.includes('actual_pack_version" = "0.4.8"'));
+assert.ok(smokeWorkflow.includes("level === 'error'"));
 assert.ok(
   smokeWorkflow.includes('".github/workflows/*.yml"'),
   "changes to any release workflow must exercise the smoke suite",
@@ -177,6 +221,18 @@ assert.ok(!releaseScript.includes("gh release upload"), "the tag workflow must b
 assert.ok(releaseScript.includes('git rev-parse --verify "refs/tags/$TAG"'));
 assert.ok(releaseScript.includes("git ls-remote --tags origin"));
 assert.ok(releaseScript.includes(".pluginVersion"), "release script must validate support-matrix.json before tagging");
+
+const templateBuildScript = read("scripts/build_wasm_template.sh");
+assert.ok(
+  templateBuildScript.includes("javascript_eval=no"),
+  "future local template builds must disable JavaScript eval",
+);
+assert.ok(!templateBuildScript.includes("javascript_eval=yes"));
+assert.ok(
+  templateBuildScript.includes('TEMPLATE_REVISION="${TEMPLATE_REVISION:-2}"'),
+  "eval-free local templates must default to revision 2",
+);
+assert.ok(templateBuildScript.includes("Bundle revision (default: 2)"));
 
 const releaseWorkflow = read(".github/workflows/release-plugin.yml");
 assert.ok(releaseWorkflow.includes("GODOT_COPYRIGHT.txt"));

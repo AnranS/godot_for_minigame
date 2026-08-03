@@ -10,12 +10,23 @@ function moduleUrl(source) {
   return `data:text/javascript;charset=utf-8,${encodeURIComponent(source)}#${Date.now()}-${Math.random()}`;
 }
 
-async function loadSdkWithApi(api, platform = "wechat") {
+async function loadSdkWithApi(api, platform = "wechat", options = {}) {
   delete globalThis.wx;
   delete globalThis.tt;
+  delete globalThis.TTMinis;
+  delete globalThis.GameGlobal;
   delete globalThis.__godotMiniGamePlatformRuntime;
   delete globalThis.PlatformRuntime;
-  globalThis[platform === "douyin" ? "tt" : "wx"] = api;
+  if (platform === "douyin") {
+    globalThis.tt = api;
+  } else if (platform === "tiktok") {
+    if (options.gameGlobalProvider) globalThis.GameGlobal = { TTMinis: { game: api } };
+    else globalThis.TTMinis = { game: api };
+  } else {
+    globalThis.wx = api;
+  }
+  if (options.wxAlias) globalThis.wx = options.wxAlias;
+  if (options.ttAlias) globalThis.tt = options.ttAlias;
 
   const runtimeUrl = moduleUrl(fs.readFileSync(runtimeSourcePath, "utf8"));
   const source = fs.readFileSync(sdkSourcePath, "utf8")
@@ -120,6 +131,546 @@ async function testCallApiReportsUnsupportedMethods() {
     "",
     "wx.notARealApi is not supported",
   ]);
+}
+
+async function testTikTokStorageInfoNeverCallsTheHost() {
+  const providerCases = [
+    ["TTMinis.game", {}],
+    ["GameGlobal.TTMinis.game", { gameGlobalProvider: true }],
+    ["TTMinis.game with wx/tt aliases", { wxAlias: {}, ttAlias: {} }],
+    [
+      "GameGlobal.TTMinis.game with wx/tt aliases",
+      { gameGlobalProvider: true, wxAlias: {}, ttAlias: {} },
+    ],
+  ];
+
+  for (const [providerName, options] of providerCases) {
+    let hostCalls = 0;
+    const { GodotSDK } = await loadSdkWithApi({
+      getStorageInfoSync() {
+        hostCalls += 1;
+        throw new Error("unsafe host method must not run");
+      },
+    }, "tiktok", options);
+    const sdk = new GodotSDK();
+
+    const info = JSON.parse(sdk.storageGetAll());
+    assert.equal(sdk.platform, "tiktok", providerName);
+    assert.equal(info.supported, false, providerName);
+    assert.deepEqual(info.keys, [], providerName);
+    assert.match(info.error, /disabled on TikTok Native.*crash the host process/, providerName);
+
+    const generic = await new Promise((resolve) => {
+      sdk.callApi("getStorageInfoSync", JSON.stringify({ _args: [] }), (...args) => resolve(args));
+    });
+    assert.deepEqual(generic, [
+      "getStorageInfoSync",
+      false,
+      "",
+      info.error,
+    ], providerName);
+    assert.equal(hostCalls, 0, `${providerName} must make zero unsafe host calls`);
+  }
+}
+
+async function testStorageInfoStillWorksOnWeChatAndDouyin() {
+  for (const platform of ["wechat", "douyin"]) {
+    let hostCalls = 0;
+    const response = { keys: ["save"], currentSize: 2, limitSize: 10 };
+    const { GodotSDK } = await loadSdkWithApi({
+      getStorageInfoSync() {
+        hostCalls += 1;
+        return response;
+      },
+    }, platform);
+    const sdk = new GodotSDK();
+
+    assert.deepEqual(JSON.parse(sdk.storageGetAll()), {
+      keys: ["save"],
+      size: 2,
+      limit: 10,
+    });
+    const generic = await new Promise((resolve) => {
+      sdk.callApi("getStorageInfoSync", JSON.stringify({ _args: [] }), (...args) => resolve(args));
+    });
+    assert.deepEqual(generic, [
+      "getStorageInfoSync",
+      true,
+      JSON.stringify(response),
+      "",
+    ]);
+    assert.equal(hostCalls, 2, `${platform} storage info calls must remain enabled`);
+  }
+}
+
+async function testTikTokPublicFileSystemAndWritebackNeverCallTheHost() {
+  const providerCases = [
+    ["TTMinis.game", {}],
+    ["GameGlobal.TTMinis.game", { gameGlobalProvider: true }],
+    ["TTMinis.game with wx/tt aliases", { aliases: true }],
+    ["GameGlobal.TTMinis.game with wx/tt aliases", { gameGlobalProvider: true, aliases: true }],
+  ];
+  const publicError = "TTMinis.game FileSystemManager is not supported through the public bridge on TikTok Native because native calls can crash the host process";
+  const writeError = "TTMinis.game persistent file-system writes are not supported on TikTok Native because they can crash the host process";
+
+  for (const [providerName, providerOptions] of providerCases) {
+    let envReads = 0;
+    let managerPropertyReads = 0;
+    let managerCalls = 0;
+    let wxAliasCalls = 0;
+    let ttAliasCalls = 0;
+    let engineWritebackCalls = 0;
+    const readCalls = [];
+    const manager = {
+      access(options) {
+        readCalls.push("access");
+        options.success({});
+      },
+      mkdir(options) {
+        readCalls.push("mkdir");
+        options.success({});
+      },
+      readdir(options) {
+        readCalls.push("readdir");
+        options.success({ files: ["slot.save"] });
+      },
+      stat(options) {
+        readCalls.push("stat");
+        options.success({
+          stats: {
+            isDirectory() { return false; },
+            isFile() { return true; },
+          },
+        });
+      },
+      readFile(options) {
+        readCalls.push("readFile");
+        options.success({ data: new Uint8Array([7, 8]).buffer });
+      },
+      writeFile() {
+        throw new Error("unsafe TikTok host write must not run");
+      },
+    };
+    const api = {};
+    Object.defineProperties(api, {
+      env: {
+        configurable: true,
+        get() {
+          envReads += 1;
+          return { USER_DATA_PATH: "ttfile://user" };
+        },
+      },
+      getFileSystemManager: {
+        configurable: true,
+        get() {
+          managerPropertyReads += 1;
+          return () => {
+            managerCalls += 1;
+            return manager;
+          };
+        },
+      },
+    });
+    const aliasApi = (increment) => ({
+      getFileSystemManager() {
+        increment();
+        return manager;
+      },
+    });
+    const options = {
+      gameGlobalProvider: providerOptions.gameGlobalProvider,
+      wxAlias: providerOptions.aliases ? aliasApi(() => { wxAliasCalls += 1; }) : undefined,
+      ttAlias: providerOptions.aliases ? aliasApi(() => { ttAliasCalls += 1; }) : undefined,
+    };
+    const { GodotSDK } = await loadSdkWithApi(api, "tiktok", options);
+    const sdk = new GodotSDK();
+    const initialEnvReads = envReads;
+    const initialManagerPropertyReads = managerPropertyReads;
+
+    let publicResult = null;
+    sdk.fileSystemCall("writeFile", JSON.stringify({
+      filePath: "ttfile://user/unsafe.tmp",
+      data: "unsafe",
+      encoding: "utf8",
+    }), (...args) => { publicResult = args; });
+    assert.deepEqual(publicResult, ["writeFile", false, "", publicError], providerName);
+
+    let genericResult = null;
+    sdk.callApi("getFileSystemManager", JSON.stringify({ _args: [] }), (...args) => {
+      genericResult = args;
+    });
+    assert.deepEqual(genericResult, ["getFileSystemManager", false, "", publicError], providerName);
+    assert.equal(envReads, initialEnvReads, `${providerName} public gates must not read env`);
+    assert.equal(
+      managerPropertyReads,
+      initialManagerPropertyReads,
+      `${providerName} public gates must not read getFileSystemManager`,
+    );
+    assert.equal(managerCalls, 0, `${providerName} public gates must make zero manager calls`);
+
+    const ensured = [];
+    const copied = [];
+    sdk.set_engine({
+      ensureFSDirectory(path) { ensured.push(path); },
+      copyToFS(path, bytes) { copied.push([path, [...new Uint8Array(bytes)]]); },
+      copyFSToAdapter() {
+        engineWritebackCalls += 1;
+        return Promise.resolve();
+      },
+    });
+    const restored = await sdk.restorePersistentPaths(["/userfs"]);
+    assert.deepEqual(restored, { method: "copyToFS", paths: ["/userfs"], entries: 1 }, providerName);
+    assert.deepEqual(ensured, ["/userfs"], providerName);
+    assert.deepEqual(copied, [["/userfs/slot.save", [7, 8]]], providerName);
+    assert.deepEqual(readCalls, ["access", "readdir", "stat", "readFile"], providerName);
+    assert.equal(managerCalls, 1, `${providerName} internal read-only restore must remain enabled`);
+
+    const envReadsAfterRestore = envReads;
+    const managerPropertyReadsAfterRestore = managerPropertyReads;
+    const managerCallsAfterRestore = managerCalls;
+    assert.throws(
+      () => sdk._persistentHost("writeFile", "write"),
+      (error) => error.message === writeError,
+      providerName,
+    );
+    await assert.rejects(
+      sdk.writeFile("/userfs/unsafe.tmp", new Uint8Array([1, 2])),
+      (error) => error.message === writeError,
+      providerName,
+    );
+    await assert.rejects(
+      sdk.syncfs(),
+      (error) => error.message === writeError,
+      providerName,
+    );
+    assert.equal(envReads, envReadsAfterRestore, `${providerName} write gates must not read env`);
+    assert.equal(
+      managerPropertyReads,
+      managerPropertyReadsAfterRestore,
+      `${providerName} write gates must not read getFileSystemManager`,
+    );
+    assert.equal(managerCalls, managerCallsAfterRestore, `${providerName} write gates must make zero manager calls`);
+    assert.equal(engineWritebackCalls, 0, `${providerName} sync must not invoke engine writeback`);
+    assert.equal(wxAliasCalls, 0, `${providerName} must not call the wx alias`);
+    assert.equal(ttAliasCalls, 0, `${providerName} must not call the tt alias`);
+  }
+}
+
+async function testFileSystemWritePathsStillWorkOnWeChatAndDouyin() {
+  for (const platform of ["wechat", "douyin"]) {
+    let managerCalls = 0;
+    let writeCalls = 0;
+    let accessCalls = 0;
+    let engineWritebackCalls = 0;
+    const manager = {
+      access(options) {
+        accessCalls += 1;
+        options.success({});
+      },
+      mkdir(options) { options.success({}); },
+      writeFile(options) {
+        writeCalls += 1;
+        options.success({ errMsg: "writeFile:ok" });
+      },
+    };
+    const { GodotSDK } = await loadSdkWithApi({
+      env: { USER_DATA_PATH: "/host-data" },
+      getFileSystemManager() {
+        managerCalls += 1;
+        return manager;
+      },
+    }, platform);
+    const sdk = new GodotSDK();
+
+    let publicResult = null;
+    sdk.fileSystemCall("writeFile", JSON.stringify({
+      filePath: "/host-data/public.save",
+      data: "save",
+      encoding: "utf8",
+    }), (...args) => { publicResult = args; });
+    assert.deepEqual(publicResult, [
+      "writeFile",
+      true,
+      JSON.stringify({ errMsg: "writeFile:ok" }),
+      "",
+    ], platform);
+
+    let genericResult = null;
+    sdk.callApi("getFileSystemManager", JSON.stringify({ _args: [] }), (...args) => {
+      genericResult = args;
+    });
+    assert.deepEqual(genericResult, ["getFileSystemManager", true, "{}", ""], platform);
+
+    await sdk.writeFile("/userfs/direct.save", new Uint8Array([1]));
+    sdk.set_engine({
+      async copyFSToAdapter(adapter, paths) {
+        engineWritebackCalls += 1;
+        assert.deepEqual(paths, ["/userfs"], platform);
+        await adapter.writeFile("/userfs/sync.save", new Uint8Array([2]));
+      },
+    });
+    assert.equal(await sdk.syncfs(), true, platform);
+    assert.equal(managerCalls, 4, `${platform} manager calls must remain enabled`);
+    assert.equal(writeCalls, 3, `${platform} writes must remain enabled`);
+    assert.equal(accessCalls, 2, `${platform} persistent directory checks must remain enabled`);
+    assert.equal(engineWritebackCalls, 1, `${platform} sync must remain enabled`);
+  }
+}
+
+async function testPaymentUsesTheSelectedPlatformContract() {
+  const cases = [
+    ["wechat", "requestMidasPayment"],
+    ["douyin", "requestGamePayment"],
+    ["tiktok", "pay"],
+  ];
+
+  for (const [platform, method] of cases) {
+    const calls = [];
+    const api = {
+      [method](options) {
+        calls.push(options);
+        options.success({ errMsg: `${method}:ok` });
+      },
+    };
+    const { GodotSDK } = await loadSdkWithApi(api, platform);
+    const sdk = new GodotSDK();
+    const result = await new Promise((resolve) => {
+      sdk.requestPayment(JSON.stringify({ orderId: "order-1" }), (...args) => resolve(args));
+    });
+
+    assert.equal(sdk.platform, platform);
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].orderId, "order-1");
+    assert.deepEqual(result, [true, ""]);
+  }
+
+  const { GodotSDK } = await loadSdkWithApi({}, "tiktok");
+  const unsupported = await new Promise((resolve) => {
+    new GodotSDK().requestPayment("{}", (...args) => resolve(args));
+  });
+  assert.deepEqual(unsupported, [false, "TTMinis.game.pay is not supported"]);
+}
+
+async function testTikTokShortcutAndMissionWrappers() {
+  const capabilityChecks = [];
+  const calls = [];
+  const api = {
+    canIUse(name) {
+      capabilityChecks.push(name);
+      return true;
+    },
+    addShortcut(options) {
+      calls.push(["addShortcut", options.source]);
+      options.success({ errMsg: "addShortcut:ok" });
+    },
+    getShortcutMissionReward(options) {
+      calls.push(["getShortcutMissionReward", options.source]);
+      options.success({ canReceiveReward: true, rewardType: "shortcut" });
+    },
+    startEntranceMission(options) {
+      calls.push(["startEntranceMission", options.source]);
+      return Promise.resolve({ errMsg: "startEntranceMission:ok" });
+    },
+    getEntranceMissionReward(options) {
+      calls.push(["getEntranceMissionReward", options.source]);
+      options.fail({ errCode: 4001, errMsg: "getEntranceMissionReward:fail not ready" });
+    },
+  };
+  const { GodotSDK } = await loadSdkWithApi(api, "tiktok");
+  const sdk = new GodotSDK();
+  const invoke = (method, source) => new Promise((resolve) => {
+    sdk[method](JSON.stringify({ source }), (...args) => resolve(args));
+  });
+
+  const results = [
+    await invoke("addShortcut", "menu"),
+    await invoke("getShortcutMissionReward", "shortcut"),
+    await invoke("startEntranceMission", "entrance"),
+    await invoke("getEntranceMissionReward", "reward"),
+  ];
+
+  assert.deepEqual(capabilityChecks, [
+    "addShortcut",
+    "getShortcutMissionReward",
+    "startEntranceMission",
+    "getEntranceMissionReward",
+  ]);
+  assert.deepEqual(calls, [
+    ["addShortcut", "menu"],
+    ["getShortcutMissionReward", "shortcut"],
+    ["startEntranceMission", "entrance"],
+    ["getEntranceMissionReward", "reward"],
+  ]);
+  assert.deepEqual(results, [
+    ["addShortcut", true, false, JSON.stringify({ errMsg: "addShortcut:ok" }), ""],
+    [
+      "getShortcutMissionReward",
+      true,
+      true,
+      JSON.stringify({ canReceiveReward: true, rewardType: "shortcut" }),
+      "",
+    ],
+    [
+      "startEntranceMission",
+      true,
+      false,
+      JSON.stringify({ errMsg: "startEntranceMission:ok" }),
+      "",
+    ],
+    ["getEntranceMissionReward", false, false, "", "code=4001 getEntranceMissionReward:fail not ready"],
+  ]);
+
+  const source = fs.readFileSync(sdkSourcePath, "utf8");
+  for (const method of capabilityChecks) {
+    assert.match(source, new RegExp(`_api\\.${method}\\(`), `${method} must remain a direct host call`);
+  }
+}
+
+async function testTikTokShortcutAndMissionWrappersFailSafe() {
+  let invoked = false;
+  const { GodotSDK: CapabilityGatedSDK } = await loadSdkWithApi({
+    canIUse() { return false; },
+    addShortcut() { invoked = true; },
+  }, "tiktok");
+  const gated = await new Promise((resolve) => {
+    new CapabilityGatedSDK().addShortcut("{}", (...args) => resolve(args));
+  });
+  assert.equal(invoked, false);
+  assert.deepEqual(gated, [
+    "addShortcut",
+    false,
+    false,
+    "",
+    'TTMinis.game.canIUse("addShortcut") returned false',
+  ]);
+
+  const { GodotSDK: MissingSDK } = await loadSdkWithApi({}, "tiktok");
+  const missing = await new Promise((resolve) => {
+    new MissingSDK().getEntranceMissionReward("{}", (...args) => resolve(args));
+  });
+  assert.deepEqual(missing, [
+    "getEntranceMissionReward",
+    false,
+    false,
+    "",
+    "TTMinis.game.getEntranceMissionReward is not supported",
+  ]);
+
+  const { GodotSDK: WeChatSDK } = await loadSdkWithApi({
+    canIUse() { return true; },
+    startEntranceMission() { invoked = true; },
+  }, "wechat");
+  const wrongPlatform = await new Promise((resolve) => {
+    new WeChatSDK().startEntranceMission("{}", (...args) => resolve(args));
+  });
+  assert.deepEqual(wrongPlatform, [
+    "startEntranceMission",
+    false,
+    false,
+    "",
+    "startEntranceMission is only supported on TikTok Native",
+  ]);
+}
+
+async function testPersistentRestoreAndWritebackContract() {
+  const base = "/host-data";
+  const writes = [];
+  const manager = {
+    access(options) { options.success({}); },
+    mkdir(options) { options.success({}); },
+    readdir(options) {
+      const entries = options.dirPath === `${base}/userfs`
+        ? ["slot.save", "profiles"]
+        : options.dirPath === `${base}/userfs/profiles`
+          ? ["active.save"]
+          : [];
+      options.success({ files: entries });
+    },
+    stat(options) {
+      if (!options.filePath) {
+        options.fail({ errMsg: "stat:fail this host requires filePath" });
+        return;
+      }
+      const directory = options.filePath.endsWith("/profiles");
+      options.success({
+        // TikTok documents `stats`; the bridge also accepts WeChat's `stat`.
+        stats: {
+          isDirectory() { return directory; },
+          isFile() { return !directory; },
+        },
+      });
+    },
+    readFile(options) {
+      const data = options.filePath.endsWith("active.save")
+        ? new Uint8Array([3, 4]).buffer
+        : new Uint8Array([1, 2]).buffer;
+      options.success({ data });
+    },
+    writeFile(options) {
+      writes.push([options.filePath, [...new Uint8Array(options.data)]]);
+      options.success({});
+    },
+  };
+  const { GodotSDK } = await loadSdkWithApi({
+    env: { USER_DATA_PATH: base },
+    getFileSystemManager() { return manager; },
+  });
+  const sdk = new GodotSDK();
+  const copied = [];
+  const ensured = [];
+  sdk.set_engine({
+    ensureFSDirectory(path) { ensured.push(path); },
+    copyToFS(path, bytes) { copied.push([path, [...new Uint8Array(bytes)]]); },
+    async copyFSToAdapter(adapter, paths) {
+      assert.equal(adapter, sdk);
+      assert.deepEqual(paths, ["/userfs"]);
+      const source = new Uint8Array([0, 8, 9, 0]).subarray(1, 3);
+      await adapter.writeFile("/userfs/new.save", source);
+    },
+  });
+
+  const restored = await sdk.restorePersistentPaths(["/userfs"]);
+  assert.deepEqual(restored, {
+    method: "copyToFS",
+    paths: ["/userfs"],
+    entries: 3,
+  });
+  assert.deepEqual(ensured, ["/userfs", "/userfs/profiles"]);
+  assert.deepEqual(copied, [
+    ["/userfs/slot.save", [1, 2]],
+    ["/userfs/profiles/active.save", [3, 4]],
+  ]);
+
+  let successCount = 0;
+  assert.equal(await sdk.syncfs(() => { successCount += 1; }), true);
+  assert.equal(successCount, 1);
+  assert.deepEqual(writes, [[`${base}/userfs/new.save`, [8, 9]]]);
+}
+
+async function testPersistentWritebackCannotSilentlySucceed() {
+  const manager = {
+    access(options) { options.success({}); },
+    mkdir(options) { options.success({}); },
+    readdir(options) { options.success({ files: [] }); },
+  };
+  const { GodotSDK } = await loadSdkWithApi({
+    env: { USER_DATA_PATH: "/host-data" },
+    getFileSystemManager() { return manager; },
+  });
+  const sdk = new GodotSDK();
+  sdk.set_engine({ ensureFSDirectory() {}, copyToFS() {} });
+  await sdk.restorePersistentPaths(["/userfs"]);
+
+  let successCalled = false;
+  let observedError = null;
+  const result = await sdk.syncfs(
+    () => { successCalled = true; },
+    (error) => { observedError = error; },
+  );
+  assert.equal(result, false);
+  assert.equal(successCalled, false);
+  assert.match(observedError.message, /Engine\.copyFSToAdapter\(\) is missing/);
+  await assert.rejects(() => sdk.syncfs(), /Engine\.copyFSToAdapter\(\) is missing/);
 }
 
 async function testGetPrivacySettingWrapper() {
@@ -2406,22 +2957,149 @@ async function testBatteryWrappers() {
     isCharging: false,
     isLowPowerModeEnabled: true,
   };
-  const { GodotSDK } = await loadSdkWithApi({
-    getBatteryInfo(options) {
-      options.success(response);
-    },
-    getBatteryInfoSync() {
-      return syncResponse;
-    },
-  });
+  for (const platform of ["wechat", "douyin"]) {
+    let asyncHostCalls = 0;
+    let syncHostCalls = 0;
+    const { GodotSDK } = await loadSdkWithApi({
+      getBatteryInfo(options) {
+        asyncHostCalls += 1;
+        options.success(response);
+      },
+      getBatteryInfoSync() {
+        syncHostCalls += 1;
+        return syncResponse;
+      },
+    }, platform);
 
-  const sdk = new GodotSDK();
-  const asyncResult = await new Promise((resolve) => {
-    sdk.getBatteryInfo((...args) => resolve(args));
-  });
+    const sdk = new GodotSDK();
+    const asyncResult = await new Promise((resolve) => {
+      sdk.getBatteryInfo((...args) => resolve(args));
+    });
 
-  assert.deepEqual(asyncResult, [88, true, JSON.stringify(response), ""]);
-  assert.equal(sdk.getBatteryInfoSync(), JSON.stringify(syncResponse));
+    assert.deepEqual(asyncResult, [88, true, JSON.stringify(response), ""], platform);
+    assert.equal(sdk.getBatteryInfoSync(), JSON.stringify(syncResponse), platform);
+    assert.equal(asyncHostCalls, 1, `${platform} async battery call must remain enabled`);
+    assert.equal(syncHostCalls, 1, `${platform} sync battery call must remain enabled`);
+  }
+}
+
+async function testTikTokBatteryWrappersNeverCallTheHost() {
+  const providerCases = [
+    ["TTMinis.game", {}],
+    ["GameGlobal.TTMinis.game", { gameGlobalProvider: true }],
+    ["TTMinis.game with wx/tt aliases", { aliases: true }],
+    ["GameGlobal.TTMinis.game with wx/tt aliases", { gameGlobalProvider: true, aliases: true }],
+  ];
+
+  for (const [providerName, providerOptions] of providerCases) {
+    let providerAsyncCalls = 0;
+    let providerSyncCalls = 0;
+    let wxAliasCalls = 0;
+    let ttAliasCalls = 0;
+    const api = {
+      getBatteryInfo() {
+        providerAsyncCalls += 1;
+      },
+      getBatteryInfoSync() {
+        providerSyncCalls += 1;
+        return { level: 100, isCharging: true };
+      },
+    };
+    const aliasApi = (increment) => ({
+      getBatteryInfo() { increment(); },
+      getBatteryInfoSync() { increment(); return { level: 100, isCharging: true }; },
+    });
+    const options = {
+      gameGlobalProvider: providerOptions.gameGlobalProvider,
+      wxAlias: providerOptions.aliases ? aliasApi(() => { wxAliasCalls += 1; }) : undefined,
+      ttAlias: providerOptions.aliases ? aliasApi(() => { ttAliasCalls += 1; }) : undefined,
+    };
+    const { GodotSDK } = await loadSdkWithApi(api, "tiktok", options);
+    const sdk = new GodotSDK();
+
+    let asyncResult = null;
+    sdk.getBatteryInfo((...args) => { asyncResult = args; });
+    assert.deepEqual(asyncResult, [
+      0,
+      false,
+      "",
+      "TTMinis.game.getBatteryInfo is not supported on TikTok Native",
+    ], providerName);
+    assert.deepEqual(JSON.parse(sdk.getBatteryInfoSync()), {
+      supported: false,
+      error: "TTMinis.game.getBatteryInfoSync is not supported on TikTok Native",
+    }, providerName);
+    assert.equal(providerAsyncCalls, 0, `${providerName} must make zero async host calls`);
+    assert.equal(providerSyncCalls, 0, `${providerName} must make zero sync host calls`);
+    assert.equal(wxAliasCalls, 0, `${providerName} must not call the wx alias`);
+    assert.equal(ttAliasCalls, 0, `${providerName} must not call the tt alias`);
+  }
+}
+
+async function testModalWrappersAndLoadingCalls() {
+  for (const platform of ["wechat", "douyin"]) {
+    const calls = [];
+    const { GodotSDK } = await loadSdkWithApi({
+      showModal(options) {
+        calls.push(["showModal", options]);
+        options.success({ confirm: true, cancel: false });
+      },
+      showLoading(options) { calls.push(["showLoading", options]); },
+      hideLoading(options) { calls.push(["hideLoading", options]); },
+    }, platform);
+    const sdk = new GodotSDK();
+
+    let modalResult = null;
+    sdk.showModal("Confirm", "Continue?", (...args) => { modalResult = args; });
+    assert.deepEqual(modalResult, [true, false, ""], platform);
+    sdk.showLoading("Loading...");
+    sdk.hideLoading();
+    assert.equal(calls.length, 3, platform);
+    assert.equal(calls[0][1].title, "Confirm", platform);
+    assert.equal(calls[0][1].content, "Continue?", platform);
+    assert.deepEqual(calls[1], ["showLoading", { title: "Loading...", mask: true }], platform);
+    assert.deepEqual(calls[2], ["hideLoading", {}], platform);
+  }
+
+  const providerCases = [
+    ["TTMinis.game", {}],
+    ["GameGlobal.TTMinis.game", { gameGlobalProvider: true }],
+    ["TTMinis.game with wx/tt aliases", { aliases: true }],
+    ["GameGlobal.TTMinis.game with wx/tt aliases", { gameGlobalProvider: true, aliases: true }],
+  ];
+  for (const [providerName, providerOptions] of providerCases) {
+    let aliasModalCalls = 0;
+    const loadingCalls = [];
+    const api = {
+      showLoading(options) { loadingCalls.push(["showLoading", options]); },
+      hideLoading(options) { loadingCalls.push(["hideLoading", options]); },
+    };
+    const aliasApi = {
+      showModal() { aliasModalCalls += 1; },
+    };
+    const { GodotSDK } = await loadSdkWithApi(api, "tiktok", {
+      gameGlobalProvider: providerOptions.gameGlobalProvider,
+      wxAlias: providerOptions.aliases ? aliasApi : undefined,
+      ttAlias: providerOptions.aliases ? aliasApi : undefined,
+    });
+    const sdk = new GodotSDK();
+
+    let modalResult = null;
+    sdk.showModal("Confirm", "Continue?", (...args) => { modalResult = args; });
+    assert.deepEqual(modalResult, [
+      false,
+      false,
+      "TTMinis.game.showModal is not supported",
+    ], providerName);
+    assert.equal(aliasModalCalls, 0, `${providerName} must not fall back to a compatibility alias`);
+
+    sdk.showLoading("Loading...");
+    sdk.hideLoading();
+    assert.deepEqual(loadingCalls, [
+      ["showLoading", { title: "Loading...", mask: true }],
+      ["hideLoading", {}],
+    ], providerName);
+  }
 }
 
 async function testUpdateManagerWrapper() {
@@ -3250,6 +3928,15 @@ async function testScreenWrappersReportUnsupportedMethods() {
 await testBridgeInfoUsesTheSelectedDouyinProvider();
 await testCallApiUsesSuccessCallback();
 await testCallApiReportsUnsupportedMethods();
+await testTikTokStorageInfoNeverCallsTheHost();
+await testStorageInfoStillWorksOnWeChatAndDouyin();
+await testTikTokPublicFileSystemAndWritebackNeverCallTheHost();
+await testFileSystemWritePathsStillWorkOnWeChatAndDouyin();
+await testPaymentUsesTheSelectedPlatformContract();
+await testTikTokShortcutAndMissionWrappers();
+await testTikTokShortcutAndMissionWrappersFailSafe();
+await testPersistentRestoreAndWritebackContract();
+await testPersistentWritebackCannotSilentlySucceed();
 await testGetPrivacySettingWrapper();
 await testRequirePrivacyAuthorizeWrapper();
 await testOpenPrivacyContractWrapper();
@@ -3282,6 +3969,8 @@ await testMiniProgramNavigationWrappers();
 await testCloudStorageAndOpenDataWrappers();
 await testCustomerServiceAndSubscribeWrappers();
 await testBatteryWrappers();
+await testTikTokBatteryWrappersNeverCallTheHost();
+await testModalWrappersAndLoadingCalls();
 await testUpdateManagerWrapper();
 await testMemoryWarningWrapper();
 await testWindowResizeWrapper();

@@ -117,6 +117,7 @@ func _init() -> void:
 		"screen_recording_state": [],
 		"screen_recording_changed": [],
 		"visual_effect": [],
+		"modal_result": [],
 	}
 	sdk.generic_api_result.connect(func(api_name: String, success: bool, data_json: String, error: String) -> void:
 		holder["generic"] = [api_name, success, data_json, error]
@@ -318,6 +319,26 @@ func _init() -> void:
 	)
 	sdk.visual_effect_on_capture_set.connect(func(effect: String, success: bool, error: String) -> void:
 		holder["visual_effect"] = [effect, success, error]
+	)
+	sdk.modal_result.connect(func(confirmed: bool) -> void:
+		holder["modal_result"] = [confirmed]
+	)
+
+	sdk.show_modal("Confirm", "Continue?")
+	_assert_eq(holder["modal_result"], [false], "show_modal fallback result")
+	_assert_eq(
+		holder["generic"],
+		["showModal", false, "", MiniGameSDKScript.NOT_IN_RUNTIME],
+		"show_modal fallback error",
+	)
+	sdk._on_modal([true, false, ""])
+	_assert_eq(holder["modal_result"], [true], "modal success callback conversion")
+	sdk._on_modal([false, false, "showModal unavailable"])
+	_assert_eq(holder["modal_result"], [false], "modal error result conversion")
+	_assert_eq(
+		holder["generic"],
+		["showModal", false, "", "showModal unavailable"],
+		"modal error callback conversion",
 	)
 
 	sdk.call_api("setClipboardData", {"data": "hello"})

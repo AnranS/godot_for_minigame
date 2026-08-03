@@ -20,10 +20,13 @@ function replaceSpecifier(source, specifier, replacement) {
 async function importEntrypoint(entryPlatform, availablePlatform) {
   delete globalThis.wx;
   delete globalThis.tt;
+  delete globalThis.TTMinis;
   delete globalThis.__godotMiniGamePlatformRuntime;
   delete globalThis.PlatformRuntime;
   globalThis.GameGlobal = {};
-  globalThis[availablePlatform === "wechat" ? "wx" : "tt"] = {};
+  if (availablePlatform === "wechat") globalThis.wx = {};
+  if (availablePlatform === "douyin") globalThis.tt = {};
+  if (availablePlatform === "tiktok") globalThis.TTMinis = { game: {} };
   globalThis.__entryLoaderCalls = 0;
 
   const runtimeUrl = moduleUrl(read("common/js/platform_runtime.js"));
@@ -42,7 +45,7 @@ async function importEntrypoint(entryPlatform, availablePlatform) {
   return import(moduleUrl(source));
 }
 
-for (const platform of ["wechat", "douyin"]) {
+for (const platform of ["wechat", "douyin", "tiktok"]) {
   await importEntrypoint(platform, platform);
   assert.equal(globalThis.__entryLoaderCalls, 1, `${platform} should boot on its own provider`);
 }
@@ -56,6 +59,18 @@ assert.equal(globalThis.__entryLoaderCalls, 0);
 await assert.rejects(
   importEntrypoint("douyin", "wechat"),
   /Douyin entrypoint requires douyin, but detected wechat/,
+);
+assert.equal(globalThis.__entryLoaderCalls, 0);
+
+await assert.rejects(
+  importEntrypoint("tiktok", "douyin"),
+  /TikTok entrypoint requires tiktok, but detected douyin/,
+);
+assert.equal(globalThis.__entryLoaderCalls, 0);
+
+await assert.rejects(
+  importEntrypoint("douyin", "tiktok"),
+  /Douyin entrypoint requires douyin, but detected tiktok/,
 );
 assert.equal(globalThis.__entryLoaderCalls, 0);
 

@@ -1,14 +1,14 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="assets/banner-dark-v2.png" />
-    <img src="assets/banner-light.png" width="720" alt="Godot 项目通过 Godot Mini Game 导出为微信与抖音小游戏" />
+    <img src="assets/banner-light.png" width="720" alt="Godot 项目通过 Godot Mini Game 导出为微信、抖音与 TikTok 小游戏" />
   </picture>
 </p>
 
 <h1 align="center">Godot Mini Game</h1>
 
 <p align="center">
-  <strong>将 Godot 游戏导出为微信与抖音小游戏。</strong><br />
+  <strong>将 Godot 游戏导出为微信、抖音与 TikTok 小游戏。</strong><br />
   经项目 CI 验证的 WASM 引擎 · 带保护边界的导出事务 · 一套版本化 GDScript SDK
 </p>
 
@@ -29,7 +29,7 @@
 
 ---
 
-Godot Mini Game 可以把普通 Godot 项目转换成微信或抖音小游戏工程。日常导出
+Godot Mini Game 可以把普通 Godot 项目转换成微信、抖音或 TikTok 小游戏工程。日常导出
 不需要安装 Node.js、Brotli、Emscripten，也不需要另外下载 Godot Web 导出模板。
 
 ## 为什么选择 Godot Mini Game？
@@ -37,22 +37,22 @@ Godot Mini Game 可以把普通 Godot 项目转换成微信或抖音小游戏工
 | | |
 |---|---|
 | **编辑器内完成工作流**<br />在一个 Dock 中构建 PCK、装配平台文件、验证并发布。 | **精确模板身份**<br />Godot 源码、Emscripten、profile、revision、schema、特性和哈希保持一致。 |
-| **一套 SDK，两个 Provider**<br />`MiniGameSDK` 通过共享的 `wx` / `tt` 运行时契约提供 220 个方法、82 个信号。 | **受保护的发布边界**<br />暂存区、所有权 Manifest、哈希、输出锁、backup 和回滚只处理受管路径，并保留 sidecars。 |
+| **一套按能力门控的 SDK**<br />`MiniGameSDK` 通过 `wx`、`tt` 与 `TTMinis.game` 提供 224 个方法、83 个信号；具体可用性仍取决于目标宿主。 | **受保护的发布边界**<br />暂存区、所有权 Manifest、哈希、输出锁、backup 和回滚只处理受管路径，并保留 sidecars。 |
 
 ## 系统架构
 
 <p align="center">
-  <a href="assets/export-architecture-zh.png">
+  <a href="assets/export-architecture-zh-v3.png">
     <picture>
-      <source media="(max-width: 600px)" srcset="assets/export-architecture-zh-mobile.png" />
-      <img src="assets/export-architecture-zh.png" width="720" alt="架构：单个 wx 或 tt 目标经过精确模板门禁、同级暂存、清单、哈希、锁与受管路径发布；导出产物再使用唯一 PlatformRuntime Provider、GodotSDK 到 MiniGameSDK 的 Bridge ABI，以及精确身份发布门禁" />
+      <source media="(max-width: 600px)" srcset="assets/export-architecture-zh-mobile-v3.png" />
+      <img src="assets/export-architecture-zh-v3.png" width="720" alt="架构：单个 wx、tt 或 TTMinis.game 目标经过精确模板门禁、同级暂存、清单、哈希、锁与受管路径发布；导出产物再使用唯一 PlatformRuntime Provider、GodotSDK 到 MiniGameSDK 的 Bridge ABI，以及精确身份发布门禁" />
     </picture>
   </a>
 </p>
 
 <p align="center"><sub>点击架构图可查看原始尺寸。</sub></p>
 
-- **导出控制面**——每次事务只选择微信或抖音之一，解析一个完整引擎模板包，在目标目录之外装配，验证所有受管产物，再在锁内发布。
+- **导出控制面**——每次事务只选择微信、抖音或 TikTok Native 之一，解析一个完整引擎模板包，在目标目录之外装配，验证所有受管产物，再在锁内发布。
 - **导出产物运行时**——`game.js` 只选择一个 `PlatformRuntime` Provider；Loader 启动修补后的引擎与 PCK，`GodotSDK` 和 `MiniGameSDK` 协商 Bridge ABI。
 
 发布过程支持进程内失败回滚并记录恢复证据，但它不是跨文件系统的 crash-atomic
@@ -62,7 +62,7 @@ Godot Mini Game 可以把普通 Godot 项目转换成微信或抖音小游戏工
 
 | 契约 | 内置值 |
 |---|---|
-| 插件版本 | `v0.2.1` |
+| 插件版本 | `v0.3.0` |
 | Godot | `4.6.1.stable` · commit `14d19694e0c8` |
 | Emscripten | `4.0.3` |
 | 构建 | `2d_full` · `release` · revision `1` |
@@ -70,10 +70,28 @@ Godot Mini Game 可以把普通 Godot 项目转换成微信或抖音小游戏工
 
 - ✅ **微信小游戏（`wx`）**——完整导出、Manifest、WASM 与包结构检查。
 - ✅ **抖音小游戏（`tt`）**——完整导出、Manifest、WASM 与包结构检查。
+- 🧪 **TikTok Mini Game Native（`TTMinis.game`）**——一级 **beta** 目标，已有自动导出检查；发布前仍要求 TikTok 客户端 43.4.0+、`ttmg` DevTool 编译与真机验证。
 
 > [!IMPORTANT]
 > 内置引擎只经过本项目对上述精确身份的验证。其它 Godot 编辑器构建必须导入
 > 完全匹配的模板包。自动化检查不能替代平台开发者工具和目标真机上的最终验收。
+
+v0.3 的 TikTok 支持仅覆盖 Native runtime，`game.json` 使用小写
+`subpackages`；抖音继续使用 `subPackages`。TikTok HTML runtime 不在本轮范围内。
+
+首次运行 TikTok 时，先完成 `ttmg setup` 与 `ttmg login`，进入导出目录后运行
+`ttmg init` 并输入同一个 Client Key，最后运行 `ttmg dev`。固定版 CLI 不会把
+`project.config.json.appid` 自动写入 `~/.ttmgrc`；跳过 init 会报
+`Missing clientKey`。
+
+TikTok Native 的桌面快捷方式与入口任务已提供强类型 SDK：
+`add_shortcut()`、`get_shortcut_mission_reward()`、`start_entrance_mission()` 和
+`get_entrance_mission_reward()`。Bridge 会先做能力检查，再调用宿主 API，结果统一由
+`tiktok_mission_result` 返回。
+
+当前 TikTok beta 会对真机宿主可能崩溃或挂起的存储枚举、电池读取和公开文件
+系统写入 fail-closed。Key-value Storage 的 get/set/remove 仍受支持并已通过真机验证；
+详细边界见[使用指南](docs/USAGE_zh.md#文件系统)。
 
 [`support-matrix.json`](support-matrix.json) 是已验证身份与平台状态在 Release、CI
 和官网中的唯一事实源。
@@ -114,7 +132,7 @@ cp -R godot_for_minigame/addons/godot_mini_game your_project/addons/godot_mini_g
 
 ### 4 · 导出
 
-打开 **Mini Game Export** Dock，选择一个平台，输入 App ID，选择屏幕方向、Web
+打开 **Mini Game Export** Dock，选择一个平台，输入 App ID 或 TikTok Client Key，选择屏幕方向、Web
 preset 和专用输出目录，然后点击 **Export**。再用对应的平台开发者工具打开结果。
 
 ## 60 秒上手 SDK
@@ -137,7 +155,10 @@ MiniGameSDK.show_toast("Level %s" % level, "success")
 启动时 SDK 会先验证 Bridge 的 brand、全局名称、ABI 和必需方法，再绑定生命周期。
 排查集成问题时可检查 `bridge_info` 和 `bridge_initialization_error`。
 
-**[查看全部 220 个方法、82 个信号 →](https://anrans.github.io/godot_for_minigame/api/)**
+**[查看全部 224 个方法、83 个信号 →](https://anrans.github.io/godot_for_minigame/api/)**
+
+API 页面展示的是完整 Bridge 接口面，不代表每个宿主都兼容全部方法。同名能力按
+宿主做 capability gating；支付等平台特有能力走显式 Provider 映射。
 
 ## 文档导航
 

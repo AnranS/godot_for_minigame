@@ -35,7 +35,8 @@ function _objectOrNull(value) {
 function _normalisePlatform(value) {
   const name = String(value || "").toLowerCase();
   if (name === "wechat" || name === "weixin" || name === "wx") return "wechat";
-  if (name === "douyin" || name === "tiktok" || name === "tt") return "douyin";
+  if (name === "douyin" || name === "tt") return "douyin";
+  if (name === "tiktok" || name === "tiktok_native") return "tiktok";
   return "unknown";
 }
 
@@ -59,6 +60,10 @@ class PlatformProvider {
     const explicitPlatform = _normalisePlatform(this.global.__platform);
     const wxApi = _objectOrNull(scope.wx);
     const ttApi = _objectOrNull(scope.tt);
+    const scopeTtMinis = _objectOrNull(scope.TTMinis);
+    const globalTtMinis = _objectOrNull(this.global.TTMinis);
+    const tiktokApi = _objectOrNull(scopeTtMinis && scopeTtMinis.game)
+      || _objectOrNull(globalTtMinis && globalTtMinis.game);
 
     if (explicitPlatform === "wechat") {
       this.platform = "wechat";
@@ -68,9 +73,17 @@ class PlatformProvider {
       this.platform = "douyin";
       this.apiPrefix = "tt";
       this.api = ttApi || EMPTY_API;
+    } else if (explicitPlatform === "tiktok") {
+      this.platform = "tiktok";
+      this.apiPrefix = "TTMinis.game";
+      this.api = tiktokApi || EMPTY_API;
+    } else if (tiktokApi) {
+      // TTMinis.game is a TikTok-specific signal. TikTok may also expose `wx`
+      // and `tt` compatibility aliases, so this must win every automatic tie.
+      this.platform = "tiktok";
+      this.apiPrefix = "TTMinis.game";
+      this.api = tiktokApi;
     } else if (wxApi) {
-      // Preserve the historical wx-first behaviour when both globals exist,
-      // while keeping that choice isolated to this one module.
       this.platform = "wechat";
       this.apiPrefix = "wx";
       this.api = wxApi;
@@ -106,7 +119,7 @@ class PlatformProvider {
   requireApi(consumer = "mini-game runtime") {
     if (this.available) return this.api;
     throw new Error(
-      `[PlatformRuntime] ${consumer} requires a WeChat (wx) or Douyin (tt) mini-game API`,
+      `[PlatformRuntime] ${consumer} requires a WeChat (wx), Douyin (tt), or TikTok (TTMinis.game) mini-game API`,
     );
   }
 
@@ -147,10 +160,14 @@ class PlatformProvider {
   }
 
   getNativeWebAssemblyApis() {
+    const wxWebAssembly = _objectOrNull(this.scope.WXWebAssembly)
+      || _objectOrNull(this.global.WXWebAssembly);
+    const ttWebAssembly = _objectOrNull(this.scope.TTWebAssembly)
+      || _objectOrNull(this.global.TTWebAssembly);
     const native = this.platform === "wechat"
-      ? _objectOrNull(this.scope.WXWebAssembly)
-      : this.platform === "douyin"
-        ? _objectOrNull(this.scope.TTWebAssembly)
+      ? wxWebAssembly
+      : this.platform === "douyin" || this.platform === "tiktok"
+        ? ttWebAssembly
         : null;
     return native ? [native] : [];
   }
@@ -172,7 +189,10 @@ class PlatformProvider {
       windowResize: this.has("onWindowResize"),
       subpackage: this.has("loadSubpackage"),
       updateManager: this.has("getUpdateManager"),
-      lifecycle: this.hasAll(["onShow", "onHide", "onError"]),
+      // TikTok Native exposes the show/hide lifecycle but does not guarantee a
+      // global onError hook. Engine startup must not depend on that optional API.
+      lifecycle: this.hasAll(["onShow", "onHide"]),
+      runtimeError: this.has("onError"),
       webAudio: this.has("createWebAudioContext") || this.has("getAudioContext"),
       innerAudio: this.has("createInnerAudioContext"),
       webAssembly: this.getNativeWebAssemblyApis().length > 0

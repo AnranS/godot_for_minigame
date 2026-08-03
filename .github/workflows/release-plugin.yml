@@ -64,14 +64,14 @@ jobs:
           (cd "$(dirname "$archive")" && sha256sum -c "${archive_name}.sha256")
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           name: "v${{ steps.version.outputs.version }}"
           body: |
             ## Godot Mini Game Plugin v${{ steps.version.outputs.version }}
 
             - Transactional mini-game export with version-locked engine templates.
-            - WeChat and Douyin platform runtimes with a shared bridge ABI.
+            - WeChat, Douyin, and TikTok platform runtimes with a shared bridge ABI.
             - Bundled certified engine template for the exact version listed in `support-matrix.json`.
 
             Download the installable ZIP below and extract it into the root of a Godot project.

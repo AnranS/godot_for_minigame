@@ -44,6 +44,7 @@ class FakeBlob {
 }
 
 const godotSdk = new GodotSDK();
+const _persistentWritebackEnabled = godotSdk.platform !== "tiktok";
 
 function _safeSet(obj, key, value) {
   if (!obj) return false;
@@ -94,20 +95,24 @@ class Loader {
     this.engine = null;
     this._loadPromise = null;
     this._syncTimer = null;
+    this._syncPromise = null;
+    this._hideSyncHandler = null;
+    this._loadingResizeHandler = null;
     this._loadingSurfaceCleaned = false;
 
     this.screenCtx = _canvas.getContext("webgl2");
     this.loadingCanvas = _api.createCanvas();
     this.loadingCtx = this.loadingCanvas.getContext("2d");
-    this.loadingCanvas.width = logicalWidth * loadingDpr;
-    this.loadingCanvas.height = logicalHeight * loadingDpr;
+    if (!this.screenCtx || !this.loadingCtx) {
+      throw new Error("[Loader] WebGL2 and 2D canvas contexts are required");
+    }
+    this.loadingDpr = loadingDpr;
+    this._syncLoadingSurfaceSize();
     // The adapter exposes DPR=1 to Godot so viewport and touch coordinates
     // share logical pixels. Keep the engine canvas in that coordinate space;
     // only the temporary loading canvas uses the physical DPR.
     _canvas.width = logicalWidth;
     _canvas.height = logicalHeight;
-    this.loadingCtx.scale(loadingDpr, loadingDpr);
-
     this.bgImage = _api.createImage();
     this.bgImage.src = this.config.background;
     this.logoImage = _api.createImage();
@@ -116,6 +121,14 @@ class Loader {
     const [tex, clean] = this._initWebgl();
     this.screenTexture = tex;
     this.cleanWebgl = clean;
+    if (typeof _window.addEventListener === "function") {
+      this._loadingResizeHandler = () => {
+        if (!this._loadingSurfaceCleaned && this.state !== "disposed") {
+          this._drawLoading();
+        }
+      };
+      _window.addEventListener("resize", this._loadingResizeHandler);
+    }
   }
 
   async loadSubpackages() {
@@ -132,9 +145,27 @@ class Loader {
     this._drawLoading();
   }
 
+  _syncLoadingSurfaceSize() {
+    const width = Math.max(1, Number(_window.innerWidth) || 1);
+    const height = Math.max(1, Number(_window.innerHeight) || 1);
+    const pixelWidth = Math.max(1, Math.round(width * this.loadingDpr));
+    const pixelHeight = Math.max(1, Math.round(height * this.loadingDpr));
+    if (this.loadingCanvas.width !== pixelWidth || this.loadingCanvas.height !== pixelHeight) {
+      this.loadingCanvas.width = pixelWidth;
+      this.loadingCanvas.height = pixelHeight;
+      if (typeof this.loadingCtx.setTransform === "function") {
+        this.loadingCtx.setTransform(this.loadingDpr, 0, 0, this.loadingDpr, 0, 0);
+      } else {
+        this.loadingCtx.scale(this.loadingDpr, this.loadingDpr);
+      }
+    }
+    return { width, height };
+  }
+
   _drawLoading() {
     const ctx = this.loadingCtx;
-    const w = _window.innerWidth, h = _window.innerHeight;
+    const size = this._syncLoadingSurfaceSize();
+    const w = size.width, h = size.height;
 
     ctx.fillStyle = this.config.backgroundColor;
     ctx.fillRect(0, 0, w, h);
@@ -168,29 +199,39 @@ class Loader {
 
     const verts = new Float32Array([-1,1,0,0, -1,-1,0,1, 1,-1,1,1, -1,1,0,0, 1,-1,1,1, 1,1,1,0]);
     const buf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buf); gl.bufferData(gl.ARRAY_BUFFER, verts, gl.STATIC_DRAW);
-    const posL = gl.getAttribLocation(prog, "a_position"); gl.vertexAttribPointer(posL, 2, gl.FLOAT, false, 16, 0); gl.enableVertexAttribArray(posL);
-    const texL = gl.getAttribLocation(prog, "a_texCoord"); gl.vertexAttribPointer(texL, 2, gl.FLOAT, false, 16, 8); gl.enableVertexAttribArray(texL);
+    const posL = gl.getAttribLocation(prog, "a_position");
+    const texL = gl.getAttribLocation(prog, "a_texCoord");
+    if (posL < 0 || texL < 0) throw new Error("[Loader] loading shader attributes are unavailable");
+    gl.vertexAttribPointer(posL, 2, gl.FLOAT, false, 16, 0); gl.enableVertexAttribArray(posL);
+    gl.vertexAttribPointer(texL, 2, gl.FLOAT, false, 16, 8); gl.enableVertexAttribArray(texL);
 
     const tex = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, tex);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-    gl.viewport(0, 0, this.loadingCanvas.width, this.loadingCanvas.height);
+    // The loading canvas is a high-DPR texture, while the engine canvas uses
+    // logical pixels. The viewport belongs to the destination framebuffer,
+    // not to the source texture; using the loading canvas dimensions here
+    // magnifies the loading screen by DPR and clips it on real devices.
+    gl.viewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight);
 
     const clean = () => {
-      for (let i = 0; i < gl.getParameter(gl.MAX_VERTEX_ATTRIBS); i++) gl.disableVertexAttribArray(i);
-      gl.deleteTexture(tex); gl.deleteShader(vs); gl.deleteShader(fs); gl.deleteProgram(prog);
+      gl.disableVertexAttribArray(posL);
+      if (texL !== posL) gl.disableVertexAttribArray(texL);
       gl.bindBuffer(gl.ARRAY_BUFFER, null); gl.bindTexture(gl.TEXTURE_2D, null);
-      gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.bindRenderbuffer(gl.RENDERBUFFER, null);
-      gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT | gl.STENCIL_BUFFER_BIT);
-      gl.viewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight);
+      gl.useProgram(null);
+      gl.deleteBuffer(buf); gl.deleteTexture(tex);
+      gl.deleteShader(vs); gl.deleteShader(fs); gl.deleteProgram(prog);
     };
     return [tex, clean];
   }
 
   _blit() {
     const gl = this.screenCtx;
+    // The host may resize the visible canvas while subpackages are loading.
+    // Always bind the blit to the current destination size.
+    gl.viewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight);
     gl.bindTexture(gl.TEXTURE_2D, this.screenTexture);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, this.loadingCanvas);
     gl.clearColor(0, 0, 0, 1); gl.clear(gl.COLOR_BUFFER_BIT);
@@ -231,7 +272,41 @@ class Loader {
       this.engine = engine;
       godotSdk.set_engine(engine);
 
-      console.log("[Loader] 4/6 调用 engine.startGame()...");
+      const executable = "engine/godot";
+      const mainPack = "engine/godot.zip";
+      const persistentPaths = ["/userfs"];
+      const engineConfig = {
+        canvas: _canvas,
+        executable,
+        mainPack,
+        args: [],
+        // This template is built without IDBFS. Passing the Web default
+        // ['/userfs'] into Engine.init() attempts to mount a missing backend.
+        persistentPaths: [],
+      };
+      if (!engine.config || typeof engine.config.update !== "function"
+          || typeof engine.init !== "function"
+          || typeof engine.preloadFile !== "function"
+          || typeof engine.start !== "function") {
+        throw new Error("Engine does not expose the staged init/preload/start API required for persistent restore");
+      }
+      engine.config.update(engineConfig);
+      const configuredArgs = Array.isArray(engine.config.args) ? engine.config.args.slice() : [];
+      engine.config.args = ["--main-pack", mainPack, ...configuredArgs];
+
+      console.log("[Loader] 4/7 初始化引擎并预加载主包...");
+      await Promise.all([
+        engine.init(executable),
+        engine.preloadFile(mainPack, mainPack),
+      ]);
+      this._assertNotDisposed();
+
+      console.log("[Loader] 5/7 从宿主持久目录恢复 /userfs...");
+      const restored = await godotSdk.restorePersistentPaths(persistentPaths);
+      console.log(`[Loader]     已恢复 ${restored.entries || 0} 个持久文件系统条目`);
+      this._assertNotDisposed();
+
+      console.log("[Loader] 6/7 启动 Godot...");
       console.log("[Loader]     canvas:", _canvas ? `${_canvas.width}x${_canvas.height}` : "null");
       const ctx = _canvas.getContext("webgl2");
       console.log("[Loader]     WebGL2 context:", ctx ? "OK" : "FAILED (null)");
@@ -240,25 +315,28 @@ class Loader {
         console.log("[Loader]     GL_VERSION:", ctx.getParameter?.(ctx.VERSION));
       }
 
-      await engine.startGame({
-        canvas: _canvas,
-        executable: "engine/godot",
-        mainPack: "engine/godot.zip",
-        args: [],
-      });
+      // Engine.start() copies preloaded files and immediately invokes callMain.
+      // Release the loading renderer before callMain lets Godot take ownership
+      // of this same cached WebGL context. Cleaning it afterwards can invalidate
+      // state that Godot has already cached for its first frame.
+      this._cleanupLoadingSurface();
+      // Restoring above therefore guarantees user:// is ready before GDScript.
+      await engine.start();
       this._assertNotDisposed();
 
-      console.log("[Loader] 5/6 engine.startGame() 完成，设置文件同步...");
-      if (typeof engine !== "undefined" && engine.config && engine.config.persistentPaths) {
-        engine.config.persistentPaths.forEach(p => godotSdk.copyLocalToFS(p));
+      console.log("[Loader] 7/7 engine.start() 完成，设置文件同步...");
+      if (_persistentWritebackEnabled) {
+        this._syncTimer = _window.setInterval(() => {
+          this._flushPersistentFiles("interval");
+        }, 5000);
+        this._hideSyncHandler = () => { this._flushPersistentFiles("hide"); };
+        _api.onHide(this._hideSyncHandler);
+      } else {
+        console.log("[Loader]     TikTok Native persistent writeback disabled; read-only restore remains enabled");
       }
-      this._syncTimer = _window.setInterval(() => {
-        godotSdk.syncfs(null, err => { if (err) console.error("[sync]", err); });
-      }, 5000);
       this.logoImage = null;
-      this._cleanupLoadingSurface();
       this.state = "running";
-      console.log("[Loader] 6/6 ✓ 加载完成，游戏已启动");
+      console.log("[Loader] ✓ 加载完成，游戏已启动");
       return engine;
     } catch (err) {
       if (this.state !== "disposed") this.state = "failed";
@@ -273,9 +351,30 @@ class Loader {
     if (this.state === "disposed") throw new Error("[Loader] Load was disposed");
   }
 
+  _flushPersistentFiles(reason) {
+    if (this._syncPromise) return this._syncPromise;
+    const operation = godotSdk.syncfs()
+      .catch((error) => {
+        console.error(`[sync:${reason}]`, error);
+        return false;
+      });
+    this._syncPromise = operation.then((result) => {
+      this._syncPromise = null;
+      return result;
+    }, (error) => {
+      this._syncPromise = null;
+      throw error;
+    });
+    return this._syncPromise;
+  }
+
   _cleanupLoadingSurface() {
     if (this._loadingSurfaceCleaned) return;
     this._loadingSurfaceCleaned = true;
+    if (this._loadingResizeHandler !== null && typeof _window.removeEventListener === "function") {
+      try { _window.removeEventListener("resize", this._loadingResizeHandler); } catch (_) {}
+    }
+    this._loadingResizeHandler = null;
     try {
       this.loadingCtx.clearRect(0, 0, this.loadingCanvas.width, this.loadingCanvas.height);
     } catch (_) {}
@@ -288,6 +387,10 @@ class Loader {
       _window.clearInterval(this._syncTimer);
       this._syncTimer = null;
     }
+    if (this._hideSyncHandler !== null && typeof _api.offHide === "function") {
+      try { _api.offHide(this._hideSyncHandler); } catch (_) {}
+    }
+    this._hideSyncHandler = null;
     if (this.engine && typeof this.engine.requestQuit === "function") {
       try { this.engine.requestQuit(); } catch (_) {}
     }

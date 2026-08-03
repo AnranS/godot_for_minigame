@@ -12,8 +12,34 @@ const OUTPUT_MANIFEST: String = OutputGuard.OWNERSHIP_FILE
 const PUBLISH_JOURNAL := "journal.json"
 const PUBLISH_JOURNAL_SCHEMA_VERSION := 1
 
-const SUPPORTED_PLATFORMS: PackedStringArray = ["wechat", "douyin"]
+const SUPPORTED_PLATFORMS: PackedStringArray = ["wechat", "douyin", "tiktok"]
 const SUPPORTED_ORIENTATIONS: PackedStringArray = ["portrait", "landscape"]
+const PLATFORM_CONTRACTS := {
+	"wechat": {
+		"display_name": "微信小游戏",
+		"runtime_type": "native",
+		"api_namespace": "wx",
+		"subpackage_field": "subpackages",
+		"requires_private_config": true,
+		"forbids_javascript_eval": false,
+	},
+	"douyin": {
+		"display_name": "抖音小游戏",
+		"runtime_type": "native",
+		"api_namespace": "tt",
+		"subpackage_field": "subPackages",
+		"requires_private_config": false,
+		"forbids_javascript_eval": false,
+	},
+	"tiktok": {
+		"display_name": "TikTok Mini Game",
+		"runtime_type": "native",
+		"api_namespace": "TTMinis.game",
+		"subpackage_field": "subpackages",
+		"requires_private_config": false,
+		"forbids_javascript_eval": true,
+	},
+}
 const COMMON_TEMPLATE_MAPPINGS := {
 	"adapter.js": "adapter.js",
 	"audio/demo-tone.wav": "audio/demo-tone.wav",
@@ -515,7 +541,7 @@ func export_mini_game(
 
 	# Step 2: Copy both engine files from the same validated bundle.
 	_log("步骤 2/7: 获取已校验的引擎模板束 ...")
-	err = _obtain_engine_files(staging_dir, bundle)
+	err = _obtain_engine_files(staging_dir, bundle, platform)
 	if err != OK:
 		_rm_rf(staging_dir)
 		return err
@@ -535,14 +561,17 @@ func export_mini_game(
 		return err
 
 	# Step 5: Create placeholder files for the subpackage structure declared in game.json.
-	# Both /engine and /subpacks are listed under "subpackages" in game.json; WeChat
-	# expects every subpackage root to be a real (possibly empty) directory containing
-	# at least one file, otherwise the bundler complains. A zero-byte game.js satisfies
-	# that without bloating the package.
+	# Both /engine and /subpacks are listed under the platform-specific subpackage
+	# field in game.json. Every root must contain an entry file. TikTok also rejects
+	# zero-byte files at upload, so its generated entry contains a harmless comment.
 	_log("步骤 5/7: 创建占位文件 ...")
-	err = _write_text(staging_dir.path_join("engine/game.js"), "")
+	var subpackage_placeholder := (
+		"// Generated subpackage entry.\n" if platform == "tiktok" else "")
+	err = _write_text(
+		staging_dir.path_join("engine/game.js"), subpackage_placeholder)
 	if err == OK:
-		err = _write_text(staging_dir.path_join("subpacks/game.js"), "")
+		err = _write_text(
+			staging_dir.path_join("subpacks/game.js"), subpackage_placeholder)
 	if err == OK:
 		err = _generate_placeholder_images(staging_dir)
 	if err != OK:
@@ -604,7 +633,7 @@ func _validate_template_sources(platform: String) -> Error:
 	var platform_dir := TEMPLATES + platform + "/"
 	for filename in ["game.js", "game.json.template", "project.config.json.template"]:
 		required.append(platform_dir + filename)
-	if platform == "wechat":
+	if bool(PLATFORM_CONTRACTS[platform].requires_private_config):
 		required.append(platform_dir + "project.private.config.json.template")
 	for path in required:
 		if not _is_nonempty_file(path):
@@ -648,7 +677,10 @@ static func _required_output_files(platform: String) -> PackedStringArray:
 		"subpacks/game.js",
 		OUTPUT_MANIFEST,
 	]
-	if platform == "wechat":
+	if (
+		PLATFORM_CONTRACTS.has(platform)
+		and bool(PLATFORM_CONTRACTS[platform].requires_private_config)
+	):
 		required.append("project.private.config.json")
 	return required
 
@@ -685,6 +717,12 @@ func _write_output_manifest(
 		"tool": "godot_mini_game",
 		"ownership": "managed-output",
 		"platform": platform,
+		"platform_contract": {
+			"runtime_type": str(PLATFORM_CONTRACTS[platform].runtime_type),
+			"api_namespace": str(PLATFORM_CONTRACTS[platform].api_namespace),
+			"subpackage_field": str(
+				PLATFORM_CONTRACTS[platform].subpackage_field),
+		},
 		"orientation": orientation,
 		"generated_at": Time.get_datetime_string_from_system(true),
 		"required_files": required_files,
@@ -721,6 +759,22 @@ func _validate_output_manifest(output_dir: String, platform: String) -> Error:
 	):
 		_log("  [color=red]所有权清单元数据不匹配[/color]")
 		return ERR_INVALID_DATA
+	var platform_contract_value: Variant = manifest_value.get(
+		"platform_contract", {})
+	if not platform_contract_value is Dictionary:
+		return ERR_INVALID_DATA
+	var platform_contract: Dictionary = platform_contract_value
+	var expected_contract: Dictionary = PLATFORM_CONTRACTS[platform]
+	if (
+		str(platform_contract.get("runtime_type", ""))
+		!= str(expected_contract.runtime_type)
+		or str(platform_contract.get("api_namespace", ""))
+		!= str(expected_contract.api_namespace)
+		or str(platform_contract.get("subpackage_field", ""))
+		!= str(expected_contract.subpackage_field)
+	):
+		_log("  [color=red]所有权清单平台契约不匹配[/color]")
+		return ERR_INVALID_DATA
 
 	var template_value: Variant = manifest_value.get("template", {})
 	if not template_value is Dictionary:
@@ -749,7 +803,11 @@ func _validate_output_manifest(output_dir: String, platform: String) -> Error:
 	if not artifacts_value is Dictionary:
 		return ERR_INVALID_DATA
 	var output_artifacts: Dictionary = artifacts_value
-	var zero_byte_allowed: PackedStringArray = ["engine/game.js", "subpacks/game.js"]
+	var zero_byte_allowed: PackedStringArray = (
+		PackedStringArray()
+		if platform == "tiktok"
+		else PackedStringArray(["engine/game.js", "subpacks/game.js"])
+	)
 	for relative_path in _required_output_files(platform):
 		if not listed.has(relative_path):
 			_log("  [color=red]所有权清单未列出: %s[/color]" % relative_path)
@@ -780,11 +838,83 @@ func _validate_output_manifest(output_dir: String, platform: String) -> Error:
 	var json_files: PackedStringArray = [
 		"game.json", "project.config.json", OUTPUT_MANIFEST,
 	]
-	if platform == "wechat":
+	if bool(PLATFORM_CONTRACTS[platform].requires_private_config):
 		json_files.append("project.private.config.json")
 	for relative_path in json_files:
 		if _read_json_dictionary(output_dir.path_join(relative_path)).is_empty():
 			_log("  [color=red]JSON 文件无效: %s[/color]" % relative_path)
+			return ERR_INVALID_DATA
+	return _validate_platform_configuration(output_dir, platform)
+
+
+func _validate_platform_configuration(
+	output_dir: String, platform: String,
+) -> Error:
+	if not PLATFORM_CONTRACTS.has(platform):
+		return ERR_INVALID_PARAMETER
+	var contract: Dictionary = PLATFORM_CONTRACTS[platform]
+	var game_config := _read_json_dictionary(output_dir.path_join("game.json"))
+	var expected_field := str(contract.subpackage_field)
+	var forbidden_field := (
+		"subPackages" if expected_field == "subpackages" else "subpackages")
+	if game_config.has(forbidden_field):
+		_log(
+			"  [color=red]%s 的 game.json 不允许字段 %s；必须使用 %s[/color]"
+			% [contract.display_name, forbidden_field, expected_field]
+		)
+		return ERR_INVALID_DATA
+	var packages_value: Variant = game_config.get(expected_field, null)
+	if not packages_value is Array:
+		_log(
+			"  [color=red]%s 的 game.json 缺少数组字段 %s[/color]"
+			% [contract.display_name, expected_field]
+		)
+		return ERR_INVALID_DATA
+	var packages: Array = packages_value
+	var expected_packages := {
+		"engine": "engine/",
+		"subpacks": "subpacks/",
+	}
+	var seen := {}
+	for package_value in packages:
+		if not package_value is Dictionary:
+			return ERR_INVALID_DATA
+		var package: Dictionary = package_value
+		var package_name := str(package.get("name", ""))
+		var package_root := str(package.get("root", ""))
+		if (
+			not expected_packages.has(package_name)
+			or str(expected_packages[package_name]) != package_root
+			or seen.has(package_name)
+		):
+			_log("  [color=red]分包配置无效: %s → %s[/color]" % [
+				package_name, package_root,
+			])
+			return ERR_INVALID_DATA
+		seen[package_name] = true
+	if seen.size() != expected_packages.size():
+		_log("  [color=red]game.json 必须声明 engine 和 subpacks 分包[/color]")
+		return ERR_INVALID_DATA
+
+	var project_config := _read_json_dictionary(
+		output_dir.path_join("project.config.json"))
+	if (
+		not project_config.has("appid")
+		or not project_config.get("appid") is String
+		or (
+			platform == "tiktok"
+			and str(project_config.get("appid", "")).strip_edges().is_empty()
+		)
+		or str(project_config.get("compileType", "")) != "game"
+		or not project_config.get("projectname", "") is String
+	):
+		_log("  [color=red]project.config.json 缺少小游戏项目身份字段[/color]")
+		return ERR_INVALID_DATA
+
+	if bool(contract.forbids_javascript_eval):
+		var godot_js := _read_text(output_dir.path_join("js/libs/godot.js"))
+		if godot_js.is_empty() or godot_js.contains("eval("):
+			_log("  [color=red]TikTok 产物中禁止 JavaScript eval()[/color]")
 			return ERR_INVALID_DATA
 	return OK
 
@@ -1094,6 +1224,18 @@ static func _read_json_dictionary(path: String) -> Dictionary:
 	return parsed if parsed is Dictionary else {}
 
 
+static func _read_text(path: String) -> String:
+	if not FileAccess.file_exists(path):
+		return ""
+	var file := FileAccess.open(path, FileAccess.READ)
+	if not file:
+		return ""
+	var content := file.get_as_text()
+	var read_error := file.get_error()
+	file.close()
+	return content if read_error == OK else ""
+
+
 static func _file_metadata(path: String) -> Dictionary:
 	if not FileAccess.file_exists(path):
 		return {}
@@ -1226,7 +1368,11 @@ func _log_child_process_tail(path: String) -> void:
 
 # ─── Step 2: Obtain engine files ──────────────────────────────────
 
-func _obtain_engine_files(output_dir: String, bundle) -> Error:
+func _obtain_engine_files(
+	output_dir: String, bundle, platform: String = "wechat",
+) -> Error:
+	if not SUPPORTED_PLATFORMS.has(platform):
+		return ERR_INVALID_PARAMETER
 	if not bundle or not bundle.valid:
 		_log("[color=red]引擎模板束无效[/color]")
 		return ERR_INVALID_DATA
@@ -1253,15 +1399,20 @@ func _obtain_engine_files(output_dir: String, bundle) -> Error:
 		_log("[color=red]复制引擎模板束失败: %s[/color]" % error_string(err))
 		return err
 	_log("  已使用 %s 模板束 (%s)" % [bundle.source, bundle.godot_version])
-	return _patch_godot_js(js_dst)
+	return _patch_godot_js(js_dst, platform)
 
 
-func _patch_godot_js(path: String) -> Error:
+func _patch_godot_js(path: String, platform: String = "wechat") -> Error:
+	if not SUPPORTED_PLATFORMS.has(platform):
+		return ERR_INVALID_PARAMETER
 	var f := FileAccess.open(path, FileAccess.READ)
 	if not f:
 		return FileAccess.get_open_error()
 	var content := f.get_as_text()
+	var read_error := f.get_error()
 	f.close()
+	if read_error != OK:
+		return read_error
 
 	# Prepend scope-level vars so bare `document`/`window` inside the Emscripten
 	# IIFE resolve to our adapter polyfills instead of the devtools' native objects.
@@ -1280,42 +1431,239 @@ func _patch_godot_js(path: String) -> Error:
 	# Mini-game canvas parentElement is a non-configurable native getter
 	# returning null. Patch direct accesses to use a safe fallback.
 	var _pe := "GodotConfig.canvas.parentElement.appendChild("
+	var _pe_patched := "(GodotConfig.canvas.parentElement||document.body).appendChild("
 	if content.find(_pe) != -1:
-		content = content.replace(
-			_pe,
-			"(GodotConfig.canvas.parentElement||document.body).appendChild(")
+		content = content.replace(_pe, _pe_patched)
 		modified = true
+	elif content.find(_pe_patched) == -1:
+		_log("  [color=red]godot.js 缺少 canvas parentElement 兼容补丁锚点[/color]")
+		return ERR_FILE_CORRUPT
 
 	# Replace GL.createContext to handle mini-game quirks:
 	# 1) canvas may be null if findCanvasEventTarget fails (no DOM IDs)
 	# 2) getContext may fail on second call (context limit)
 	# 3) Fall back to cached context or GameGlobal.canvas
 	var _gl_create_old := "createContext:(canvas,webGLContextAttributes)=>{if(webGLContextAttributes.renderViaOffscreenBackBuffer)webGLContextAttributes[\"preserveDrawingBuffer\"]=true;var ctx=webGLContextAttributes.majorVersion>1?canvas.getContext(\"webgl2\",webGLContextAttributes):canvas.getContext(\"webgl\",webGLContextAttributes);if(!ctx)return 0;var handle=GL.registerContext(ctx,webGLContextAttributes);return handle}"
+	var _gl_create_new := "createContext:(canvas,webGLContextAttributes)=>{if(!canvas&&typeof GameGlobal!==\"undefined\")canvas=GameGlobal.canvas;if(!canvas){console.error(\"[GL] no canvas\");return 0}var type=webGLContextAttributes.majorVersion>1?\"webgl2\":\"webgl\";console.log(\"[GL.createContext] type=\"+type);var ctx=canvas.getContext(type,webGLContextAttributes);if(!ctx)ctx=canvas.getContext(type);if(!ctx&&canvas.__glctx)ctx=canvas.__glctx;if(!ctx&&typeof GameGlobal!==\"undefined\"&&GameGlobal.canvas&&GameGlobal.canvas!==canvas){ctx=GameGlobal.canvas.getContext(type,webGLContextAttributes)||GameGlobal.canvas.getContext(type);canvas=GameGlobal.canvas}if(!ctx){console.error(\"[GL] getContext failed\");return 0}canvas.__glctx=ctx;console.log(\"[GL.createContext] OK\");var handle=GL.registerContext(ctx,webGLContextAttributes);return handle}"
 	if content.find(_gl_create_old) != -1:
-		var _gl_create_new := "createContext:(canvas,webGLContextAttributes)=>{if(!canvas&&typeof GameGlobal!==\"undefined\")canvas=GameGlobal.canvas;if(!canvas){console.error(\"[GL] no canvas\");return 0}var type=webGLContextAttributes.majorVersion>1?\"webgl2\":\"webgl\";console.log(\"[GL.createContext] type=\"+type);var ctx=canvas.getContext(type,webGLContextAttributes);if(!ctx)ctx=canvas.getContext(type);if(!ctx&&canvas.__glctx)ctx=canvas.__glctx;if(!ctx&&typeof GameGlobal!==\"undefined\"&&GameGlobal.canvas&&GameGlobal.canvas!==canvas){ctx=GameGlobal.canvas.getContext(type,webGLContextAttributes)||GameGlobal.canvas.getContext(type);canvas=GameGlobal.canvas}if(!ctx){console.error(\"[GL] getContext failed\");return 0}canvas.__glctx=ctx;console.log(\"[GL.createContext] OK\");var handle=GL.registerContext(ctx,webGLContextAttributes);return handle}"
 		content = content.replace(_gl_create_old, _gl_create_new)
 		modified = true
-	else:
-		_log("  [color=yellow]⚠ 未找到 GL.createContext 模式，跳过补丁[/color]")
+	elif content.find(_gl_create_new) == -1:
+		_log("  [color=red]godot.js 缺少 GL.createContext 兼容补丁锚点[/color]")
+		return ERR_FILE_CORRUPT
 
 	# Neutralize connectPositionWorklet — the position-reporting AudioWorkletNode
 	# cannot be connected to real native AudioNodes in mini-game runtimes.
 	# Audio playback still works; only per-sample position tracking is lost.
 	var _cpw_old := "async connectPositionWorklet(start){await GodotAudio.audioPositionWorkletPromise;if(this.isCanceled){return}this._source.connect(this.getPositionWorklet());if(start){this.start()}}"
+	var _cpw_new := "async connectPositionWorklet(start){if(start){this.start()}}"
 	if content.find(_cpw_old) != -1:
-		content = content.replace(
-			_cpw_old,
-			"async connectPositionWorklet(start){if(start){this.start()}}")
+		content = content.replace(_cpw_old, _cpw_new)
 		modified = true
+	elif content.find(_cpw_new) == -1:
+		_log("  [color=red]godot.js 缺少 AudioWorklet 兼容补丁锚点[/color]")
+		return ERR_FILE_CORRUPT
 
 	# Also patch isWebGLAvailable to always report true for WebGL2
 	# (the actual context works, but the test canvas may fail due to context limits)
 	var _webgl_check := "return !!document.createElement('canvas').getContext(['webgl', 'webgl2'][majorVersion - 1]);"
+	var _webgl_check_patched := "try{var _c=document.createElement('canvas');var _r=_c.getContext(['webgl','webgl2'][majorVersion-1]);console.log('[isWebGLAvailable] v='+majorVersion+' r='+!!_r);return !!_r}catch(e){return true;}"
 	if content.find(_webgl_check) != -1:
-		content = content.replace(
-			_webgl_check,
-			"try{var _c=document.createElement('canvas');var _r=_c.getContext(['webgl','webgl2'][majorVersion-1]);console.log('[isWebGLAvailable] v='+majorVersion+' r='+!!_r);return !!_r}catch(e){return true;}")
+		content = content.replace(_webgl_check, _webgl_check_patched)
 		modified = true
+	elif content.find(_webgl_check_patched) == -1:
+		_log("  [color=red]godot.js 缺少 WebGL 能力检测补丁锚点[/color]")
+		return ERR_FILE_CORRUPT
+
+	# Godot's wrapper starts WebAssembly instantiation asynchronously but returns
+	# an empty object, while Emscripten ignores that async operation entirely.
+	# A native mini-game instantiate rejection therefore leaves the permanent
+	# `wasm-instantiate` run dependency seen on real devices. Return the operation
+	# and make Emscripten observe its rejection so Engine.init() can fail normally.
+	var _instantiate_wrapper_old := (
+		"\t\t\t'instantiateWasm': function (imports, onSuccess) {\n"
+		+ "\t\t\t\tfunction done(result) {\n"
+		+ "\t\t\t\t\tonSuccess(result['instance'], result['module']);\n"
+		+ "\t\t\t\t}\n"
+		+ "\t\t\t\tif (typeof (WebAssembly.instantiateStreaming) !== 'undefined') {\n"
+		+ "\t\t\t\t\tWebAssembly.instantiateStreaming(Promise.resolve(r), imports).then(done);\n"
+		+ "\t\t\t\t} else {\n"
+		+ "\t\t\t\t\tr.arrayBuffer().then(function (buffer) {\n"
+		+ "\t\t\t\t\t\tWebAssembly.instantiate(buffer, imports).then(done);\n"
+		+ "\t\t\t\t\t});\n"
+		+ "\t\t\t\t}\n"
+		+ "\t\t\t\tr = null;\n"
+		+ "\t\t\t\treturn {};\n"
+		+ "\t\t\t},"
+	)
+	var _instantiate_wrapper_new := (
+		"\t\t\t'instantiateWasm': function (imports, onSuccess) {\n"
+		+ "\t\t\t\tfunction done(result) {\n"
+		+ "\t\t\t\t\tonSuccess(result['instance'], result['module']);\n"
+		+ "\t\t\t\t}\n"
+		+ "\t\t\t\tlet operation;\n"
+		+ "\t\t\t\tif (typeof (WebAssembly.instantiateStreaming) !== 'undefined') {\n"
+		+ "\t\t\t\t\toperation = WebAssembly.instantiateStreaming(Promise.resolve(r), imports).then(done);\n"
+		+ "\t\t\t\t} else {\n"
+		+ "\t\t\t\t\toperation = r.arrayBuffer().then(function (buffer) {\n"
+		+ "\t\t\t\t\t\treturn WebAssembly.instantiate(buffer, imports);\n"
+		+ "\t\t\t\t\t}).then(done);\n"
+		+ "\t\t\t\t}\n"
+		+ "\t\t\t\tr = null;\n"
+		+ "\t\t\t\treturn operation;\n"
+		+ "\t\t\t},"
+	)
+	if content.find(_instantiate_wrapper_old) != -1:
+		content = content.replace(_instantiate_wrapper_old, _instantiate_wrapper_new)
+		modified = true
+	elif content.find(_instantiate_wrapper_new) == -1:
+		_log("  [color=red]godot.js 缺少 WebAssembly wrapper 补丁锚点[/color]")
+		return ERR_FILE_CORRUPT
+
+	var _emscripten_instantiate_old := (
+		"if(Module[\"instantiateWasm\"]){return new Promise((resolve,reject)=>{try{"
+		+ "Module[\"instantiateWasm\"](info,(mod,inst)=>{receiveInstance(mod,inst);"
+		+ "resolve(mod.exports)})}catch(e){err(`Module.instantiateWasm callback failed "
+		+ "with error: ${e}`);reject(e)}})}"
+	)
+	var _emscripten_instantiate_new := (
+		"if(Module[\"instantiateWasm\"]){return new Promise((resolve,reject)=>{try{"
+		+ "var instantiateOperation=Module[\"instantiateWasm\"](info,(mod,inst)=>{"
+		+ "receiveInstance(mod,inst);resolve(mod.exports)});if(instantiateOperation&&"
+		+ "typeof instantiateOperation.then===\"function\")instantiateOperation.catch(reject)"
+		+ "}catch(e){err(`Module.instantiateWasm callback failed with error: ${e}`);"
+		+ "reject(e)}})}"
+	)
+	if content.find(_emscripten_instantiate_old) != -1:
+		content = content.replace(_emscripten_instantiate_old, _emscripten_instantiate_new)
+		modified = true
+	elif content.find(_emscripten_instantiate_new) == -1:
+		_log("  [color=red]godot.js 缺少 Emscripten instantiate rejection 补丁锚点[/color]")
+		return ERR_FILE_CORRUPT
+
+	# Expose a controlled Emscripten FS walk so the SDK can persist user:// to
+	# each host's FileSystemManager. The roots are supplied by the loader; this
+	# keeps the engine wrapper platform-neutral and avoids exposing raw FS.
+	var _module_copy_anchor := "Module[\"copyToFS\"]=GodotFS.copy_to_fs;"
+	var _module_copy_marker := "Module[\"copyFSToAdapter\"]="
+	var _module_copy_patch := "Module[\"copyFSToAdapter\"]=async function(adapter,roots){if(!adapter||typeof adapter.writeFile!==\"function\")throw new Error(\"Persistent adapter must provide writeFile(path, data)\");var scan=async function(path){var entries;try{entries=FS.readdir(path)}catch(error){if(error&&error.errno===GodotFS.ENOENT)return;throw error}for(const name of entries){if(name===\".\"||name===\"..\")continue;const child=path.replace(/\\/$/,\"\")+\"/\"+name;const stat=FS.stat(child);if(FS.isDir(stat.mode))await scan(child);else if(FS.isFile(stat.mode))await adapter.writeFile(child,FS.readFile(child))}};for(const root of(Array.isArray(roots)?roots:GodotFS._mount_points))await scan(root)};"
+	if content.find(_module_copy_marker) == -1:
+		if content.count(_module_copy_anchor) != 1:
+			_log("  [color=red]godot.js 缺少唯一的 Module.copyToFS 补丁锚点[/color]")
+			return ERR_FILE_CORRUPT
+		content = content.replace(
+			_module_copy_anchor, _module_copy_anchor + _module_copy_patch)
+		modified = true
+	var _module_ensure_marker := "Module[\"ensureFSDirectory\"]="
+	var _module_ensure_patch := (
+		"Module[\"ensureFSDirectory\"]=function(path){FS.mkdirTree(path)};")
+	if content.find(_module_ensure_marker) == -1:
+		if content.count(_module_copy_anchor) != 1:
+			_log("  [color=red]godot.js 缺少唯一的 FS 目录补丁锚点[/color]")
+			return ERR_FILE_CORRUPT
+		content = content.replace(
+			_module_copy_anchor, _module_copy_anchor + _module_ensure_patch)
+		modified = true
+
+	var _engine_copy_marker := "copyFSToAdapter: function (adapter, roots)"
+	if content.find(_engine_copy_marker) == -1:
+		var _engine_copy_anchor := (
+			"\n\t\t\t/**\n"
+			+ "\t\t\t * Request that the current instance quit."
+		)
+		if content.count(_engine_copy_anchor) != 1:
+			_log("  [color=red]godot.js 缺少唯一的 Engine FS 方法补丁锚点[/color]")
+			return ERR_FILE_CORRUPT
+		var _engine_copy_method := (
+			"\n\t\t\t/** Persist configured Emscripten FS roots through the host adapter. */\n"
+			+ "\t\t\tcopyFSToAdapter: function (adapter, roots) {\n"
+			+ "\t\t\t\tif (this.rtenv == null) {\n"
+			+ "\t\t\t\t\treturn Promise.reject(new Error('Engine must be inited before copying files'));\n"
+			+ "\t\t\t\t}\n"
+			+ "\t\t\t\treturn this.rtenv['copyFSToAdapter'](adapter, roots || this.config.persistentPaths);\n"
+			+ "\t\t\t},\n"
+		)
+		content = content.replace(
+			_engine_copy_anchor, _engine_copy_method + _engine_copy_anchor)
+		modified = true
+
+	var _engine_ensure_marker := "ensureFSDirectory: function (path)"
+	if content.find(_engine_ensure_marker) == -1:
+		var _engine_ensure_anchor := (
+			"\n\t\t\t/**\n"
+			+ "\t\t\t * Request that the current instance quit."
+		)
+		if content.count(_engine_ensure_anchor) != 1:
+			_log("  [color=red]godot.js 缺少唯一的 Engine 目录方法补丁锚点[/color]")
+			return ERR_FILE_CORRUPT
+		var _engine_ensure_method := (
+			"\n\t\t\t/** Ensure a directory exists inside the Emscripten FS. */\n"
+			+ "\t\t\tensureFSDirectory: function (path) {\n"
+			+ "\t\t\t\tif (this.rtenv == null) {\n"
+			+ "\t\t\t\t\tthrow new Error('Engine must be inited before creating directories');\n"
+			+ "\t\t\t\t}\n"
+			+ "\t\t\t\tthis.rtenv['ensureFSDirectory'](path);\n"
+			+ "\t\t\t},\n"
+		)
+		content = content.replace(
+			_engine_ensure_anchor, _engine_ensure_method + _engine_ensure_anchor)
+		modified = true
+
+	var _prototype_copy_anchor := (
+		"\t\tEngine.prototype['copyToFS'] = Engine.prototype.copyToFS;")
+	var _prototype_copy_patch := (
+		"\t\tEngine.prototype['copyFSToAdapter'] = Engine.prototype.copyFSToAdapter;")
+	if content.find(_prototype_copy_patch) == -1:
+		if content.count(_prototype_copy_anchor) != 1:
+			_log("  [color=red]godot.js 缺少唯一的 Engine.prototype 补丁锚点[/color]")
+			return ERR_FILE_CORRUPT
+		content = content.replace(
+			_prototype_copy_anchor,
+			_prototype_copy_anchor + "\n" + _prototype_copy_patch,
+		)
+		modified = true
+	var _prototype_ensure_patch := (
+		"\t\tEngine.prototype['ensureFSDirectory'] = Engine.prototype.ensureFSDirectory;")
+	if content.find(_prototype_ensure_patch) == -1:
+		if content.count(_prototype_copy_anchor) != 1:
+			_log("  [color=red]godot.js 缺少唯一的 Engine.prototype 目录补丁锚点[/color]")
+			return ERR_FILE_CORRUPT
+		content = content.replace(
+			_prototype_copy_anchor,
+			_prototype_copy_anchor + "\n" + _prototype_ensure_patch,
+		)
+		modified = true
+
+	# TikTok's native package scan forbids real eval calls. Certified templates
+	# built with javascript_eval=no need no rewrite; older exact templates are
+	# converted to an explicit unsupported bridge without leaving an eval( token.
+	if bool(PLATFORM_CONTRACTS[platform].forbids_javascript_eval):
+		if content.contains("eval("):
+			var eval_start := content.find("function _godot_js_eval(")
+			var eval_end := content.find("var IDHandler", eval_start)
+			var eval_import := "godot_js_eval:_godot_js_eval"
+			if (
+				eval_start < 0
+				or eval_end <= eval_start
+				or content.count(eval_import) != 1
+			):
+				_log("  [color=red]godot.js 的 JavaScript eval 实现不符合已认证结构[/color]")
+				return ERR_FILE_CORRUPT
+			var disabled_eval := (
+				"function _godot_js_disabled(){GodotRuntime.error("
+				+ "\"JavaScript eval is disabled for TikTok Mini Games\");return 0}"
+			)
+			content = (
+				content.substr(0, eval_start)
+				+ disabled_eval
+				+ content.substr(eval_end)
+			)
+			content = content.replace(
+				eval_import, "godot_js_eval:_godot_js_disabled")
+			modified = true
+		if content.contains("eval("):
+			_log("  [color=red]TikTok godot.js 仍包含禁止的 eval()[/color]")
+			return ERR_FILE_CORRUPT
 
 	if modified:
 		var out := FileAccess.open(path, FileAccess.WRITE)
@@ -1379,7 +1727,7 @@ func _copy_platform_templates(
 	if err != OK:
 		return err
 
-	if platform == "wechat":
+	if bool(PLATFORM_CONTRACTS[platform].requires_private_config):
 		err = _copy_template(
 			plat_dir + "project.private.config.json.template",
 			output_dir.path_join("project.private.config.json"),

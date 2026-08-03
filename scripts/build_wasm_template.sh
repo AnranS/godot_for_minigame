@@ -8,13 +8,13 @@ set -euo pipefail
 #
 # Optional environment variables:
 #   GODOT_MINIGAME_BUILD_DIR  Persistent compiler/source cache.
-#   TEMPLATE_REVISION         Bundle revision (default: 1).
+#   TEMPLATE_REVISION         Bundle revision (default: 2).
 
 export TZ=UTC
 
 GODOT_TAG="${1:-4.6.1-stable}"
 EMSDK_VERSION="${2:-4.0.3}"
-TEMPLATE_REVISION="${TEMPLATE_REVISION:-1}"
+TEMPLATE_REVISION="${TEMPLATE_REVISION:-2}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 SUPPORT_MATRIX="${PROJECT_DIR}/support-matrix.json"
@@ -128,7 +128,7 @@ fi
         wasm_simd=no \
         threads=no \
         dlink_enabled=no \
-        javascript_eval=yes \
+        javascript_eval=no \
         module_webrtc_enabled=no \
         module_webxr_enabled=no \
         module_openxr_enabled=no \

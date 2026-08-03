@@ -11,18 +11,52 @@ const _global = PlatformRuntime.global;
 class Headers {
   constructor(init = {}) {
     this._map = Object.create(null);
-    if (init && typeof init === "object" && !(init instanceof Headers)) {
+    if (init instanceof Headers) {
+      init.forEach((value, name) => this.append(name, value));
+    } else if (init && typeof init !== "string" && typeof init[Symbol.iterator] === "function") {
+      for (const pair of init) {
+        if (!pair || typeof pair[Symbol.iterator] !== "function") {
+          throw new TypeError("Headers initializer entries must be [name, value] pairs");
+        }
+        const values = [...pair];
+        if (values.length !== 2) {
+          throw new TypeError("Headers initializer entries must contain exactly two values");
+        }
+        this.append(values[0], values[1]);
+      }
+    } else if (init && typeof init.forEach === "function") {
+      init.forEach((value, name) => this.append(name, value));
+    } else if (init && typeof init === "object") {
       for (const k of Object.keys(init)) this.append(k, init[k]);
     }
   }
-  append(n, v) { const k = n.toLowerCase(); this._map[k] = this._map[k] ? `${this._map[k]}, ${v}` : String(v); }
-  set(n, v) { this._map[n.toLowerCase()] = String(v); }
-  get(n) { return this._map[n.toLowerCase()] ?? null; }
-  has(n) { return n.toLowerCase() in this._map; }
-  delete(n) { delete this._map[n.toLowerCase()]; }
-  forEach(cb) { for (const k in this._map) cb(this._map[k], k, this); }
-  entries() { return Object.entries(this._map); }
-  [Symbol.iterator]() { return this.entries()[Symbol.iterator](); }
+  append(n, v) {
+    const name = String(n);
+    const k = name.toLowerCase();
+    const current = this._map[k];
+    this._map[k] = {
+      name: current ? current.name : name,
+      value: current ? `${current.value}, ${v}` : String(v),
+    };
+  }
+  set(n, v) {
+    const name = String(n);
+    this._map[name.toLowerCase()] = { name, value: String(v) };
+  }
+  get(n) { return this._map[String(n).toLowerCase()]?.value ?? null; }
+  has(n) { return String(n).toLowerCase() in this._map; }
+  delete(n) { delete this._map[String(n).toLowerCase()]; }
+  forEach(cb, thisArg = undefined) {
+    for (const k in this._map) {
+      const entry = this._map[k];
+      cb.call(thisArg, entry.value, entry.name, this);
+    }
+  }
+  _entriesArray() { return Object.values(this._map).map((entry) => [entry.name, entry.value]); }
+  entries() { return this._entriesArray()[Symbol.iterator](); }
+  keys() { return this._entriesArray().map(([name]) => name)[Symbol.iterator](); }
+  values() { return this._entriesArray().map(([, value]) => value)[Symbol.iterator](); }
+  [Symbol.iterator]() { return this.entries(); }
 }
 
 // Web Streams API compatible ReadableStream polyfill.
@@ -71,11 +105,11 @@ class ReadableStream {
         if (self._chunks.length > 0) {
           return Promise.resolve({ value: self._chunks.shift(), done: false });
         }
-        if (self._closed) {
-          return Promise.resolve({ value: undefined, done: true });
-        }
         if (self._error) {
           return Promise.reject(self._error);
+        }
+        if (self._closed) {
+          return Promise.resolve({ value: undefined, done: true });
         }
         return new Promise((resolve) => {
           self._waiting = () => {
@@ -94,7 +128,7 @@ class ReadableStream {
 class Response {
   constructor(body, opts = {}) {
     this._raw = body;
-    this.status = opts.status || 200;
+    this.status = opts.status ?? 200;
     this.statusText = opts.statusText || "OK";
     this.headers = opts.headers instanceof Headers ? opts.headers : new Headers(opts.headers);
     this.url = opts.url || "";
@@ -107,7 +141,7 @@ class Response {
       let c;
       if (typeof body === "string") c = new TextEncoder().encode(body);
       else if (body instanceof ArrayBuffer) c = new Uint8Array(body);
-      else if (ArrayBuffer.isView(body)) c = new Uint8Array(body.buffer);
+      else if (ArrayBuffer.isView(body)) c = new Uint8Array(body.buffer, body.byteOffset, body.byteLength);
       else if (typeof body === "object") c = new TextEncoder().encode(JSON.stringify(body));
       else c = new Uint8Array(0);
       this.body = new ReadableStream(c);
@@ -185,13 +219,18 @@ function Fetch(url, options = {}) {
 
   return new Promise((resolve, reject) => {
     PlatformRuntime.requireCapabilities(["request"], "remote fetch");
+    const requestHeaders = options.headers instanceof Headers
+      ? options.headers
+      : new Headers(options.headers || {});
     const headers = {};
-    if (options.headers) {
-      const h = options.headers instanceof Headers ? options.headers : new Headers(options.headers);
-      h.forEach((v, k) => { headers[k] = v; });
-    }
-    const accept = headers["accept"] || "";
-    const responseType = accept.includes("octet-stream") ? "arraybuffer" : "text";
+    requestHeaders.forEach((value, name) => { headers[name] = value; });
+    const accept = (requestHeaders.get("accept") || "").toLowerCase();
+    const requestedResponseType = String(options.responseType || "").toLowerCase();
+    const responseType = requestedResponseType === "arraybuffer"
+      || accept.includes("application/octet-stream")
+      || accept.includes("application/wasm")
+      ? "arraybuffer"
+      : "text";
 
     _api.request({
       url,
@@ -199,7 +238,7 @@ function Fetch(url, options = {}) {
       data: options.body || undefined,
       header: headers,
       responseType,
-      dataType: (headers["content-type"] || "").includes("json") ? "json" : undefined,
+      dataType: (requestHeaders.get("content-type") || "").includes("json") ? "json" : undefined,
       success(res) {
         resolve(new Response(res.data, { status: res.statusCode, statusText: res.errMsg, headers: res.header, url }));
       },

@@ -19,10 +19,10 @@ text = "目标平台"
 [node name="PlatformOption" type="OptionButton" parent="."]
 
 [node name="AppIdLabel" type="Label" parent="."]
-text = "App ID"
+text = "App ID / Client Key"
 
 [node name="AppIdInput" type="LineEdit" parent="."]
-placeholder_text = "填写小游戏 AppID"
+placeholder_text = "填写项目 App ID；TikTok Client Key 还需 ttmg init"
 
 [node name="OrientationLabel" type="Label" parent="."]
 text = "屏幕方向"

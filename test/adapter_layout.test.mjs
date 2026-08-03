@@ -62,7 +62,9 @@ function installMiniGameGlobals(platform = "wechat", options = {}) {
     setStorageSync() {},
     removeStorageSync() {},
     clearStorageSync() {},
-    getStorageInfoSync() { return { keys: [] }; },
+    getStorageInfoSync() {
+      return options.getStorageInfoSync ? options.getStorageInfoSync() : { keys: [] };
+    },
     onTouchStart(fn) { callbacks.touchStart = fn; },
     onTouchMove(fn) { callbacks.touchMove = fn; },
     onTouchEnd(fn) { callbacks.touchEnd = fn; },
@@ -73,9 +75,19 @@ function installMiniGameGlobals(platform = "wechat", options = {}) {
   if (options.withoutTouchCancel) delete api.onTouchCancel;
   delete globalThis.wx;
   delete globalThis.tt;
+  delete globalThis.TTMinis;
   delete globalThis.__godotMiniGamePlatformRuntime;
   delete globalThis.PlatformRuntime;
-  globalThis[platform === "douyin" ? "tt" : "wx"] = api;
+  if (platform === "douyin") {
+    globalThis.tt = api;
+  } else if (platform === "tiktok") {
+    if (options.gameGlobalProvider) globalThis.GameGlobal.TTMinis = { game: api };
+    else globalThis.TTMinis = { game: api };
+  } else {
+    globalThis.wx = api;
+  }
+  if (options.wxAlias) globalThis.wx = options.wxAlias;
+  if (options.ttAlias) globalThis.tt = options.ttAlias;
   delete globalThis.WXWebAssembly;
   delete globalThis.TTWebAssembly;
 
@@ -101,6 +113,12 @@ async function testCanvasUsesLogicalMetricsForGodotViewport(platform) {
   assert.equal(adapter.window.innerWidth, 390);
   assert.equal(adapter.window.innerHeight, 844);
   assert.equal(adapter.window.devicePixelRatio, 1);
+  assert.equal(adapter.window.navigator.maxTouchPoints, 10);
+  assert.equal("ontouchstart" in adapter.window, true);
+  assert.equal(Object.prototype.propertyIsEnumerable.call(adapter.window, "ontouchstart"), false);
+  assert.equal("ontouchmove" in adapter.window, true);
+  assert.equal("ontouchend" in adapter.window, true);
+  assert.equal("ontouchcancel" in adapter.window, true);
   assert.equal(adapter.document.documentElement.clientWidth, 390);
   assert.equal(adapter.document.documentElement.clientHeight, 844);
   assert.equal(adapter.document.body.clientWidth, 390);
@@ -158,6 +176,109 @@ async function testTouchCoordinatesStayInCssPixels(platform) {
   assert.equal(events[0].clientY, 200);
 }
 
+async function testCanonicalTapDoesNotDoubleDispatch(platform) {
+  const { callbacks } = installMiniGameGlobals(platform);
+  await loadAdapter();
+
+  const eventTypes = [];
+  const canvas = globalThis.GameGlobal.__adapter.canvas;
+  for (const type of [
+    "pointerdown", "mousedown", "touchstart",
+    "pointerup", "mouseup", "touchend",
+  ]) {
+    canvas.addEventListener(type, () => eventTypes.push(type));
+  }
+
+  callbacks.touchStart({
+    touches: [{ identifier: 0, screenX: 100, screenY: 200 }],
+    changedTouches: [{ identifier: 0, screenX: 100, screenY: 200 }],
+  });
+  callbacks.touchEnd({
+    touches: [],
+    changedTouches: [{ identifier: 0, screenX: 100, screenY: 200 }],
+  });
+
+  assert.deepEqual(eventTypes, ["touchstart", "touchend"]);
+}
+
+async function testTouchStreamUsesCanonicalTouchPath(platform) {
+  const { callbacks } = installMiniGameGlobals(platform);
+  await loadAdapter();
+
+  const eventTypes = [];
+  const touchMoves = [];
+  const canvas = globalThis.GameGlobal.__adapter.canvas;
+  for (const type of [
+    "pointerdown", "mousedown", "touchstart",
+    "pointermove", "mousemove", "touchmove",
+    "pointerup", "mouseup", "touchend",
+  ]) {
+    canvas.addEventListener(type, (evt) => {
+      eventTypes.push(type);
+      if (type === "touchmove") touchMoves.push(evt);
+    });
+  }
+
+  callbacks.touchStart({
+    touches: [{ identifier: 0, screenX: 100, screenY: 200 }],
+    changedTouches: [{ identifier: 0, screenX: 100, screenY: 200 }],
+  });
+  callbacks.touchMove({
+    touches: [{ identifier: 0, screenX: 115, screenY: 170 }],
+    changedTouches: [{ identifier: 0, screenX: 115, screenY: 170 }],
+  });
+  callbacks.touchEnd({
+    touches: [],
+    changedTouches: [{ identifier: 0, screenX: 115, screenY: 170 }],
+  });
+
+  assert.deepEqual(eventTypes, [
+    "touchstart", "touchmove", "touchend",
+  ]);
+  assert.equal(touchMoves[0].changedTouches[0].clientX, 115);
+  assert.equal(touchMoves[0].changedTouches[0].clientY, 170);
+}
+
+async function testPointerFallbackCarriesRelativeMovement(platform) {
+  const { callbacks } = installMiniGameGlobals(platform);
+  await loadAdapter();
+
+  const events = [];
+  const canvas = globalThis.GameGlobal.__adapter.canvas;
+  for (const type of [
+    "pointerdown", "mousedown", "pointermove",
+    "mousemove", "pointerup", "mouseup",
+  ]) {
+    canvas.addEventListener(type, (evt) => events.push(evt));
+  }
+
+  callbacks.touchStart({
+    touches: [{ identifier: 0, screenX: 100, screenY: 200 }],
+    changedTouches: [{ identifier: 0, screenX: 100, screenY: 200 }],
+  });
+  callbacks.touchMove({
+    touches: [{ identifier: 0, screenX: 115, screenY: 170 }],
+    changedTouches: [{ identifier: 0, screenX: 115, screenY: 170 }],
+  });
+  callbacks.touchEnd({
+    touches: [],
+    changedTouches: [{ identifier: 0, screenX: 115, screenY: 170 }],
+  });
+
+  assert.deepEqual(events.map((evt) => evt.type), [
+    "pointerdown", "mousedown", "pointermove",
+    "mousemove", "pointerup", "mouseup",
+  ]);
+  const pointerMove = events.find((evt) => evt.type === "pointermove");
+  const mouseMove = events.find((evt) => evt.type === "mousemove");
+  assert.equal(pointerMove.clientX, 115);
+  assert.equal(pointerMove.clientY, 170);
+  assert.equal(pointerMove.movementX, 15);
+  assert.equal(pointerMove.movementY, -30);
+  assert.equal(mouseMove.movementX, 15);
+  assert.equal(mouseMove.movementY, -30);
+}
+
 async function testModernWindowInfoAndOptionalTouchCancel(platform) {
   const { mainCanvas } = installMiniGameGlobals(platform, {
     modernWindowInfoOnly: true,
@@ -169,11 +290,89 @@ async function testModernWindowInfoAndOptionalTouchCancel(platform) {
   assert.equal(globalThis.GameGlobal.__adapter.window.navigator.platform, "devtools");
 }
 
-for (const platform of ["wechat", "douyin"]) {
+async function testLocalStorageEnumerationQuarantinesTikTokNative() {
+  const tiktokCases = [
+    {},
+    { gameGlobalProvider: true },
+    { wxAlias: {}, ttAlias: {} },
+    { gameGlobalProvider: true, wxAlias: {}, ttAlias: {} },
+  ];
+  for (const providerOptions of tiktokCases) {
+    let hostCalls = 0;
+    installMiniGameGlobals("tiktok", {
+      ...providerOptions,
+      getStorageInfoSync() {
+        hostCalls += 1;
+        throw new Error("unsafe host method must not run");
+      },
+    });
+    await loadAdapter();
+
+    const storage = globalThis.GameGlobal.__adapter.window.localStorage;
+    assert.equal(storage.length, 0);
+    assert.equal(storage.key(0), null);
+    assert.equal(hostCalls, 0, "TikTok localStorage enumeration must make zero host calls");
+    assert.equal(globalThis.GameGlobal.PlatformRuntime.platform, "tiktok");
+  }
+}
+
+async function testLocalStorageEnumerationStillWorksOnWeChatAndDouyin() {
+  for (const platform of ["wechat", "douyin"]) {
+    let hostCalls = 0;
+    installMiniGameGlobals(platform, {
+      getStorageInfoSync() {
+        hostCalls += 1;
+        return { keys: ["first", "second"] };
+      },
+    });
+    await loadAdapter();
+
+    const storage = globalThis.GameGlobal.__adapter.window.localStorage;
+    assert.equal(storage.length, 2);
+    assert.equal(storage.key(1), "second");
+    assert.equal(hostCalls, 2, `${platform} localStorage enumeration must remain enabled`);
+  }
+}
+
+async function testTiktokWebAssemblyShimCoversRuntimeRealms() {
+  const standardWebAssembly = globalThis.WebAssembly;
+  const instantiateCalls = [];
+  installMiniGameGlobals("tiktok");
+  globalThis.TTWebAssembly = {
+    instantiate(source, imports) {
+      instantiateCalls.push([source, imports]);
+      return Promise.resolve({ instance: {}, module: {} });
+    },
+  };
+
+  try {
+    await loadAdapter();
+    const shim = globalThis.WebAssembly;
+    assert.notEqual(shim, standardWebAssembly);
+    assert.equal(globalThis.GameGlobal.WebAssembly, shim);
+    assert.equal(globalThis.GameGlobal.__adapter.window.WebAssembly, shim);
+
+    const imports = { env: {} };
+    await shim.instantiate(new Uint8Array([0]), imports);
+    assert.deepEqual(instantiateCalls, [["engine/godot.wasm.br", imports]]);
+  } finally {
+    globalThis.WebAssembly = standardWebAssembly;
+    delete globalThis.TTWebAssembly;
+  }
+}
+
+for (const platform of ["wechat", "douyin", "tiktok"]) {
   await testCanvasUsesLogicalMetricsForGodotViewport(platform);
   await testResizeKeepsMetricsInTheSameCoordinateSpace(platform);
   await testTouchCoordinatesStayInCssPixels(platform);
+  await testCanonicalTapDoesNotDoubleDispatch(platform);
+  await testTouchStreamUsesCanonicalTouchPath(platform);
+  await testPointerFallbackCarriesRelativeMovement(platform);
   await testModernWindowInfoAndOptionalTouchCancel(platform);
 }
+
+await testLocalStorageEnumerationQuarantinesTikTokNative();
+await testLocalStorageEnumerationStillWorksOnWeChatAndDouyin();
+await testTiktokWebAssemblyShimCoversRuntimeRealms();
 
 console.log("adapter_layout.test.mjs: ok");

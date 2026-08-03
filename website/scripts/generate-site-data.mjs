@@ -25,6 +25,19 @@ if (!Number.isInteger(matrix.templateSchema) || matrix.templateSchema < 1) {
 if (!Number.isInteger(matrix.outputManifestSchema) || matrix.outputManifestSchema < 1) {
   throw new Error("support-matrix.json must declare a positive output manifest schema");
 }
+const tiktokContract = matrix.platformContracts?.tiktok;
+if (
+  tiktokContract?.runtimeType !== "native"
+  || tiktokContract?.supportTier !== "beta"
+  || tiktokContract?.apiNamespace !== "TTMinis.game"
+  || tiktokContract?.minimumClientVersion !== "43.4.0"
+  || tiktokContract?.subpackageField !== "subpackages"
+  || tiktokContract?.devtool !== "ttmg"
+  || tiktokContract?.validation?.devtoolCompile !== "required"
+  || tiktokContract?.validation?.realDevice !== "required-for-release"
+) {
+  throw new Error("support-matrix.json must declare the TikTok contract, Native runtime, beta tier, and validation gates");
+}
 
 const bundledRows = matrix.certified.filter((target) => target.template?.source === "bundled");
 if (bundledRows.length !== 1) {
@@ -49,6 +62,7 @@ const releaseData = {
   bridgeAbi: matrix.bridgeAbi,
   templateSchema: matrix.templateSchema,
   outputManifestSchema: matrix.outputManifestSchema,
+  platformContracts: matrix.platformContracts,
   bundled,
   certified: matrix.certified,
 };

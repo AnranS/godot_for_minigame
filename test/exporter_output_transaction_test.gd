@@ -39,6 +39,35 @@ func _read(path: String) -> String:
 	return value
 
 
+func _platform_contract(platform: String) -> Dictionary:
+	var contract: Dictionary = Exporter.PLATFORM_CONTRACTS[platform]
+	return {
+		"runtime_type": contract.runtime_type,
+		"api_namespace": contract.api_namespace,
+		"subpackage_field": contract.subpackage_field,
+	}
+
+
+func _game_config(platform: String) -> String:
+	var field := str(Exporter.PLATFORM_CONTRACTS[platform].subpackage_field)
+	var value := {
+		"deviceOrientation": "portrait",
+	}
+	value[field] = [
+			{"root": "engine/", "name": "engine"},
+			{"root": "subpacks/", "name": "subpacks"},
+		]
+	return JSON.stringify(value) + "\n"
+
+
+func _project_config() -> String:
+	return JSON.stringify({
+		"appid": "test-app",
+		"projectname": "fixture",
+		"compileType": "game",
+	}) + "\n"
+
+
 func _ownership_manifest(root: String, platform: String) -> String:
 	var required: Array = []
 	var artifacts := {}
@@ -54,6 +83,7 @@ func _ownership_manifest(root: String, platform: String) -> String:
 		"tool": "godot_mini_game",
 		"ownership": "managed-output",
 		"platform": platform,
+		"platform_contract": _platform_contract(platform),
 		"orientation": "portrait",
 		"generated_at": "2026-08-02T12:00:00Z",
 		"template": {
@@ -80,8 +110,15 @@ func _make_valid_stage(path: String, platform: String) -> void:
 		if relative_path == Exporter.OUTPUT_MANIFEST:
 			continue
 		var content := "new\n"
-		if relative_path == "engine/game.js" or relative_path == "subpacks/game.js":
+		if (
+			platform != "tiktok"
+			and relative_path in ["engine/game.js", "subpacks/game.js"]
+		):
 			content = ""
+		elif relative_path == "game.json":
+			content = _game_config(platform)
+		elif relative_path == "project.config.json":
+			content = _project_config()
 		elif relative_path.ends_with(".json"):
 			content = "{\"fixture\":true}\n"
 		_write(path.path_join(relative_path), content)
@@ -92,6 +129,87 @@ func _init() -> void:
 	var exporter := Exporter.new()
 	DirAccess.make_dir_recursive_absolute(_root)
 	var project_root := ProjectSettings.globalize_path("res://")
+	for platform in Exporter.SUPPORTED_PLATFORMS:
+		var contract_output := _root.path_join("contract-" + platform)
+		_make_valid_stage(contract_output, platform)
+		var contract_check := OutputGuard.inspect(
+			contract_output,
+			project_root,
+			Exporter.MANAGED_FILES,
+			Exporter.MANAGED_DIRS,
+		)
+		_assert_true(
+			bool(contract_check.ok),
+			"%s output should establish valid managed ownership" % platform,
+		)
+		_assert_true(
+			exporter._validate_output_manifest(contract_output, platform) == OK,
+			"%s output manifest should satisfy its platform schema" % platform,
+		)
+
+	for legacy_platform in ["wechat", "douyin"]:
+		var legacy_output := _root.path_join("legacy-" + legacy_platform)
+		_make_valid_stage(legacy_output, legacy_platform)
+		var legacy_manifest: Dictionary = JSON.parse_string(
+			_read(legacy_output.path_join(Exporter.OUTPUT_MANIFEST)))
+		legacy_manifest.erase("platform_contract")
+		_write(
+			legacy_output.path_join(Exporter.OUTPUT_MANIFEST),
+			JSON.stringify(legacy_manifest) + "\n",
+		)
+		var legacy_check := OutputGuard.inspect(
+			legacy_output,
+			project_root,
+			Exporter.MANAGED_FILES,
+			Exporter.MANAGED_DIRS,
+		)
+		_assert_true(
+			bool(legacy_check.ok),
+			"schema-1 %s ownership without additive platform_contract must upgrade"
+			% legacy_platform,
+		)
+
+	var legacy_tiktok := _root.path_join("legacy-tiktok")
+	_make_valid_stage(legacy_tiktok, "tiktok")
+	var tiktok_manifest: Dictionary = JSON.parse_string(
+		_read(legacy_tiktok.path_join(Exporter.OUTPUT_MANIFEST)))
+	tiktok_manifest.erase("platform_contract")
+	_write(
+		legacy_tiktok.path_join(Exporter.OUTPUT_MANIFEST),
+		JSON.stringify(tiktok_manifest) + "\n",
+	)
+	var legacy_tiktok_check := OutputGuard.inspect(
+		legacy_tiktok,
+		project_root,
+		Exporter.MANAGED_FILES,
+		Exporter.MANAGED_DIRS,
+	)
+	_assert_true(
+		not bool(legacy_tiktok_check.ok),
+		"TikTok ownership must never omit its provider contract",
+	)
+
+	var wrong_contract := _root.path_join("wrong-platform-contract")
+	_make_valid_stage(wrong_contract, "douyin")
+	var wrong_manifest: Dictionary = JSON.parse_string(
+		_read(wrong_contract.path_join(Exporter.OUTPUT_MANIFEST)))
+	var wrong_platform_contract: Dictionary = wrong_manifest.platform_contract
+	wrong_platform_contract.api_namespace = "wx"
+	wrong_manifest.platform_contract = wrong_platform_contract
+	_write(
+		wrong_contract.path_join(Exporter.OUTPUT_MANIFEST),
+		JSON.stringify(wrong_manifest) + "\n",
+	)
+	var wrong_contract_check := OutputGuard.inspect(
+		wrong_contract,
+		project_root,
+		Exporter.MANAGED_FILES,
+		Exporter.MANAGED_DIRS,
+	)
+	_assert_true(
+		not bool(wrong_contract_check.ok),
+		"a present platform contract must match platform identity exactly",
+	)
 
 	var check := OutputGuard.inspect(
 		"/", project_root, Exporter.MANAGED_FILES, Exporter.MANAGED_DIRS)

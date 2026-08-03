@@ -115,14 +115,22 @@ for (const readme of [english, chinese]) {
   assert.ok(readme.includes(`output schema \`${matrix.outputManifestSchema}\``));
   assert.match(readme, /`wx`/);
   assert.match(readme, /`tt`/);
-  assert.doesNotMatch(readme, /Certified|认证|Full API Reference|完整 API 参考|TikTok|Real-device ready|ready for submission/);
+  assert.match(readme, /`TTMinis\.game`/);
+  assert.match(readme, /TikTok Mini Game Native/);
+  assert.match(readme, /43\.4\.0/);
+  assert.match(readme, /`ttmg`/);
+  assert.match(readme, /`ttmg init`/);
+  assert.match(readme, /Missing clientKey/);
+  assert.match(readme, /`subPackages`/);
+  assert.match(readme, /`subpackages`/);
+  assert.doesNotMatch(readme, /Full API Reference|完整 API 参考|Real-device ready|ready for submission|all \d+ methods (?:are )?supported/);
 }
 
-assert.match(english, /<source media="\(max-width: 600px\)" srcset="assets\/export-architecture-mobile\.png"/);
-assert.match(english, /<img src="assets\/export-architecture\.png" width="720"/);
+assert.match(english, /<source media="\(max-width: 600px\)" srcset="assets\/export-architecture-mobile-v3\.png"/);
+assert.match(english, /<img src="assets\/export-architecture-v3\.png" width="720"/);
 assert.doesNotMatch(english, /assets\/export-architecture-zh(?:-mobile)?\.png/);
-assert.match(chinese, /<source media="\(max-width: 600px\)" srcset="assets\/export-architecture-zh-mobile\.png"/);
-assert.match(chinese, /<img src="assets\/export-architecture-zh\.png" width="720"/);
+assert.match(chinese, /<source media="\(max-width: 600px\)" srcset="assets\/export-architecture-zh-mobile-v3\.png"/);
+assert.match(chinese, /<img src="assets\/export-architecture-zh-v3\.png" width="720"/);
 for (const readme of [english, chinese]) {
   assert.doesNotMatch(readme, /assets\/export-architecture(?:-zh)?\.svg/);
 }
@@ -137,10 +145,10 @@ assertSafePng(architectureEnglish, "assets/export-architecture.png", { width: 14
 assertSafePng(architectureEnglishMobile, "assets/export-architecture-mobile.png", { width: 720, height: 1280 }, 2, 950_000);
 assertSafePng(architectureChinese, "assets/export-architecture-zh.png", { width: 1440, height: 960 }, 2, 1_350_000);
 assertSafePng(architectureChineseMobile, "assets/export-architecture-zh-mobile.png", { width: 720, height: 1280 }, 2, 950_000);
-assert.match(english, /each transaction selects WeChat or Douyin/);
+assert.match(english, /each transaction selects WeChat, Douyin, or TikTok Native/);
 assert.match(english, /game\.js` selects exactly one `PlatformRuntime` provider/);
 assert.match(english, /not a filesystem-wide crash-atomic primitive/);
-assert.match(chinese, /每次事务只选择微信或抖音之一/);
+assert.match(chinese, /每次事务只选择微信、抖音或 TikTok Native 之一/);
 assert.match(chinese, /game\.js` 只选择一个 `PlatformRuntime` Provider/);
 assert.match(chinese, /不是跨文件系统的 crash-atomic/);
 assert.match(english, new RegExp(`${methods.length} methods and ${signals.length} signals`));

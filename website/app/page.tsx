@@ -14,8 +14,8 @@ const GODOT_VERSION = CERTIFIED.godotVersion;
 const GODOT_COMMIT_SHORT = CERTIFIED.godotCommit.slice(0, 7);
 const EMSCRIPTEN_VERSION = CERTIFIED.emscriptenVersion;
 const TEMPLATE_REVISION = CERTIFIED.templateRevision;
-const RELEASE = `${REPO}/releases/tag/v${VERSION}`;
-const PACKAGE_FILENAME = `godot_mini_game_v${VERSION}.zip`;
+const RELEASE = `${REPO}/releases/latest`;
+const PACKAGE_FILENAME = "godot_mini_game_vX.Y.Z.zip";
 
 const copy = {
   zh: {
@@ -25,24 +25,24 @@ const copy = {
     badge: `开源 · MIT License · v${VERSION}`,
     eyebrow: "Godot 4.x 小游戏导出插件",
     heroA: "把 Godot 游戏，",
-    heroB: "一键发布到微信与抖音",
+    heroB: "发布到微信、抖音与 TikTok",
     heroBody:
-      "内置真机兼容的 WASM 引擎、平台适配层与原生能力桥接。从 Godot 项目到开发者工具，只需一次导出。",
-    download: `下载 v${VERSION}`,
+      "内置小游戏兼容的 WASM 引擎、平台适配层与能力桥接，支持微信、抖音与 TikTok。",
+    download: "下载最新版",
     docs: "查看中文文档",
     github: "GitHub",
     supports: "已支持",
     visualProject: "项目",
     visualExport: "小游戏导出",
     visualPlatform: "目标平台",
-    visualAppId: "App ID",
+    visualAppId: "平台标识",
     visualOrientation: "屏幕方向",
     visualOutput: "输出目录",
     visualButton: "导出小游戏",
     visualDone: "导出完成",
     visualReady: "可直接在开发者工具中打开",
     metrics: [
-      ["2", "小游戏平台"],
+      ["3", "小游戏平台"],
       ["20+", "类原生 API"],
       ["≈ 6 MB", "Brotli 引擎"],
       ["MIT", "开源许可"],
@@ -53,10 +53,10 @@ const copy = {
     features: [
       ["01", "开箱即用", "内置小游戏兼容引擎模板，无需从头配置 Emscripten。"],
       ["02", "一键导出", "自动生成资源包、引擎文件、JS 适配层与平台配置。"],
-      ["03", "真机兼容", "移除 WXWebAssembly 不支持的 SIMD、异常 Tag 与线程特性。"],
-      ["04", "双平台交付", "同一套 Godot 项目，同时输出微信与抖音小游戏工程。"],
-      ["05", "原生能力桥接", "登录、广告、支付、媒体、文件、网络等能力可由 GDScript 直接调用。"],
-      ["06", "完整工程链路", "中英文指南、模板构建、自动发布与双平台冒烟测试一应俱全。"],
+      ["03", "宿主兼容引擎", "移除小游戏 WebAssembly 不支持的 SIMD、异常 Tag 与线程特性。"],
+      ["04", "三平台交付", "同一套 Godot 项目输出微信、抖音与 TikTok 工程。"],
+      ["05", "原生能力桥接", "同名能力先检测再调用；支付等平台特有能力走显式映射。"],
+      ["06", "可验证工程链路", "中英文指南、模板构建、自动发布与三平台导出冒烟测试一应俱全。"],
     ],
     flowKicker: "从项目到真机",
     flowTitle: "四步完成一次交付",
@@ -64,8 +64,8 @@ const copy = {
     steps: [
       ["01", "安装插件", "把 Release 中的 addons/godot_mini_game 放入项目。"],
       ["02", "启用并配置", "启用插件，添加一个 Godot Web 导出预设。"],
-      ["03", "选择目标平台", "在 Dock 中填写 App ID、方向与输出目录。"],
-      ["04", "打开开发者工具", "点击导出，直接用微信或抖音开发者工具打开。"],
+      ["03", "选择目标平台", "在 Dock 中填写平台标识、方向与输出目录。"],
+      ["04", "打开开发者工具", "点击导出，再用对应平台的开发与调试工具打开。"],
     ],
     architectureKicker: "可验证的导出内核",
     architectureTitle: "从一次点击，到一次事务发布",
@@ -81,7 +81,7 @@ const copy = {
       ["预检", "校验项目、预设、输出所有权与目标参数"],
       ["模板解析", "匹配版本、提交、Emscripten、ABI 与 revision"],
       ["资源构建", "在 staging 中生成游戏资源包"],
-      ["平台装配", "装配微信或抖音运行时与配置"],
+      ["平台装配", "装配微信、抖音或 TikTok 运行时与配置"],
       ["输出验证", "校验结构、体积与每个产物的 SHA-256"],
     ],
     architectureDelivery: "安全交付",
@@ -100,18 +100,18 @@ const copy = {
     techKicker: "真实设备优先",
     techTitle: "不是“模拟器能跑”，而是真机可用",
     techBody:
-      `官方 Web 模板包含部分小游戏运行时不支持的 WASM 特性。项目内置针对 WXWebAssembly 调整的 Godot ${GODOT_VERSION} 引擎，并自动注入小游戏运行时补丁。`,
+      `官方 Web 模板包含部分小游戏运行时不支持的 WASM 特性。项目内置 Godot ${GODOT_VERSION} 引擎并自动注入宿主兼容补丁。`,
     techPoints: [
       ["wasm_simd=no", "避开真机 SIMD 编译错误"],
       ["threads=no", "适配小游戏线程限制"],
       ["Brotli", "引擎压缩后约 6 MB"],
-      ["Subpackages", "引擎模板通过独立分包加载"],
+      ["Subpackages", "抖音用 subPackages；微信与 TikTok 用 subpackages"],
     ],
-    templateNote: `v${VERSION} 认证 Godot ${GODOT_VERSION} · commit ${GODOT_COMMIT_SHORT}… · Emscripten ${EMSCRIPTEN_VERSION} · Bridge ABI ${BRIDGE_ABI} · r${TEMPLATE_REVISION}；其它编辑器构建必须导入身份完全匹配的版本化模板包。`,
+    templateNote: `v${VERSION} 认证 Godot ${GODOT_VERSION} · commit ${GODOT_COMMIT_SHORT}… · Emscripten ${EMSCRIPTEN_VERSION} · Bridge ABI ${BRIDGE_ABI} · r${TEMPLATE_REVISION}；发布前仍需完成目标平台真机验证。`,
     sdkKicker: "MiniGameSDK",
     sdkTitle: "小游戏原生能力，用 GDScript 调用",
     sdkBody:
-      "插件自动注册 MiniGameSDK Autoload。异步结果通过信号返回；在编辑器环境中则安全地保持为空实现。",
+      "插件自动注册 MiniGameSDK Autoload。API 页展示完整 Bridge 接口面，不代表三个宿主全部兼容；运行时按能力门控。",
     apiGroups: ["登录鉴权", "广告支付", "本地与云存储", "媒体与录屏", "网络与 WebSocket", "传感器", "分享与订阅", "文件系统"],
     codeLabel: "GDScript · 激励视频广告",
     copyCode: "复制代码",
@@ -127,7 +127,7 @@ const copy = {
       ["支持哪些 Godot 版本？", `当前内置模板与自动化流程认证 Godot ${GODOT_VERSION}。其它编辑器构建必须导入版本、提交、工具链与 ABI 完全匹配的模板包。`],
       ["需要自己安装 Emscripten 吗？", "日常使用不需要。Release 已带预编译引擎；只有构建自定义 Godot 版本模板时才需要完整编译环境。"],
       ["为什么不能直接使用 Godot 官方 Web 模板？", "小游戏真机的 WXWebAssembly 对 SIMD、异常处理 Tag 与线程支持有限，官方模板可能在真机编译阶段失败。"],
-      ["导出后还需要做什么？", "用对应平台的开发者工具打开输出目录，完成 App ID、域名、隐私与平台审核相关配置即可。"],
+      ["导出后还需要做什么？", "用对应平台工具完成应用标识、域名、隐私、审核与真机验证配置。"],
     ],
     finalTitle: "你的 Godot 游戏，下一站是小游戏。",
     finalBody: "开源、透明、面向真实设备。现在就完成第一次导出。",
@@ -141,24 +141,24 @@ const copy = {
     badge: `Open source · MIT License · v${VERSION}`,
     eyebrow: "Mini-game exporter for Godot 4.x",
     heroA: "Ship your Godot game",
-    heroB: "to WeChat & Douyin in one click",
+    heroB: "to WeChat, Douyin & TikTok",
     heroBody:
-      "A device-ready WASM engine, platform adapters, and native API bridge—bundled into one clear export workflow.",
-    download: `Download v${VERSION}`,
+      "A mini-game-compatible WASM engine, platform adapters, and capability bridge for WeChat, Douyin, and TikTok.",
+    download: "Download latest",
     docs: "Read English docs",
     github: "GitHub",
     supports: "Supports",
     visualProject: "Project",
     visualExport: "Mini Game Export",
     visualPlatform: "Target platform",
-    visualAppId: "App ID",
+    visualAppId: "Platform ID",
     visualOrientation: "Orientation",
     visualOutput: "Output folder",
     visualButton: "Export mini game",
     visualDone: "Export complete",
     visualReady: "Ready to open in platform DevTools",
     metrics: [
-      ["2", "mini-game platforms"],
+      ["3", "mini-game platforms"],
       ["20+", "native API groups"],
       ["≈ 6 MB", "Brotli engine"],
       ["MIT", "open-source license"],
@@ -169,10 +169,10 @@ const copy = {
     features: [
       ["01", "Zero configuration", "A compatible engine template is bundled. No Emscripten setup for everyday use."],
       ["02", "One-click export", "Generate the pack, engine, JavaScript adapters, and platform configuration together."],
-      ["03", "Device ready", "Avoid WASM SIMD, exception-tag, and threading features unsupported by WXWebAssembly."],
-      ["04", "Two platforms", "Export one Godot project to both WeChat and Douyin mini-game projects."],
-      ["05", "Native API bridge", "Call login, ads, payments, media, files, networking, and more from GDScript."],
-      ["06", "Complete toolchain", "Bilingual docs, template builds, automated releases, and dual-platform smoke tests."],
+      ["03", "Host-compatible engine", "Avoid WASM SIMD, exception-tag, and threading features unsupported by mini-game hosts."],
+      ["04", "Three platforms", "Export one Godot project to WeChat, Douyin, and TikTok projects."],
+      ["05", "Native API bridge", "Gate same-name capabilities and explicitly map payments and other host-specific flows."],
+      ["06", "Verifiable toolchain", "Bilingual docs, template builds, automated releases, and three-platform export smoke tests."],
     ],
     flowKicker: "Project to device",
     flowTitle: "A complete delivery in four steps",
@@ -180,8 +180,8 @@ const copy = {
     steps: [
       ["01", "Install", "Drop addons/godot_mini_game from the latest Release into your project."],
       ["02", "Enable & configure", "Enable the plugin and add a Godot Web export preset."],
-      ["03", "Choose a platform", "Set the App ID, orientation, and output folder in the Dock."],
-      ["04", "Open DevTools", "Export once, then open the result in WeChat or Douyin DevTools."],
+      ["03", "Choose a platform", "Set the platform ID, orientation, and output folder in the Dock."],
+      ["04", "Open DevTools", "Export once, then open the result with the matching platform development tools."],
     ],
     architectureKicker: "Verifiable export core",
     architectureTitle: "From one command to one transactional publish",
@@ -197,7 +197,7 @@ const copy = {
       ["Preflight", "Validate the project, preset, output ownership, and target"],
       ["Template resolution", "Match version, commit, Emscripten, ABI, and revision"],
       ["Pack build", "Build the game pack inside staging"],
-      ["Platform assembly", "Add WeChat or Douyin runtime and configuration"],
+      ["Platform assembly", "Add WeChat, Douyin, or TikTok runtime and configuration"],
       ["Output validation", "Verify structure, size, and artifact SHA-256 hashes"],
     ],
     architectureDelivery: "Safe delivery",
@@ -216,18 +216,18 @@ const copy = {
     techKicker: "Real devices first",
     techTitle: "Beyond “it works in the simulator”",
     techBody:
-      `Standard Web templates can include WASM features unavailable in mini-game runtimes. The bundled Godot ${GODOT_VERSION} engine is tuned for WXWebAssembly, with runtime patches applied automatically.`,
+      `Standard Web templates can include WASM features unavailable in mini-game runtimes. The bundled Godot ${GODOT_VERSION} engine receives host compatibility patches automatically.`,
     techPoints: [
       ["wasm_simd=no", "Avoid device-side SIMD compile errors"],
       ["threads=no", "Respect mini-game thread limits"],
       ["Brotli", "Compress the engine to about 6 MB"],
-      ["Subpackages", "The engine ships as a separate package"],
+      ["Subpackages", "Douyin uses subPackages; WeChat and TikTok use subpackages"],
     ],
-    templateNote: `v${VERSION} certifies Godot ${GODOT_VERSION} · commit ${GODOT_COMMIT_SHORT}… · Emscripten ${EMSCRIPTEN_VERSION} · Bridge ABI ${BRIDGE_ABI} · r${TEMPLATE_REVISION}. Other editor builds need a fully identity-matched versioned pack.`,
+    templateNote: `v${VERSION} certifies Godot ${GODOT_VERSION} · commit ${GODOT_COMMIT_SHORT}… · Emscripten ${EMSCRIPTEN_VERSION} · Bridge ABI ${BRIDGE_ABI} · r${TEMPLATE_REVISION}; complete a real-device gate on the target platform before release.`,
     sdkKicker: "MiniGameSDK",
     sdkTitle: "Native mini-game APIs, from GDScript",
     sdkBody:
-      "MiniGameSDK is registered as an Autoload. Async results return through signals, while calls remain safe no-ops in the editor.",
+      "MiniGameSDK is registered as an Autoload. The API page lists the full bridge surface, not blanket three-host compatibility; runtime calls are capability-gated.",
     apiGroups: ["Authentication", "Ads & payments", "Local & cloud storage", "Media & recording", "Network & WebSocket", "Sensors", "Share & subscribe", "File system"],
     codeLabel: "GDScript · Rewarded video",
     copyCode: "Copy code",
@@ -243,7 +243,7 @@ const copy = {
       ["Which Godot versions are supported?", `The bundled template and automated workflow certify Godot ${GODOT_VERSION}. Other editor builds must import a pack with an exact version, commit, toolchain, and ABI match.`],
       ["Do I need to install Emscripten?", "Not for normal use. Releases include a prebuilt engine. A compiler toolchain is only required when building a custom Godot template."],
       ["Why not use the standard Godot Web template?", "WXWebAssembly on real devices has limited support for SIMD, exception tags, and threads, so a standard template can fail during compilation."],
-      ["What happens after export?", "Open the output folder in platform DevTools, then complete the App ID, domain, privacy, and review settings required by that platform."],
+      ["What happens after export?", "Complete the platform ID, domain, privacy, review, and real-device validation settings in the matching tool."],
     ],
     finalTitle: "Your Godot game belongs on mini-game platforms.",
     finalBody: "Open source, transparent, and built for real devices. Make your first export today.",
@@ -359,6 +359,7 @@ export default function Home() {
               <span>{t.supports}</span>
               <span className="platform-chip"><img src={asset("/wechat.svg")} alt="" />WeChat</span>
               <span className="platform-chip"><img src={asset("/tiktok.svg")} alt="" />Douyin</span>
+              <span className="platform-chip"><img src={asset("/tiktok.svg")} alt="" />TikTok</span>
             </div>
           </div>
 
@@ -423,6 +424,8 @@ export default function Home() {
                     <span><img src={asset("/wechat.svg")} alt="WeChat" /></span>
                     <i>+</i>
                     <span><img src={asset("/tiktok.svg")} alt="Douyin" /></span>
+                    <i>+</i>
+                    <span><img src={asset("/tiktok.svg")} alt="TikTok" /></span>
                   </div>
                 </aside>
               </div>
@@ -444,7 +447,7 @@ export default function Home() {
           <div className="feature-grid">
             {t.features.map(([number, title, body], index) => (
               <article className={`feature-card reveal feature-${index + 1}`} key={title}>
-                <div className="feature-top"><span>{number}</span><i>{index === 0 ? "READY" : index === 1 ? "EXPORT" : index === 2 ? "WASM" : index === 3 ? "2×" : index === 4 ? "SDK" : "CI"}</i></div>
+                <div className="feature-top"><span>{number}</span><i>{index === 0 ? "READY" : index === 1 ? "EXPORT" : index === 2 ? "WASM" : index === 3 ? "3×" : index === 4 ? "SDK" : "CI"}</i></div>
                 <h3>{title}</h3>
                 <p>{body}</p>
                 <div className="feature-decoration" aria-hidden="true">
@@ -551,6 +554,7 @@ export default function Home() {
                       <div className="architecture-platforms" aria-label={t.architecturePlatforms}>
                         <span><i aria-hidden="true" />WeChat</span>
                         <span><i aria-hidden="true" />Douyin</span>
+                        <span><i aria-hidden="true" />TikTok</span>
                       </div>
                     )}
                     <div className="architecture-binding"><span aria-hidden="true">↳</span><code>{target}</code></div>
@@ -641,7 +645,7 @@ export default function Home() {
       <section className="final-cta">
         <div className="final-grid" aria-hidden="true" />
         <div className="container final-content reveal">
-          <div className="final-logos"><span><img src={asset("/godot.svg")} alt="Godot" /></span><i>→</i><span><img src={asset("/wechat.svg")} alt="WeChat" /></span><span><img src={asset("/tiktok.svg")} alt="Douyin" /></span></div>
+          <div className="final-logos"><span><img src={asset("/godot.svg")} alt="Godot" /></span><i>→</i><span><img src={asset("/wechat.svg")} alt="WeChat" /></span><span><img src={asset("/tiktok.svg")} alt="Douyin" /></span><span><img src={asset("/tiktok.svg")} alt="TikTok" /></span></div>
           <h2>{t.finalTitle}</h2>
           <p>{t.finalBody}</p>
           <div className="hero-actions">

@@ -1,14 +1,14 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="assets/banner-dark-v2.png" />
-    <img src="assets/banner-light.png" width="720" alt="A Godot project exported through Godot Mini Game to WeChat and Douyin Mini Games" />
+    <img src="assets/banner-light.png" width="720" alt="A Godot project exported through Godot Mini Game to WeChat, Douyin, and TikTok Mini Games" />
   </picture>
 </p>
 
 <h1 align="center">Godot Mini Game</h1>
 
 <p align="center">
-  <strong>Export Godot games to WeChat and Douyin Mini Games.</strong><br />
+  <strong>Export Godot games to WeChat, Douyin, and TikTok Mini Games.</strong><br />
   CI-validated WASM engine · guarded export transaction · one versioned GDScript SDK
 </p>
 
@@ -29,8 +29,8 @@
 
 ---
 
-Godot Mini Game turns a normal Godot project into a platform-ready WeChat or
-Douyin Mini Game package. Day-to-day export does not require Node.js, Brotli,
+Godot Mini Game turns a normal Godot project into a platform-ready WeChat,
+Douyin, or TikTok Mini Game package. Day-to-day export does not require Node.js, Brotli,
 Emscripten, or a separate Godot Web template download.
 
 ## Why Godot Mini Game?
@@ -38,22 +38,22 @@ Emscripten, or a separate Godot Web template download.
 | | |
 |---|---|
 | **Editor-native workflow**<br />Build the PCK, assemble platform files, validate, and publish from one Dock. | **Exact template identity**<br />Godot source, Emscripten, profile, revision, schemas, features, and hashes stay aligned. |
-| **One SDK, two providers**<br />`MiniGameSDK` exposes 220 methods and 82 signals over the shared `wx` / `tt` runtime contract. | **Guarded publishing**<br />Staging, ownership manifests, hashes, an output lock, backup, and rollback protect managed paths while preserving sidecars. |
+| **One capability-gated SDK**<br />`MiniGameSDK` exposes 224 methods and 83 signals over `wx`, `tt`, and `TTMinis.game`; availability still depends on the selected host. | **Guarded publishing**<br />Staging, ownership manifests, hashes, an output lock, backup, and rollback protect managed paths while preserving sidecars. |
 
 ## Architecture
 
 <p align="center">
-  <a href="assets/export-architecture.png">
+  <a href="assets/export-architecture-v3.png">
     <picture>
-      <source media="(max-width: 600px)" srcset="assets/export-architecture-mobile.png" />
-      <img src="assets/export-architecture.png" width="720" alt="Architecture: one selected wx or tt target passes through the exact template gate, sibling staging, manifest, hash, lock, and managed-path publish; the exported game then uses one PlatformRuntime provider, the GodotSDK to MiniGameSDK Bridge ABI, and an exact-identity release gate" />
+      <source media="(max-width: 600px)" srcset="assets/export-architecture-mobile-v3.png" />
+      <img src="assets/export-architecture-v3.png" width="720" alt="Architecture: one selected wx, tt, or TTMinis.game target passes through the exact template gate, sibling staging, manifest, hash, lock, and managed-path publish; the exported game then uses one PlatformRuntime provider, the GodotSDK to MiniGameSDK Bridge ABI, and an exact-identity release gate" />
     </picture>
   </a>
 </p>
 
 <p align="center"><sub>Click the diagram to open it at full size.</sub></p>
 
-- **Export control plane** — each transaction selects WeChat or Douyin, resolves one complete engine bundle, assembles outside the destination, validates every managed artifact, and publishes under a lock.
+- **Export control plane** — each transaction selects WeChat, Douyin, or TikTok Native, resolves one complete engine bundle, assembles outside the destination, validates every managed artifact, and publishes under a lock.
 - **Exported package runtime** — `game.js` selects exactly one `PlatformRuntime` provider; the loader starts the patched engine and PCK, while `GodotSDK` and `MiniGameSDK` negotiate the Bridge ABI.
 
 The publish step has in-process rollback and records recovery evidence, but is
@@ -64,7 +64,7 @@ not a filesystem-wide crash-atomic primitive. Full boundaries are documented in
 
 | Contract | Bundled value |
 |---|---|
-| Plugin release | `v0.2.1` |
+| Plugin release | `v0.3.0` |
 | Godot | `4.6.1.stable` · commit `14d19694e0c8` |
 | Emscripten | `4.0.3` |
 | Build | `2d_full` · `release` · revision `1` |
@@ -72,12 +72,32 @@ not a filesystem-wide crash-atomic primitive. Full boundaries are documented in
 
 - ✅ **WeChat Mini Game (`wx`)** — full export, manifest, WASM, and package checks.
 - ✅ **Douyin Mini Game (`tt`)** — full export, manifest, WASM, and package checks.
+- 🧪 **TikTok Mini Game Native (`TTMinis.game`)** — first-class **beta** target with automated export checks. Requires TikTok client 43.4.0+, `ttmg` DevTool compilation, and real-device validation before release.
 
 > [!IMPORTANT]
 > The bundled engine is validated by this project only for the exact identity
 > above. Another Godot editor build requires a matching template pack.
 > Automated checks do not replace final testing in platform DevTools and on
 > target devices.
+
+TikTok support in v0.3 is for the Native runtime and writes lower-case
+`subpackages`; Douyin continues to require `subPackages`. The TikTok HTML
+runtime is outside this release's scope.
+
+For the first TikTok run, complete `ttmg setup` and `ttmg login`, enter the
+export directory, run `ttmg init` with the same Client Key, then run `ttmg dev`.
+The pinned CLI does not copy `project.config.json.appid` into `~/.ttmgrc`;
+skipping init results in `Missing clientKey`.
+
+TikTok Native shortcut and entrance missions have typed SDK wrappers:
+`add_shortcut()`, `get_shortcut_mission_reward()`, `start_entrance_mission()`,
+and `get_entrance_mission_reward()`. Each call is capability-gated before the
+host API runs and reports through `tiktok_mission_result`.
+
+Current TikTok beta builds fail closed for storage enumeration, battery reads,
+and public file-system writes where real-device host calls can crash or hang.
+Key-value storage get/set/remove remains supported and device-verified; see the
+[usage guide](docs/USAGE.md#file-system) for the exact boundary.
 
 [`support-matrix.json`](support-matrix.json) is the release, CI, and website
 source of truth for validated identities and platform status.
@@ -120,7 +140,7 @@ standard Web export templates do not need to be downloaded.
 ### 4 · Export
 
 Open the **Mini Game Export** Dock, then select one platform, enter the App ID,
-choose an orientation, Web preset, and dedicated output directory, and click
+or TikTok Client Key, choose an orientation, Web preset, and dedicated output directory, and click
 **Export**. Open the result in the matching platform DevTools.
 
 ## SDK in 60 seconds
@@ -144,7 +164,11 @@ At startup the SDK verifies the bridge brand, global name, ABI, and required
 methods before lifecycle binding. Inspect `bridge_info` and
 `bridge_initialization_error` when diagnosing integration issues.
 
-**[Browse all 220 methods and 82 signals →](https://anrans.github.io/godot_for_minigame/api/)**
+**[Browse all 224 methods and 83 signals →](https://anrans.github.io/godot_for_minigame/api/)**
+
+The reference is the complete bridge surface, not a claim that every method is
+available on every host. Shared names use capability gating; payment and other
+platform-specific features use explicit provider mappings.
 
 ## Documentation
 

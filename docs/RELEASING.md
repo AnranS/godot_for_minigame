@@ -1,7 +1,7 @@
 # Release process
 
 Godot Mini Game releases are built from immutable Git tags. The tag workflow
-runs the complete JavaScript, GDScript, WeChat, and Douyin export matrix before
+runs the complete JavaScript, GDScript, WeChat, Douyin, and TikTok export matrix before
 it is allowed to publish GitHub Release assets.
 
 ## 1. Choose and apply the version
@@ -30,6 +30,10 @@ profile, target, revision, ABI, and schema tuple. Do not publish a version when
 the bundled `addons/godot_mini_game/engine/template.json` disagrees with that
 tuple.
 
+Per-platform validation lives under `platformContracts`. A certified row's
+`platforms.* = automated` value means the exporter smoke job is generated; it
+does **not** mean the package has passed platform DevTools or a real device.
+
 ## 2. Validate the exact release source
 
 Run the project contracts and website checks:
@@ -44,6 +48,23 @@ done
 NEXT_PUBLIC_BASE_PATH=/godot_for_minigame npm --prefix website test
 ./scripts/package_plugin.sh
 ```
+
+TikTok Native is a beta target with an additional release gate. Export a fresh
+TikTok package from the release candidate, then:
+
+1. complete `ttmg setup`/`ttmg login`, run `ttmg init` inside the fresh export
+   with its Client Key, then compile/debug it through `ttmg dev` using the
+   pinned version declared in `support-matrix.json` (currently
+   `0.4.1-beta.wasm1`), and require CI's
+   offline package precheck through `ttmg-pack.checkPkgs` to pass; Native
+   `ttmg build` is currently a placeholder and is not a release gate;
+2. run it on a TikTok client 43.4.0 or newer;
+3. verify boot, `TTWebAssembly`, both generated subpackages, input, audio,
+   networking, persistence, and login;
+4. record the DevTool and device evidence with the release notes.
+
+The TikTok HTML runtime is outside the v0.3 release scope. Do not substitute an
+HTML preview for the Native DevTool and real-device gate.
 
 When the engine template changes, also validate the original artifact produced
 locally or by **Build Mini-Game WASM Template**:

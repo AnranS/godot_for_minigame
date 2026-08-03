@@ -17,7 +17,7 @@ on:
         description: "Immutable template revision"
         required: true
         type: string
-        default: "1"
+        default: "2"
       publish_release:
         description: "Publish after every validation passes"
         required: true
@@ -38,7 +38,7 @@ jobs:
       BUILD_TARGET: release
     steps:
       - name: Checkout plugin repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Validate immutable inputs
         id: contract
@@ -64,7 +64,7 @@ jobs:
           echo "release_tag=$release_tag" >> "$GITHUB_OUTPUT"
 
       - name: Checkout exact Godot source tag
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: godotengine/godot
           ref: ${{ inputs.godot_version }}
@@ -84,12 +84,12 @@ jobs:
           echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Set up Emscripten
-        uses: mymindstorm/setup-emsdk@v14
+        uses: mymindstorm/setup-emsdk@v16
         with:
           version: ${{ inputs.emscripten_version }}
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: "3.12"
 
@@ -129,7 +129,7 @@ jobs:
             wasm_simd=no \
             threads=no \
             dlink_enabled=no \
-            javascript_eval=yes \
+            javascript_eval=no \
             module_webrtc_enabled=no \
             module_webxr_enabled=no \
             module_openxr_enabled=no \
@@ -220,7 +220,7 @@ jobs:
           unzip -t "$BUNDLE_PATH"
 
       - name: Upload validated artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ steps.bundle.outputs.name }}
           path: |

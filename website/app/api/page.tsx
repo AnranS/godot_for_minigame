@@ -43,7 +43,11 @@ const methodDescriptions: Record<string, string> = {
   share_app: "主动拉起平台分享面板，并设置标题、图片和 query。",
   create_rewarded_ad: "创建激励视频广告实例并返回创建结果。",
   show_rewarded_ad: "展示已创建的激励视频广告；根据播放完成状态发放奖励。",
-  request_payment: "发起微信 Midas 虚拟支付，业务参数通过 Dictionary 传入。",
+  request_payment: "按当前 Provider 发起虚拟支付；Dictionary 字段属于平台契约，不能跨宿主复用。",
+  add_shortcut: "请求在 TikTok 中添加桌面快捷方式；调用前会检查宿主能力。",
+  get_shortcut_mission_reward: "查询或领取 TikTok 快捷方式任务奖励，并返回当前可领取状态。",
+  start_entrance_mission: "启动 TikTok 入口任务；调用前会检查宿主能力。",
+  get_entrance_mission_reward: "查询或领取 TikTok 入口任务奖励，并返回当前可领取状态。",
   http_request: "发起平台 HTTP 请求；状态码、响应正文和错误由 http_response 返回。",
   download_file: "下载远程文件到临时路径或指定小游戏文件路径。",
   upload_file: "以 multipart/form-data 上传小游戏本地文件。",
@@ -97,6 +101,10 @@ const exactSignalHints: Record<string, readonly string[]> = {
   create_interstitial_ad: ["ad_created"],
   show_interstitial_ad: ["interstitial_ad_result"],
   request_payment: ["payment_result"],
+  add_shortcut: ["tiktok_mission_result"],
+  get_shortcut_mission_reward: ["tiktok_mission_result"],
+  start_entrance_mission: ["tiktok_mission_result"],
+  get_entrance_mission_reward: ["tiktok_mission_result"],
   show_keyboard: ["keyboard_event"],
   http_request: ["http_response"],
   download_file: ["file_transfer_result"],
@@ -112,12 +120,12 @@ const exactSignalHints: Record<string, readonly string[]> = {
 
 const platformLabels = {
   dual: {
-    label: "双平台明确",
-    detail: "仓库文档明确映射 wx 与 tt；仍建议按宿主版本做能力探测。",
+    label: "跨宿主同名",
+    detail: "映射多个小游戏宿主的同名能力；仍必须按宿主版本做 capability gating。",
   },
   bridge: {
     label: "统一桥接",
-    detail: "运行时会分发到 wx 或 tt，但仓库没有对全部宿主能力做独立验证。",
+    detail: "运行时按目标平台分发，但不代表三个宿主均已验证该能力。",
   },
   "wechat-docs": {
     label: "微信文档",
@@ -126,6 +134,14 @@ const platformLabels = {
   wechat: {
     label: "微信专属",
     detail: "接口语义与微信隐私、Midas 或开放数据域能力绑定。",
+  },
+  "provider-specific": {
+    label: "按平台映射",
+    detail: "桥接会选择宿主专属实现；参数、商业资质、返回值和错误语义必须按平台文档处理。",
+  },
+  tiktok: {
+    label: "TikTok",
+    detail: "TikTok 平台能力；调用前会检查宿主支持情况，发布前仍需真机验证。",
   },
 } as const;
 
@@ -138,6 +154,7 @@ const paramDescriptions: Record<string, string> = {
   params: "平台 API 参数字典。",
   error: "空字符串表示成功，否则为错误信息。",
   data_json: "平台原始响应序列化后的 JSON 字符串。",
+  can_receive_reward: "宿主返回的 canReceiveReward；表示当前任务奖励是否可领取。",
   action: "触发本次结果的具体平台动作。",
   success: "操作是否成功。",
   event_type: "事件类型。",
@@ -423,7 +440,7 @@ export default function ApiReference() {
             <div className={styles.heroCopy}>
               <div className={styles.version}>MiniGameSDK · v{VERSION} · Bridge ABI {BRIDGE_ABI}</div>
               <h1>每一个方法、<br /><em>每一个信号</em></h1>
-              <p>从 GDScript 源码自动生成的完整接口索引。搜索方法与信号，核对参数默认值、同步返回、回调约定、平台兼容性和源码位置。</p>
+              <p>从 GDScript 源码自动生成的完整 Bridge 接口索引。搜索方法与信号，核对参数默认值、同步返回、能力门控和源码位置；接口存在不等于三个宿主全部兼容。</p>
               <div className={styles.heroStats}>
                 <div><strong>{apiMethods.length}</strong><span>公开方法</span></div>
                 <div><strong>{apiSignals.length}</strong><span>公开信号</span></div>
@@ -471,7 +488,7 @@ export default function ApiReference() {
         <div className={styles.compatibility}>
           <div>
             <strong>平台标签怎么读</strong>
-            <p>统一桥接不等于双平台均已验证。涉及宿主版本的能力，请先调用 <code>can_i_use()</code>。</p>
+            <p>统一桥接不等于三个平台均已验证。涉及宿主版本的能力请先调用 <code>can_i_use()</code>，再完成目标平台真机验证。</p>
           </div>
           {(Object.entries(platformLabels) as Array<[keyof typeof platformLabels, (typeof platformLabels)[keyof typeof platformLabels]]>).map(([key, value]) => (
             <span data-platform={key} key={key}>{value.label}</span>

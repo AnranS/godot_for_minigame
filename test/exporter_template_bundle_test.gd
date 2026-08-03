@@ -102,8 +102,27 @@ func _make_output_fixture(path: String, platform: String) -> void:
 		var content := "fixture\n"
 		if relative_path == "engine/godot.wasm.br":
 			content = "brotli-fixture\n"
-		elif relative_path in ["engine/game.js", "subpacks/game.js"]:
+		elif (
+			platform != "tiktok"
+			and relative_path in ["engine/game.js", "subpacks/game.js"]
+		):
 			content = ""
+		elif relative_path == "game.json":
+			var field := str(Exporter.PLATFORM_CONTRACTS[platform].subpackage_field)
+			var game_config := {
+				"deviceOrientation": "portrait",
+			}
+			game_config[field] = [
+					{"root": "engine/", "name": "engine"},
+					{"root": "subpacks/", "name": "subpacks"},
+				]
+			content = JSON.stringify(game_config) + "\n"
+		elif relative_path == "project.config.json":
+			content = JSON.stringify({
+				"appid": "test-app",
+				"projectname": "fixture",
+				"compileType": "game",
+			}) + "\n"
 		elif relative_path.ends_with(".json"):
 			content = "{\"fixture\":true}\n"
 		_write(path.path_join(relative_path), content)

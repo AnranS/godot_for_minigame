@@ -12,9 +12,22 @@ function moduleUrl(source) {
   return `data:text/javascript;charset=utf-8,${encodeURIComponent(source)}#${Date.now()}-${Math.random()}`;
 }
 
-async function loadRuntime({ wxApi, ttApi, explicitPlatform, cachedRuntime } = {}) {
+async function loadRuntime({
+  wxApi,
+  ttApi,
+  tiktokApi,
+  gameGlobalTiktokApi,
+  explicitPlatform,
+  cachedRuntime,
+  wxWebAssembly,
+  ttWebAssembly,
+  gameGlobalTtWebAssembly,
+} = {}) {
   delete globalThis.wx;
   delete globalThis.tt;
+  delete globalThis.TTMinis;
+  delete globalThis.WXWebAssembly;
+  delete globalThis.TTWebAssembly;
   delete globalThis.__godotMiniGamePlatformRuntime;
   delete globalThis.PlatformRuntime;
   globalThis.GameGlobal = explicitPlatform ? { __platform: explicitPlatform } : {};
@@ -24,6 +37,11 @@ async function loadRuntime({ wxApi, ttApi, explicitPlatform, cachedRuntime } = {
   }
   if (wxApi) globalThis.wx = wxApi;
   if (ttApi) globalThis.tt = ttApi;
+  if (tiktokApi) globalThis.TTMinis = { game: tiktokApi };
+  if (gameGlobalTiktokApi) globalThis.GameGlobal.TTMinis = { game: gameGlobalTiktokApi };
+  if (wxWebAssembly) globalThis.WXWebAssembly = wxWebAssembly;
+  if (ttWebAssembly) globalThis.TTWebAssembly = ttWebAssembly;
+  if (gameGlobalTtWebAssembly) globalThis.GameGlobal.TTWebAssembly = gameGlobalTtWebAssembly;
 
   const source = fs.readFileSync(runtimePath, "utf8");
   return import(moduleUrl(source));
@@ -71,6 +89,42 @@ async function testTtOnlyDetection() {
   );
 }
 
+async function testTiktokOnlyDetection() {
+  const tiktokApi = {
+    ...makeApi(),
+    onShow() {},
+    onHide() {},
+  };
+  const ttWebAssembly = { instantiate() {} };
+  const { PlatformRuntime } = await loadRuntime({ tiktokApi, ttWebAssembly });
+
+  assert.equal(PlatformRuntime.platform, "tiktok");
+  assert.equal(PlatformRuntime.apiPrefix, "TTMinis.game");
+  assert.equal(PlatformRuntime.requireApi("test"), tiktokApi);
+  assert.equal(PlatformRuntime.requirePlatform("tiktok", "TikTok entrypoint"), tiktokApi);
+  assert.deepEqual(PlatformRuntime.getNativeWebAssemblyApis(), [ttWebAssembly]);
+  assert.equal(PlatformRuntime.capabilities.lifecycle, true);
+  assert.equal(PlatformRuntime.capabilities.runtimeError, false);
+}
+
+async function testGameGlobalTiktokDetection() {
+  const gameGlobalTiktokApi = makeApi();
+  const wxApi = makeApi();
+  const ttApi = makeApi();
+  const { PlatformRuntime } = await loadRuntime({
+    wxApi,
+    ttApi,
+    gameGlobalTiktokApi,
+  });
+
+  assert.equal(globalThis.TTMinis, undefined);
+  assert.equal(PlatformRuntime.platform, "tiktok");
+  assert.equal(PlatformRuntime.apiPrefix, "TTMinis.game");
+  assert.equal(PlatformRuntime.api, gameGlobalTiktokApi);
+  assert.notEqual(PlatformRuntime.api, wxApi);
+  assert.notEqual(PlatformRuntime.api, ttApi);
+}
+
 async function testNeitherProviderHasADescriptiveFailure() {
   const { PlatformRuntime } = await loadRuntime();
 
@@ -82,7 +136,7 @@ async function testNeitherProviderHasADescriptiveFailure() {
     () => PlatformRuntime.requireApi("adapter"),
     (error) => error instanceof Error
       && !(error instanceof ReferenceError)
-      && error.message.includes("requires a WeChat (wx) or Douyin (tt)"),
+      && error.message.includes("TikTok (TTMinis.game)"),
   );
 }
 
@@ -99,6 +153,29 @@ async function testExplicitPlatformBreaksATwoProviderTie() {
   assert.equal(PlatformRuntime.api, ttApi);
 }
 
+async function testMixedProvidersHaveStablePrecedence() {
+  const wxApi = makeApi();
+  const ttApi = makeApi();
+  const tiktokApi = makeApi();
+
+  const automatic = await loadRuntime({ wxApi, ttApi, tiktokApi });
+  assert.equal(automatic.PlatformRuntime.platform, "tiktok");
+  assert.equal(automatic.PlatformRuntime.api, tiktokApi);
+
+  const byteDanceOnly = await loadRuntime({ ttApi, tiktokApi });
+  assert.equal(byteDanceOnly.PlatformRuntime.platform, "tiktok");
+  assert.equal(byteDanceOnly.PlatformRuntime.api, tiktokApi);
+
+  const explicit = await loadRuntime({
+    wxApi,
+    ttApi,
+    tiktokApi,
+    explicitPlatform: "tiktok",
+  });
+  assert.equal(explicit.PlatformRuntime.platform, "tiktok");
+  assert.equal(explicit.PlatformRuntime.api, tiktokApi);
+}
+
 async function testExplicitPlatformDoesNotFallBackToTheWrongApi() {
   const { PlatformRuntime } = await loadRuntime({
     wxApi: makeApi(),
@@ -107,7 +184,28 @@ async function testExplicitPlatformDoesNotFallBackToTheWrongApi() {
 
   assert.equal(PlatformRuntime.platform, "douyin");
   assert.equal(PlatformRuntime.available, false);
-  assert.throws(() => PlatformRuntime.requireApi("test"), /requires a WeChat \(wx\) or Douyin \(tt\)/);
+  assert.throws(() => PlatformRuntime.requireApi("test"), /TikTok \(TTMinis\.game\)/);
+
+  const explicitTiktok = await loadRuntime({
+    ttApi: makeApi(),
+    explicitPlatform: "tiktok",
+  });
+  assert.equal(explicitTiktok.PlatformRuntime.platform, "tiktok");
+  assert.equal(explicitTiktok.PlatformRuntime.available, false);
+  assert.throws(() => explicitTiktok.PlatformRuntime.requireApi("test"), /TikTok \(TTMinis\.game\)/);
+}
+
+async function testNativeWebAssemblySelectionSupportsBothByteDanceIdentities() {
+  const ttWebAssembly = { instantiate() {} };
+  const douyin = await loadRuntime({ ttApi: makeApi(), ttWebAssembly });
+  assert.deepEqual(douyin.PlatformRuntime.getNativeWebAssemblyApis(), [ttWebAssembly]);
+
+  const tiktok = await loadRuntime({ tiktokApi: makeApi(), ttWebAssembly });
+  assert.deepEqual(tiktok.PlatformRuntime.getNativeWebAssemblyApis(), [ttWebAssembly]);
+
+  const gameGlobalTtWebAssembly = { instantiate() {} };
+  const nested = await loadRuntime({ tiktokApi: makeApi(), gameGlobalTtWebAssembly });
+  assert.deepEqual(nested.PlatformRuntime.getNativeWebAssemblyApis(), [gameGlobalTtWebAssembly]);
 }
 
 async function testCapabilityFailureListsEveryMissingRequirement() {
@@ -152,9 +250,13 @@ async function testForeignCachedRuntimeIsRejected() {
 
 await testWxOnlyDetection();
 await testTtOnlyDetection();
+await testTiktokOnlyDetection();
+await testGameGlobalTiktokDetection();
 await testNeitherProviderHasADescriptiveFailure();
 await testExplicitPlatformBreaksATwoProviderTie();
+await testMixedProvidersHaveStablePrecedence();
 await testExplicitPlatformDoesNotFallBackToTheWrongApi();
+await testNativeWebAssemblySelectionSupportsBothByteDanceIdentities();
 await testCapabilityFailureListsEveryMissingRequirement();
 await testSystemInfoSupportsEitherPlatformApi();
 await testForeignCachedRuntimeIsRejected();

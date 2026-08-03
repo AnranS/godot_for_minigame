@@ -12,7 +12,7 @@
 - [4. 导出 Dock 详解](#4-导出-dock-详解)
 - [5. 引擎模板管理](#5-引擎模板管理)
 - [6. 导出产物结构](#6-导出产物结构)
-- [7. 微信 / 抖音开发者工具导入](#7-微信--抖音开发者工具导入)
+- [7. 微信 / 抖音 / TikTok 开发者工具导入](#7-微信--抖音--tiktok-开发者工具导入)
 - [8. MiniGameSDK 详细用法](#8-minigamesdk-详细用法)
 - [9. 资源与子包策略](#9-资源与子包策略)
 - [10. 本地存储与云端同步](#10-本地存储与云端同步)
@@ -29,6 +29,8 @@
 | Godot | 4.6.1 已认证；其他版本必须精确匹配模板 | 引擎本体 |
 | 微信开发者工具 | latest stable | 调试/上传微信小游戏 |
 | 抖音开发者工具 | latest stable | 调试/上传抖音小游戏 |
+| TikTok 客户端 | 43.4.0+ | Native `TTWebAssembly` 运行时 |
+| `ttmg` DevTool | 0.4.1-beta.wasm1 | 通过 `ttmg dev` 编译与调试 TikTok Native 工程 |
 
 日常导出不需要 Node.js、Brotli CLI、Emscripten 或 Godot 标准 Web 模板。
 Release 已包含经过验证的 Brotli 引擎包；编译与验证工具只属于维护者依赖，见第 12 节。
@@ -95,15 +97,19 @@ Dock 位于编辑器底部，依次包含以下字段：
 |------|------|
 | 微信小游戏 | 导出 `wechat` 模板，生成 `project.config.json` + `project.private.config.json` |
 | 抖音小游戏 | 导出 `douyin` 模板，生成抖音用的 `project.config.json` |
+| TikTok Mini Game（beta） | 导出 `tiktok` Native 模板，使用 `TTMinis.game` 命名空间 |
 
 平台差异：
 - 微信的 `game.json` 多了 `iOSHighPerformance` 与 `workers.path`（用于音频 worklet）
 - 抖音目前不启用 workers
+- 抖音大小写敏感的分包字段是 `subPackages`；微信与 TikTok 使用小写 `subpackages`
+- v0.3 的 TikTok 支持仅覆盖 Native runtime，不生成启动与配置契约不同的 HTML runtime
 
 ### AppID
 
 - 微信：在 [微信公众平台](https://mp.weixin.qq.com) 注册小游戏后获得的 `wx...` ID。
 - 抖音：在 [抖音开放平台](https://developer.open-douyin.com) 获得的 `tt...` ID。
+- TikTok：为 Native Mini Game 注册的 **Client Key**。
 - 如果只做本地联调，可以留空或填任意字符串；上传时必须是真实 AppID。
 
 ### 屏幕方向 Orientation
@@ -132,7 +138,7 @@ Dock 自动扫描 `export_presets.cfg` 里的所有预设，选择第 3 步创�
 步骤 1/7: 在 staging 导出资源包
 步骤 2/7: 复制一个经过验证的完整引擎包
 步骤 3/7: 复制公共 JavaScript 运行时
-步骤 4/7: 装配微信或抖音平台文件
+步骤 4/7: 装配微信、抖音或 TikTok Native 平台文件
 步骤 5/7: 创建平台要求的占位文件
 步骤 6/7: 写入并验证产物 manifest
 步骤 7/7: 加锁、复核并事务发布
@@ -200,7 +206,7 @@ Dock 顶部的 **引擎模板** 栏显示当前查找结果。插件按以下顺
 ```
 <output>/
 ├── .godot-mini-game-export.json   # 所有权、模板身份与产物哈希
-├── game.js                # 平台入口（wechat/douyin 专属）
+├── game.js                # 平台入口（wechat/douyin/tiktok 专属）
 ├── game.json              # 平台 manifest
 ├── project.config.json
 ├── project.private.config.json   # 仅微信
@@ -220,7 +226,7 @@ Dock 顶部的 **引擎模板** 栏显示当前查找结果。插件按以下顺
 │   │   └── sdk.js         # GDScript ↔ JS 桥
 │   ├── image_loader.js    # 宿主图片加载器
 │   ├── loader.js          # 加载动画 + 启动引擎
-│   ├── platform_runtime.js # wx/tt provider 与能力契约
+│   ├── platform_runtime.js # wx/tt/TTMinis.game provider 与能力契约
 │   └── worker/
 │       └── position_reporting.js  # 微信 game.json 要求的 worker 目录
 └── images/
@@ -230,13 +236,13 @@ Dock 顶部的 **引擎模板** 栏显示当前查找结果。插件按以下顺
 
 ### 重要约定
 
-- **`engine/` 是分包 `engine`**：`game.json` 里声明 `{"root":"engine/","name":"engine"}`，loader 启动时通过已选择的 `wx`/`tt` provider 调 `loadSubpackage({name:"engine"})`，只先下载主包。
+- **`engine/` 是分包 `engine`**：`game.json` 里声明 `{"root":"engine/","name":"engine"}`，loader 启动时通过已选择的 `wx`、`tt` 或 `TTMinis.game` Provider 调 `loadSubpackage({name:"engine"})`，只先下载主包。
 - **上述顶层文件和 `audio/`、`engine/`、`images/`、`js/`、`subpacks/` 整体归导出器管理。** 不要在其中添加自定义文件；预检会拒绝未列入 manifest 的内容，而不是静默删除。旁路文件请放在其它顶层名称下，游戏资源应通过 Godot 导出预设/PCK 打包。
 - **`js/worker/` 必须存在**：微信 `game.json` 里声明了 `workers.path: js/worker`，哪怕不真用 Worker 也要有这个目录，否则上传 / 真机会报错。
 
 ---
 
-## 7. 微信 / 抖音开发者工具导入
+## 7. 微信 / 抖音 / TikTok 开发者工具导入
 
 ### 微信小游戏
 
@@ -257,6 +263,32 @@ Dock 顶部的 **引擎模板** 栏显示当前查找结果。插件按以下顺
 2. 选导出目录即可，AppID 从 `project.config.json` 自动识别
 3. 点击 **编译**
 
+### TikTok Native（beta）
+
+TikTok 是独立的一级目标，不是抖音别名。在 Dock 选择 **TikTok Mini Game** 导出，
+然后从输出目录运行固定版本的 Native DevTool：
+
+```bash
+ttmg setup --lang zh-CN
+ttmg login
+cd /absolute/path/to/tiktok-output
+ttmg init  # 输入本次导出使用的同一个 Client Key
+ttmg dev
+```
+
+请使用 `ttmg 0.4.1-beta.wasm1`，不要传 `--h5`，因为 v0.3 不包含 HTML runtime；
+目标 TikTok 客户端必须为 43.4.0+，才能使用 `TTWebAssembly`。固定版 CLI 的 Native
+Client Key 只从 `~/.ttmgrc` 读取，不会从 `project.config.json.appid` 自动填入。
+每个新导出目录都要执行 `ttmg init` 并输入同一个 Client Key；出现
+`Missing clientKey` 说明这一步或此前的 setup/login 尚未完成。
+
+固定版本 CLI 中的 Native `ttmg build` 当前只是 placeholder，不能作为验收门禁。
+Native 编译/调试入口是 `ttmg dev`；CI 另通过其依赖的 `ttmg-pack.checkPkgs` 做离线
+包预检。
+
+仓库已自动检查 TikTok 的导出、Manifest、WASM 和包结构，但 beta 不等于真机认证。
+每个 Release 候选仍必须通过 DevTool 构建与目标真机运行。
+
 ### 常见首次报错
 
 | 症状 | 原因 | 解决 |
@@ -265,6 +297,8 @@ Dock 顶部的 **引擎模板** 栏显示当前查找结果。插件按以下顺
 | `GameGlobal.canvas is not defined` | `game.js` 没被当作入口执行 | 确认 `game.json` 里的入口 (`game.js`) 没被改名 |
 | `loadSubpackage fail` | 分包目录缺失 | 检查 `engine/` 和 `subpacks/` 都有 `game.js` 占位 |
 | 白屏，日志看到 `GL.createContext failed` | canvas 被二次 getContext | 基础库升级到 3.2+，或重启开发者工具 |
+| 缺少 `TTMinis.game` 或 `TTWebAssembly` | 使用了 HTML 预览、选错目标或客户端过旧 | 改用 Native `ttmg dev`，并升级到 TikTok 43.4.0+ |
+| `Missing clientKey` | 跳过了 `ttmg init`；`project.config.json.appid` 不会写入 `~/.ttmgrc` | 先 setup/login，再在导出目录用同一个 Client Key 运行 `ttmg init` |
 
 ---
 
@@ -273,6 +307,11 @@ Dock 顶部的 **引擎模板** 栏显示当前查找结果。插件按以下顺
 插件自动注册 `MiniGameSDK` 为 autoload。非小游戏环境（编辑器 / PC 导出）所有方法都是 no-op，可以安心在日常开发里直接调用。
 
 所有异步接口都通过 **信号** 回调，不要用 await；同步接口（`storage_*`、`vibrate_*`）直接返回。
+
+224 个公开方法和 83 个信号描述的是完整 Bridge 接口面，不代表三个平台全部兼容。
+同名 API 只有在所选 `wx`、`tt` 或 `TTMinis.game` 宿主暴露对应能力时才会分发；
+支付等平台特有流程走显式映射。依赖某个接口前请调用 `can_i_use()`，并用目标宿主
+和目标版本实测。
 
 ### 探测运行环境
 
@@ -615,7 +654,7 @@ MiniGameSDK.show_interstitial_ad()
 
 > 广告位 ID 必须在平台后台审核通过，模拟器里通常是测试 ID。
 
-### 支付（微信虚拟支付）
+### 支付（按 Provider 映射）
 
 ```gdscript
 MiniGameSDK.payment_result.connect(func(ok, err):
@@ -629,6 +668,40 @@ MiniGameSDK.request_payment({
     "zoneId": "1",
 })
 ```
+
+参数字典属于平台契约：Bridge 将微信映射到 `requestMidasPayment`、抖音映射到
+`requestGamePayment`、TikTok Native 映射到 `TTMinis.game.pay`。不要跨宿主复用
+上面的示例字段；`can_i_use()` 成功也不代表生产支付资质已经审核通过。
+
+### TikTok 桌面快捷方式与入口任务
+
+下面 4 个强类型方法只用于 TikTok Native。JavaScript Bridge 会优先调用
+`TTMinis.game.canIUse()`（宿主提供时）并确认具体方法存在，再发起调用；客户端版本
+不支持时会通过同一个结果信号安全返回错误。
+
+```gdscript
+MiniGameSDK.tiktok_mission_result.connect(func(
+    action: String,
+    ok: bool,
+    can_receive_reward: bool,
+    data_json: String,
+    error: String,
+) -> void:
+    if not ok:
+        push_warning("%s 失败：%s" % [action, error])
+        return
+    print(action, " can_receive_reward=", can_receive_reward)
+    print(JSON.parse_string(data_json))
+)
+
+MiniGameSDK.add_shortcut()
+MiniGameSDK.get_shortcut_mission_reward()
+MiniGameSDK.start_entrance_mission()
+MiniGameSDK.get_entrance_mission_reward()
+```
+
+`can_receive_reward` 对应宿主结果中的 `canReceiveReward`，主要用于两个奖励查询方法。
+任务载荷与领取资格由 TikTok 控制，业务仍应解析并保留 `data_json`。
 
 ### 振动与键盘
 
@@ -648,7 +721,7 @@ func _on_kb(event: String, value: String) -> void:
 
 ### HTTP 请求
 
-`http_request` 底层走 `wx.request` / `tt.request`，不受 `fetch` polyfill 的影响（CORS 由微信后台的「request 合法域名」白名单控制）：
+`http_request` 底层走 `wx.request`、`tt.request` 或 `TTMinis.game.request`，不受 `fetch` polyfill 的影响（CORS 由平台后台的 request 域名白名单控制）：
 
 ```gdscript
 MiniGameSDK.http_response.connect(func(status, data, err):
@@ -667,7 +740,10 @@ MiniGameSDK.http_request(
 
 ### 文件传输
 
-`download_file()` 封装 `wx.downloadFile` / `tt.downloadFile`，`upload_file()` 封装 `wx.uploadFile` / `tt.uploadFile`。微信后台会把 `request`、`uploadFile`、`downloadFile` 域名分开配置，实际使用前要分别加入对应白名单。微信还限制单次 `downloadFile` 下载资源不超过 200 MB。
+`download_file()` 与 `upload_file()` 会分发到所选 `wx`、`tt` 或
+`TTMinis.game` Provider 的同名能力。微信后台会把 `request`、`uploadFile`、
+`downloadFile` 域名分开配置，实际使用前要分别加入对应白名单。微信还限制单次
+`downloadFile` 下载资源不超过 200 MB。
 
 ```gdscript
 MiniGameSDK.file_transfer_result.connect(func(action, ok, status, data_json, err):
@@ -695,7 +771,16 @@ MiniGameSDK.upload_file(
 
 ### 文件系统
 
-`call_file_system(method, options)` 是 `wx.getFileSystemManager()[method](options)` / `tt.getFileSystemManager()[method](options)` 的通用桥接。它覆盖使用 options object 的异步 FileSystemManager API，例如 `access`、`writeFile`、`readFile`、`appendFile`、`mkdir`、`readdir`、`saveFile`、`removeSavedFile`、`getFileInfo`、`stat`、`unlink`、`unzip` 等。
+`call_file_system(method, options)` 会桥接到微信或抖音 Provider 的
+`getFileSystemManager()[method](options)`。它覆盖使用 options object 的异步
+FileSystemManager API，例如 `access`、`writeFile`、`readFile`、`appendFile`、
+`mkdir`、`readdir`、`saveFile`、`removeSavedFile`、`getFileInfo`、`stat`、
+`unlink`、`unzip` 等。
+
+TikTok beta 导出目前会对这个公开桥接 fail-closed，不调用宿主。
+TikTok 46.0.0 Native 真机在派发 `FileSystemManager.writeFile` 时会直接崩溃
+宿主进程，JavaScript 回调和 `try/catch` 都无法介入。在该宿主问题修复并
+重新认证前，TikTok 存档请使用 key-value Storage wrapper。
 
 ```gdscript
 MiniGameSDK.file_system_result.connect(func(action, ok, data_json, err):
@@ -722,7 +807,10 @@ MiniGameSDK.call_file_system("truncate", {
 
 ### 分包
 
-`load_subpackage()` 封装 `wx.loadSubpackage` / `tt.loadSubpackage`，`pre_download_subpackage()` 封装 `wx.preDownloadSubpackage` / `tt.preDownloadSubpackage`。`loadSubpackage` 会下载并执行代码包；`preDownloadSubpackage` 只提前下载代码包。两个 task wrapper 都会通过 `subpackage_progress` 回传进度。
+`load_subpackage()` 和 `pre_download_subpackage()` 会分发到所选 `wx`、`tt` 或
+`TTMinis.game` Provider。`loadSubpackage` 会下载并执行代码包；
+`preDownloadSubpackage` 只提前下载代码包。宿主暴露 task 回调时，两个 wrapper
+都会通过 `subpackage_progress` 回传进度。
 
 ```gdscript
 MiniGameSDK.subpackage_result.connect(func(action, ok, data_json, err):
@@ -1400,7 +1488,9 @@ func _on_debug_operation(action: String, ok: bool, data_json: String, err: Strin
 
 ### 未封装 API 兜底调用
 
-对于插件暂时没有强类型封装的微信 / 抖音 API，可以用 `call_api()` 直接调用平台对象上的同名方法。异步结果统一从 `generic_api_result` 信号返回。
+对于插件暂时没有强类型封装的微信、抖音或 TikTok Native API，可以用
+`call_api()` 直接调用平台对象上的同名方法。异步结果统一从
+`generic_api_result` 信号返回；这不会绕过 capability gating。
 
 ```gdscript
 MiniGameSDK.generic_api_result.connect(func(api_name, ok, data_json, err):
@@ -1436,7 +1526,7 @@ MiniGameSDK.call_api("getStorageSync", {"_args": ["level"]})
 
 ### 大资源与 `subpacks/`
 
-v0.2 只生成一个 `.pck`，暂未提供受管的多包输入。请使用所选 Web 预设的资源过滤
+v0.3 只生成一个 `.pck`，暂未提供受管的多包输入。请使用所选 Web 预设的资源过滤
 （插件会保留它）和 Godot 资源压缩来缩小 `godot.zip`。不要把自定义 PCK 手工放进导出后的
 `subpacks/`，也不要修改 `game.json`：它们归导出器管理，下一次预检会正确拒绝被修改或
 未列入清单的输出。要正式支持自定义分包，需要扩展 exporter，把输入复制到 staging 并
@@ -1455,16 +1545,16 @@ v0.2 只生成一个 `.pck`，暂未提供受管的多包输入。请使用所�
 
 Godot 的 `user://` 默认存到 IDBFS（IndexedDB），在小游戏环境下会被 loader 拦截：
 
-- 启动时 loader 调 `godotSdk.copyLocalToFS(p)`，从已选择的 `wx`/`tt` provider 恢复持久化路径到 emscripten FS
-- 每 5 秒 `setInterval` 一次 `godotSdk.syncfs()`，把 FS 写回宿主存储
+- 启动时 loader 调 `godotSdk.copyLocalToFS(p)`，从已选择的 `wx`、`tt` 或 `TTMinis.game` Provider 恢复持久化路径到 Emscripten FS
+- 微信和抖音每 5 秒通过 `setInterval` 调用一次 `godotSdk.syncfs()`，把 FS 写回宿主存储
+- 微信和抖音的 `onHide` 会立即触发一次 flush；loader 销毁时会解绑监听
+- TikTok 目前保留启动时的只读恢复；持久写回会在触及宿主写入前直接禁用，
+  因为同一台 TikTok 46.0.0 Native 真机也会在公开文件系统写入时崩溃
 
-如果你想立刻落盘（比如在关键节点），可以：
-
-```gdscript
-# 没开放显式 flush 接口，暂时只能靠 5s interval。
-# 或者通过 JavaScriptBridge 手动调：
-JavaScriptBridge.eval("GameGlobal.godotSdk.syncfs(null, ()=>{})")
-```
+v0.3 没有跨平台手动 flush API。不要用 `JavaScriptBridge.eval()` 绕过：TikTok
+Native 导出会禁用 JavaScript eval。TikTok 请通过
+`MiniGameSDK.storage_set()` / `storage_get()` / `storage_remove()` 持久化游戏状态；
+这些路径已经通过真机验证，不依赖文件系统写回。
 
 ### 存档迁移
 
@@ -1477,6 +1567,9 @@ JavaScriptBridge.eval("GameGlobal.godotSdk.syncfs(null, ()=>{})")
 ### 真机预览
 
 - 微信开发者工具 → **预览**（扫二维码）。第一次真机必看 **Vconsole** 里的 WASM 编译耗时（iPhone 7 左右机型可能 8-12s）。
+- TikTok Native → 先运行 `ttmg dev`，再在 TikTok 43.4.0+ 真机重复冒烟。
+  必须验证 `TTWebAssembly`、分包、输入、音频、网络、key-value 持久化与登录；
+  公开文件系统写入必须在不触及宿主的前提下报告不支持。仓库自动导出冒烟不等于真机认证。
 - 真机白屏 99% 是两类原因：
   1. WASM 兼容性 → 用了官方模板。换内置/兼容模板。
   2. `GameGlobal.canvas` 获取失败 → 基础库 < 3.0。升级微信或指定基础库版本。
@@ -1508,7 +1601,8 @@ JavaScriptBridge.eval("GameGlobal.godotSdk.syncfs(null, ()=>{})")
 ## 12. 编译自定义引擎模板
 
 仓库内 `scripts/build_wasm_template.sh` 可以从一个精确 Godot 4.x tag 编译小游戏
-兼容模板。新版本只有写入 `support-matrix.json` 并通过微信、抖音双平台冒烟后才算认证。
+兼容模板。新版本必须写入 `support-matrix.json` 并通过生成的平台冒烟矩阵；TikTok
+还要通过必需的 `ttmg` 与真机发布门禁。
 
 ```bash
 # 默认 Godot 4.6.1-stable + Emscripten 4.0.3
@@ -1550,13 +1644,13 @@ A: 查看 Dock 上方的 **引擎模板** 状态：
 
 ### Q: 导出能跑但真机提示 `CompileError: OOM / magic Tag section`
 
-A: 当前运行工程包含不兼容或被外部替换的引擎。0.2 导出器不会再选择官方
+A: 当前运行工程包含不兼容或被外部替换的引擎。从 0.2 起，导出器不会再选择官方
 Web 模板；请用精确匹配、验证通过的模板重新导出，或运行
 `./scripts/build_wasm_template.sh` 构建对应版本。
 
 ### Q: 为什么旧版模板 ZIP 被拒绝？
 
-A: 0.2 强制要求完整 `template.json`，不会根据来源未知的二进制文件自动生成
+A: 从 0.2 起强制要求完整 `template.json`，不会根据来源未知的二进制文件自动生成
 manifest。请用当前脚本重新构建，或从 Releases 下载经过验证的模板包。
 
 ### Q: 我能直接用标准 Web 导出吗？
@@ -1579,7 +1673,7 @@ A: `storage_set/get` 的 key 自己加用户前缀，例如 `"user:%s:level" % o
 
 A: 欢迎 [issue](https://github.com/AnranS/godot_for_minigame/issues) 和 [discussion](https://github.com/AnranS/godot_for_minigame/discussions)。提 bug 请附上：
 - Godot 版本
-- 平台（微信/抖音）
+- 平台（微信/抖音/TikTok Native）
 - 基础库版本
 - Dock 导出日志截图
 - 开发者工具 / 真机 Vconsole 日志

@@ -6,7 +6,13 @@ const Exporter = preload("res://addons/godot_mini_game/exporter.gd")
 const PLATFORM_OPTIONS := [
 	["微信小游戏", "wechat"],
 	["抖音小游戏", "douyin"],
+	["TikTok Mini Game", "tiktok"],
 ]
+const PLATFORM_DISPLAY_NAMES := {
+	"wechat": "微信小游戏",
+	"douyin": "抖音小游戏",
+	"tiktok": "TikTok Mini Game",
+}
 const ORIENTATION_OPTIONS := [
 	["竖屏 (portrait)", "portrait"],
 	["横屏 (landscape)", "landscape"],
@@ -181,7 +187,8 @@ func _on_export() -> void:
 		return
 
 	export_btn.disabled = true
-	_log("[color=cyan]开始导出 %s ...[/color]" % ("微信小游戏" if platform == "wechat" else "抖音小游戏"))
+	_log("[color=cyan]开始导出 %s ...[/color]" % str(
+		PLATFORM_DISPLAY_NAMES.get(platform, platform)))
 
 	var exporter := Exporter.new()
 	exporter.log_callback = _log

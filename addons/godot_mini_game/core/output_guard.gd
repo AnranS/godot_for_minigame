@@ -6,6 +6,23 @@ extends RefCounted
 const OWNERSHIP_FILE := ".godot-mini-game-export.json"
 const SCHEMA_VERSION := 1
 const TemplateBundle = preload("res://addons/godot_mini_game/core/template_bundle.gd")
+const PLATFORM_CONTRACTS := {
+	"wechat": {
+		"runtime_type": "native",
+		"api_namespace": "wx",
+		"subpackage_field": "subpackages",
+	},
+	"douyin": {
+		"runtime_type": "native",
+		"api_namespace": "tt",
+		"subpackage_field": "subPackages",
+	},
+	"tiktok": {
+		"runtime_type": "native",
+		"api_namespace": "TTMinis.game",
+		"subpackage_field": "subpackages",
+	},
+}
 
 
 static func inspect(
@@ -212,15 +229,34 @@ static func _validate_ownership_manifest(
 
 
 static func _has_valid_metadata(manifest: Dictionary) -> bool:
+	var platform := str(manifest.get("platform", ""))
 	if (
 		not _is_integer(manifest.get("schema_version", 0))
 		or int(manifest.get("schema_version", 0)) != SCHEMA_VERSION
 		or str(manifest.get("tool", "")) != "godot_mini_game"
 		or str(manifest.get("ownership", "")) != "managed-output"
-		or not ["wechat", "douyin"].has(str(manifest.get("platform", "")))
+		or not PLATFORM_CONTRACTS.has(platform)
 		or not ["portrait", "landscape"].has(str(manifest.get("orientation", "")))
 		or str(manifest.get("generated_at", "")).is_empty()
 	):
+		return false
+	# platform_contract was added additively while schema 1 was already public.
+	# Preserve ownership for legacy WeChat/Douyin exports so v0.3 can replace
+	# them transactionally. TikTok never had a legacy schema-1 output.
+	if manifest.has("platform_contract"):
+		var contract_value: Variant = manifest.get("platform_contract")
+		if not contract_value is Dictionary:
+			return false
+		var contract: Dictionary = contract_value
+		var expected: Dictionary = PLATFORM_CONTRACTS[platform]
+		if (
+			str(contract.get("runtime_type", "")) != str(expected.runtime_type)
+			or str(contract.get("api_namespace", "")) != str(expected.api_namespace)
+			or str(contract.get("subpackage_field", ""))
+			!= str(expected.subpackage_field)
+		):
+			return false
+	elif platform == "tiktok":
 		return false
 	var template_value: Variant = manifest.get("template", {})
 	if not template_value is Dictionary:

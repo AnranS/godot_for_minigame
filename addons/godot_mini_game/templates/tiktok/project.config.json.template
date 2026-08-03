@@ -1,0 +1,12 @@
+{
+  "appid": "{{APPID}}",
+  "projectname": "{{NAME}}",
+  "description": "{{NAME}}",
+  "setting": {
+    "urlCheck": false,
+    "es6": true,
+    "postcss": true,
+    "minified": true
+  },
+  "compileType": "game"
+}

@@ -111,6 +111,37 @@ function _unsupported(apiName) {
   return `${_platformPrefix()}.${apiName} is not supported`;
 }
 
+const TIKTOK_STORAGE_INFO_ERROR =
+  "TTMinis.game.getStorageInfoSync is disabled on TikTok Native because it can crash the host process";
+
+const TIKTOK_PUBLIC_FILE_SYSTEM_ERROR =
+  "TTMinis.game FileSystemManager is not supported through the public bridge on TikTok Native because native calls can crash the host process";
+
+const TIKTOK_PERSISTENT_WRITE_ERROR =
+  "TTMinis.game persistent file-system writes are not supported on TikTok Native because they can crash the host process";
+
+function _isBlockedTikTokStorageInfo(apiName) {
+  return PlatformRuntime.platform === "tiktok" && apiName === "getStorageInfoSync";
+}
+
+function _isBlockedTikTokBattery(apiName) {
+  return PlatformRuntime.platform === "tiktok"
+    && (apiName === "getBatteryInfo" || apiName === "getBatteryInfoSync");
+}
+
+function _isBlockedTikTokPublicFileSystem(apiName) {
+  return PlatformRuntime.platform === "tiktok"
+    && (apiName === "fileSystemCall" || apiName === "getFileSystemManager");
+}
+
+function _isBlockedTikTokPersistentWrite() {
+  return PlatformRuntime.platform === "tiktok";
+}
+
+function _tiktokBatteryUnsupported(apiName) {
+  return `TTMinis.game.${apiName} is not supported on TikTok Native`;
+}
+
 function _num(value) {
   const n = Number(value);
   return isFinite(n) ? n : 0;
@@ -227,6 +258,36 @@ function _reasonToString(reason) {
   return _fmtErr(reason);
 }
 
+function _fsCall(fs, method, options) {
+  return new Promise((resolve, reject) => {
+    const fn = fs && fs[method];
+    if (typeof fn !== "function") {
+      reject(new Error(`FileSystemManager.${method} is not supported`));
+      return;
+    }
+    try {
+      fn.call(fs, Object.assign({}, options || {}, {
+        success: (res) => resolve(res || {}),
+        fail: (err) => reject(err instanceof Error ? err : new Error(_fmtErr(err))),
+      }));
+    } catch (e) {
+      reject(e);
+    }
+  });
+}
+
+function _normalizeVirtualPath(path) {
+  const value = String(path || "").replace(/\\/g, "/");
+  if (!value.startsWith("/")) throw new Error(`Persistent path must be absolute: ${value}`);
+  const parts = [];
+  for (const part of value.split("/")) {
+    if (!part || part === ".") continue;
+    if (part === "..") throw new Error(`Persistent path cannot contain '..': ${value}`);
+    parts.push(part);
+  }
+  return `/${parts.join("/")}`;
+}
+
 class GodotSDK {
 
   constructor() {
@@ -278,6 +339,14 @@ class GodotSDK {
   callApi(apiName, paramsJson, callback) {
     if (!/^[A-Za-z_$][\w$]*$/.test(apiName || "")) {
       callback(apiName || "", false, "", "Invalid API name");
+      return;
+    }
+    if (_isBlockedTikTokStorageInfo(apiName)) {
+      callback(apiName, false, "", TIKTOK_STORAGE_INFO_ERROR);
+      return;
+    }
+    if (_isBlockedTikTokPublicFileSystem(apiName)) {
+      callback(apiName, false, "", TIKTOK_PUBLIC_FILE_SYSTEM_ERROR);
       return;
     }
     const fn = _api[apiName];
@@ -351,6 +420,13 @@ class GodotSDK {
   }
 
   storageGetAll() {
+    if (_isBlockedTikTokStorageInfo("getStorageInfoSync")) {
+      return JSON.stringify({
+        supported: false,
+        keys: [],
+        error: TIKTOK_STORAGE_INFO_ERROR,
+      });
+    }
     try {
       const res = _api.getStorageInfoSync();
       return JSON.stringify({ keys: res.keys, size: res.currentSize, limit: res.limitSize });
@@ -969,11 +1045,125 @@ class GodotSDK {
   requestPayment(paramsJson, callback) {
     let p;
     try { p = JSON.parse(paramsJson); } catch (_) { callback(false, "Invalid JSON params"); return; }
-    _api.requestMidasPayment({
-      ...p,
-      success: () => callback(true, ""),
-      fail: (err) => callback(false, _fmtErr(err)),
-    });
+    const paymentMethod = PlatformRuntime.platform === "wechat"
+      ? "requestMidasPayment"
+      : PlatformRuntime.platform === "douyin"
+        ? "requestGamePayment"
+        : PlatformRuntime.platform === "tiktok"
+          ? "pay"
+          : "";
+    const requestPayment = paymentMethod && _api[paymentMethod];
+    if (typeof requestPayment !== "function") {
+      callback(false, paymentMethod ? _unsupported(paymentMethod) : "Payment is not supported on this platform");
+      return;
+    }
+    try {
+      requestPayment.call(_api, {
+        ...p,
+        success: () => callback(true, ""),
+        fail: (err) => callback(false, _fmtErr(err)),
+      });
+    } catch (e) {
+      callback(false, _fmtErr(e));
+    }
+  }
+
+  // ── TikTok Shortcut / Entrance Missions ────────────────────────
+
+  _tiktokMissionAction(action, method, invoke, paramsJson, callback) {
+    if (PlatformRuntime.platform !== "tiktok") {
+      callback(action, false, false, "", `${action} is only supported on TikTok Native`);
+      return;
+    }
+    if (typeof method !== "function") {
+      callback(action, false, false, "", _unsupported(action));
+      return;
+    }
+
+    // TikTok's package checker needs the concrete calls below, while runtime
+    // capability still has to be checked before invoking a client-version API.
+    if (typeof _api.canIUse === "function") {
+      try {
+        if (!_api.canIUse(action)) {
+          callback(action, false, false, "", `${_platformPrefix()}.canIUse("${action}") returned false`);
+          return;
+        }
+      } catch (e) {
+        callback(action, false, false, "", `${_platformPrefix()}.canIUse("${action}") failed: ${_fmtErr(e)}`);
+        return;
+      }
+    }
+
+    let options = {};
+    try {
+      if (paramsJson) options = JSON.parse(paramsJson);
+      if (!options || typeof options !== "object" || Array.isArray(options)) {
+        throw new TypeError("params must be a JSON object");
+      }
+    } catch (e) {
+      callback(action, false, false, "", `Invalid JSON params: ${_fmtErr(e)}`);
+      return;
+    }
+
+    let settled = false;
+    const finish = (ok, data, error) => {
+      if (settled) return;
+      settled = true;
+      const payload = data && typeof data === "object" ? data : {};
+      callback(
+        action,
+        !!ok,
+        !!payload.canReceiveReward,
+        ok ? _jsonSafe(payload) : "",
+        ok ? "" : _fmtErr(error),
+      );
+    };
+
+    try {
+      const result = invoke({
+        ...options,
+        success: (res) => finish(true, res || {}, null),
+        fail: (error) => finish(false, null, error),
+        complete: (res) => {
+          if (!settled && res && typeof res.errMsg === "string" && res.errMsg.includes(":fail")) {
+            finish(false, null, res);
+          }
+        },
+      });
+      if (result && typeof result.then === "function") {
+        result.then((res) => finish(true, res || {}, null)).catch((error) => finish(false, null, error));
+      }
+    } catch (e) {
+      finish(false, null, e);
+    }
+  }
+
+  addShortcut(paramsJson, callback) {
+    this._tiktokMissionAction(
+      "addShortcut", _api.addShortcut,
+      (options) => _api.addShortcut(options), paramsJson, callback,
+    );
+  }
+
+  getShortcutMissionReward(paramsJson, callback) {
+    this._tiktokMissionAction(
+      "getShortcutMissionReward", _api.getShortcutMissionReward,
+      (options) => _api.getShortcutMissionReward(options), paramsJson, callback,
+    );
+  }
+
+  startEntranceMission(paramsJson, callback) {
+    this._tiktokMissionAction(
+      "startEntranceMission", _api.startEntranceMission,
+      (options) => _api.startEntranceMission(options), paramsJson, callback,
+    );
+  }
+
+  getEntranceMissionReward(paramsJson, callback) {
+    this._tiktokMissionAction(
+      "getEntranceMissionReward", _api.getEntranceMissionReward,
+      (options) => _api.getEntranceMissionReward(options), paramsJson, callback,
+    );
   }
 
   // ── Vibration ──────────────────────────────────────────────────
@@ -1178,6 +1368,10 @@ class GodotSDK {
   }
 
   fileSystemCall(method, optionsJson, callback) {
+    if (_isBlockedTikTokPublicFileSystem("fileSystemCall")) {
+      callback(method || "", false, "", TIKTOK_PUBLIC_FILE_SYSTEM_ERROR);
+      return;
+    }
     if (typeof _api.getFileSystemManager !== "function") {
       callback(method || "", false, "", _unsupported("getFileSystemManager"));
       return;
@@ -2907,6 +3101,10 @@ class GodotSDK {
   }
 
   getBatteryInfo(callback) {
+    if (_isBlockedTikTokBattery("getBatteryInfo")) {
+      callback(0, false, "", _tiktokBatteryUnsupported("getBatteryInfo"));
+      return;
+    }
     if (typeof _api.getBatteryInfo !== "function") {
       callback(0, false, "", _unsupported("getBatteryInfo"));
       return;
@@ -2925,6 +3123,12 @@ class GodotSDK {
   }
 
   getBatteryInfoSync() {
+    if (_isBlockedTikTokBattery("getBatteryInfoSync")) {
+      return _jsonSafe({
+        supported: false,
+        error: _tiktokBatteryUnsupported("getBatteryInfoSync"),
+      });
+    }
     if (typeof _api.getBatteryInfoSync !== "function") return "{}";
     try { return _jsonSafe(_api.getBatteryInfoSync() || {}); }
     catch (_) { return "{}"; }
@@ -3592,75 +3796,155 @@ class GodotSDK {
   }
 
   showModal(title, content, callback) {
-    _api.showModal({
-      title: title || "",
-      content: content || "",
-      success: (res) => callback(!!res.confirm, !!res.cancel),
-    });
+    if (typeof _api.showModal !== "function") {
+      callback(false, false, _unsupported("showModal"));
+      return;
+    }
+    try {
+      _api.showModal({
+        title: title || "",
+        content: content || "",
+        success: (res) => callback(!!res.confirm, !!res.cancel, ""),
+        fail: (err) => callback(false, false, _fmtErr(err)),
+      });
+    } catch (e) {
+      callback(false, false, _fmtErr(e));
+    }
   }
 
   showLoading(title) { _api.showLoading({ title: title || "", mask: true }); }
   hideLoading() { _api.hideLoading({}); }
 
-  // ── File system bridge (existing) ──────────────────────────────
+  // ── File system bridge ─────────────────────────────────────────
 
-  writeFile(path, array) {
+  _persistentHost(operation, access = "read") {
+    if (access === "write" && _isBlockedTikTokPersistentWrite()) {
+      throw new Error(TIKTOK_PERSISTENT_WRITE_ERROR);
+    }
+    if (!_api.env || !_api.env.USER_DATA_PATH) {
+      throw new Error(`${operation} requires env.USER_DATA_PATH`);
+    }
+    if (typeof _api.getFileSystemManager !== "function") {
+      throw new Error(`${operation} requires getFileSystemManager()`);
+    }
     const fs = _api.getFileSystemManager();
-    const idx = path.lastIndexOf("/");
-    const dir = idx > 0 ? path.slice(0, idx) : "/";
-    return this._ensureDir(fs, `${_api.env.USER_DATA_PATH}${dir}`)
-      .then(() => new Promise((resolve, reject) => {
-        fs.open({ filePath: `${_api.env.USER_DATA_PATH}${path}`, flag: "w+",
-          success: res => resolve(res.fd), fail: reject });
-      }))
-      .then(fd => new Promise((resolve, reject) => {
-        fs.write({ fd, data: array.buffer || array,
-          success: () => resolve(fd), fail: err => reject({ fd, error: err }) });
-      }))
-      .then(fd => new Promise((resolve, reject) => {
-        fs.close({ fd, success: resolve, fail: reject });
-      }))
-      .catch(err => {
-        if (err && err.fd !== undefined) {
-          return new Promise((resolve, reject) => {
-            fs.close({ fd: err.fd, success: resolve, fail: reject });
-          }).then(() => { throw err.error; });
-        }
-        throw err;
-      });
+    if (!fs) throw new Error(`${operation}: getFileSystemManager() returned no FileSystemManager`);
+    return {
+      fs,
+      userDataPath: String(_api.env.USER_DATA_PATH).replace(/\/$/, ""),
+    };
   }
 
-  copyLocalToFS(path) {
-    const fs = _api.getFileSystemManager();
-    return this._accessOrMkdir(fs, `${_api.env.USER_DATA_PATH}${path}`)
-      .then(() => new Promise((resolve, reject) => {
-        fs.readdir({ dirPath: `${_api.env.USER_DATA_PATH}${path}`,
-          success: res => resolve(res.files.filter(v => v !== "." && v !== "..")),
-          fail: reject });
-      }))
-      .then(dirs => dirs.reduce((chain, name) => chain.then(() => {
-        const p = `${_api.env.USER_DATA_PATH}${path}/${name}`;
-        return new Promise((resolve, reject) => {
-          fs.stat({ path: p, success: r => resolve(r.stats), fail: reject });
-        }).then(stat => {
-          if (stat.isDirectory()) return this.copyLocalToFS(`${path}/${name}`);
-          if (stat.isFile()) {
-            return new Promise((resolve, reject) => {
-              fs.readFile({ filePath: p, success: r => { this.engine.copyToFS(`${path}/${name}`, r.data); resolve(); }, fail: reject });
-            });
-          }
-        });
-      }), Promise.resolve()));
+  async writeFile(path, array) {
+    const virtualPath = _normalizeVirtualPath(path);
+    const bytes = _arrayBufferBytes(array);
+    if (!bytes) throw new Error(`writeFile requires binary data for ${virtualPath}`);
+    const { fs, userDataPath } = this._persistentHost("writeFile", "write");
+    const idx = virtualPath.lastIndexOf("/");
+    const dir = idx > 0 ? virtualPath.slice(0, idx) : "/";
+    await this._ensureDir(fs, `${userDataPath}${dir}`);
+    const filePath = `${userDataPath}${virtualPath}`;
+    const data = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+
+    if (typeof fs.writeFile === "function") {
+      await _fsCall(fs, "writeFile", { filePath, data });
+      return true;
+    }
+
+    const opened = await _fsCall(fs, "open", { filePath, flag: "w+" });
+    if (opened.fd === undefined || opened.fd === null) {
+      throw new Error(`FileSystemManager.open returned no fd for ${virtualPath}`);
+    }
+    try {
+      await _fsCall(fs, "write", { fd: opened.fd, data });
+    } finally {
+      await _fsCall(fs, "close", { fd: opened.fd });
+    }
+    return true;
+  }
+
+  async restorePersistentPaths(paths = ["/userfs"]) {
+    if (!this.engine || typeof this.engine.copyToFS !== "function") {
+      throw new Error("Persistent restore requires an initialized Engine with copyToFS()");
+    }
+    const persistentPaths = [...new Set((paths || []).map(_normalizeVirtualPath))];
+    if (persistentPaths.length === 0) {
+      throw new Error("Persistent restore requires at least one path");
+    }
+    this._persistentPaths = persistentPaths;
+    let entries = 0;
+    for (const path of persistentPaths) entries += await this.copyLocalToFS(path);
+    return { method: "copyToFS", paths: persistentPaths.slice(), entries };
+  }
+
+  async copyLocalToFS(path) {
+    if (!this.engine || typeof this.engine.copyToFS !== "function") {
+      throw new Error("Persistent restore requires an initialized Engine with copyToFS()");
+    }
+    const root = _normalizeVirtualPath(path);
+    const ensureDirectory = typeof this.engine.ensureFSDirectory === "function"
+      ? this.engine.ensureFSDirectory.bind(this.engine)
+      : this.engine.rtenv && typeof this.engine.rtenv.ensureFSDirectory === "function"
+        ? this.engine.rtenv.ensureFSDirectory.bind(this.engine.rtenv)
+        : null;
+    if (!ensureDirectory) {
+      throw new Error("Persistent restore requires Engine.ensureFSDirectory()");
+    }
+    await Promise.resolve(ensureDirectory(root));
+
+    const { fs, userDataPath } = this._persistentHost("Persistent restore");
+    const platformRoot = `${userDataPath}${root}`;
+    await this._accessOrMkdir(fs, platformRoot);
+    const result = await _fsCall(fs, "readdir", { dirPath: platformRoot });
+    const names = Array.isArray(result.files)
+      ? result.files.filter((name) => name !== "." && name !== "..")
+      : [];
+    let entries = 0;
+    for (const name of names) {
+      const child = _normalizeVirtualPath(`${root}/${name}`);
+      const platformPath = `${userDataPath}${child}`;
+      const statResult = await this._stat(fs, platformPath);
+      const stats = statResult.stats || statResult.stat || statResult;
+      if (stats && typeof stats.isDirectory === "function" && stats.isDirectory()) {
+        entries += 1 + await this.copyLocalToFS(child);
+      } else if (stats && typeof stats.isFile === "function" && stats.isFile()) {
+        const file = await _fsCall(fs, "readFile", { filePath: platformPath });
+        const bytes = _arrayBufferBytes(file.data);
+        if (!bytes) {
+          throw new Error(`FileSystemManager.readFile returned non-binary data for ${child}`);
+        }
+        this.engine.copyToFS(child, bytes);
+        entries += 1;
+      } else {
+        throw new Error(`FileSystemManager.stat returned an unknown entry type for ${child}`);
+      }
+    }
+    return entries;
   }
 
   syncfs(onSuccess, onError) {
-    if (!this.engine || typeof this.engine.copyFSToAdapter !== "function") {
-      if (onSuccess) onSuccess();
-      return;
-    }
-    this.engine.copyFSToAdapter(this)
-      .then(() => { if (onSuccess) onSuccess(); })
-      .catch(err => { if (onError) onError(err); });
+    const paths = this._persistentPaths && this._persistentPaths.length > 0
+      ? this._persistentPaths.slice()
+      : ["/userfs"];
+    const operation = _isBlockedTikTokPersistentWrite()
+      ? Promise.reject(new Error(TIKTOK_PERSISTENT_WRITE_ERROR))
+      : !this.engine || typeof this.engine.copyFSToAdapter !== "function"
+        ? Promise.reject(new Error("Persistent sync unavailable: Engine.copyFSToAdapter() is missing"))
+        : Promise.resolve().then(() => this.engine.copyFSToAdapter(this, paths));
+
+    return operation
+      .then(() => {
+        if (onSuccess) onSuccess();
+        return true;
+      })
+      .catch((err) => {
+        const error = err instanceof Error ? err : new Error(_fmtErr(err));
+        if (onError) {
+          onError(error);
+          return false;
+        }
+        throw error;
+      });
   }
 
   downloadSubpacks(onSuccess, onError) {
@@ -3695,18 +3979,29 @@ class GodotSDK {
   }
 
   _ensureDir(fs, dirPath) {
-    return new Promise(resolve => {
-      fs.access({ path: dirPath, success: resolve,
-        fail: () => { fs.mkdir({ dirPath, recursive: true, success: resolve, fail: resolve }); } });
-    });
+    return this._accessOrMkdir(fs, dirPath);
   }
 
-  _accessOrMkdir(fs, dirPath) {
-    return new Promise((resolve, reject) => {
-      fs.access({ path: dirPath, success: resolve, fail: reject });
-    }).catch(() => new Promise((resolve, reject) => {
-      fs.mkdir({ dirPath, recursive: true, success: resolve, fail: reject });
-    }));
+  async _stat(fs, path) {
+    try {
+      return await _fsCall(fs, "stat", { path });
+    } catch (pathError) {
+      try {
+        // Older ByteDance host versions used `filePath` while current
+        // TTMinis documentation uses `path` and returns `stats`.
+        return await _fsCall(fs, "stat", { filePath: path });
+      } catch (_) {
+        throw pathError;
+      }
+    }
+  }
+
+  async _accessOrMkdir(fs, dirPath) {
+    try {
+      await _fsCall(fs, "access", { path: dirPath });
+    } catch (_) {
+      await _fsCall(fs, "mkdir", { dirPath, recursive: true });
+    }
   }
 }
 

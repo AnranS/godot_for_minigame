@@ -11,7 +11,7 @@ export const metadata: Metadata = {
   openGraph: {
     url: apiUrl,
     title: "MiniGameSDK API 参考",
-    description: "可搜索的 Godot 微信与抖音小游戏 SDK 完整接口文档。",
+    description: "可搜索的 Godot 微信、抖音与 TikTok SDK 接口文档；按宿主能力门控，不承诺全部接口跨平台兼容。",
   },
 };
 

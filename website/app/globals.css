@@ -1709,8 +1709,12 @@ img {
   background: var(--green);
 }
 
-.architecture-platforms span:last-child i {
+.architecture-platforms span:nth-child(2) i {
   background: var(--red);
+}
+
+.architecture-platforms span:nth-child(3) i {
+  background: #74a7ff;
 }
 
 .tech-section {
@@ -2200,8 +2204,8 @@ img {
 }
 
 .final-logos span img { width: 100%; height: 100%; }
-.final-logos span:nth-last-child(-n + 2) { padding: 6px; }
-.final-logos span:nth-last-child(-n + 2) img { border-radius: 8px; }
+.final-logos span:not(:first-child) { padding: 6px; }
+.final-logos span:not(:first-child) img { border-radius: 8px; }
 .final-logos i { color: #60748b; font-style: normal; }
 
 .final-content h2 {

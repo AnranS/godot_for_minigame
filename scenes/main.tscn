@@ -31,6 +31,7 @@ offset_left = 16.0
 offset_top = 16.0
 offset_right = -16.0
 offset_bottom = -16.0
+horizontal_scroll_mode = 0
 
 [node name="Content" type="VBoxContainer" parent="Scroll"]
 layout_mode = 2

@@ -26,7 +26,7 @@ jobs:
       bundled_godot_tag: ${{ steps.contract.outputs.bundled_godot_tag }}
       export_matrix: ${{ steps.contract.outputs.export_matrix }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Resolve every certified automated target
         id: contract
@@ -66,6 +66,7 @@ jobs:
                     bridgeAbi: $matrix.bridgeAbi,
                     templateSchema: $matrix.templateSchema,
                     outputManifestSchema: $matrix.outputManifestSchema,
+                    devtoolVersion: ($matrix.platformContracts[.key].devtoolVersion // ""),
                     templateSource: $target.template.source,
                     templateReleaseTag: ($target.template.releaseTag // ""),
                     templateAsset: ($target.template.asset // "")
@@ -84,7 +85,7 @@ jobs:
     env:
       GODOT_VERSION: ${{ needs.matrix.outputs.bundled_godot_tag }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install Godot
         run: |
@@ -157,10 +158,21 @@ jobs:
       fail-fast: false
       matrix: ${{ fromJSON(needs.matrix.outputs.export_matrix) }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install validation tools
         run: sudo apt-get update && sudo apt-get install -y brotli jq wabt
+
+      - name: Install pinned TikTok DevTool contract
+        if: matrix.platform == 'tiktok'
+        env:
+          TTMG_VERSION: ${{ matrix.devtoolVersion }}
+        run: |
+          set -euo pipefail
+          test -n "$TTMG_VERSION"
+          npm install --prefix /tmp/ttmg-cli --no-save "@ttmg/cli@${TTMG_VERSION}"
+          actual_version="$(/tmp/ttmg-cli/node_modules/.bin/ttmg --version)"
+          test "$actual_version" = "$TTMG_VERSION"
 
       - name: Install Godot
         run: |
@@ -330,11 +342,105 @@ jobs:
       - name: Verify platform contract
         run: |
           set -euo pipefail
-          if [ "${{ matrix.platform }}" = "wechat" ]; then
-            test -s /tmp/export_out/project.private.config.json
-          else
-            test ! -e /tmp/export_out/project.private.config.json
-          fi
+          out=/tmp/export_out
+          case "${{ matrix.platform }}" in
+            wechat)
+              test -s "$out/project.private.config.json"
+              jq -e '
+                has("subpackages") and
+                (.subpackages | type == "array" and length == 2) and
+                (has("subPackages") | not)
+              ' "$out/game.json" >/dev/null
+              ;;
+            douyin)
+              test ! -e "$out/project.private.config.json"
+              jq -e '
+                has("subPackages") and
+                (.subPackages | type == "array" and length == 2) and
+                (has("subpackages") | not)
+              ' "$out/game.json" >/dev/null
+              ;;
+            tiktok)
+              test ! -e "$out/project.private.config.json"
+              test -s "$out/engine/game.js"
+              test -s "$out/subpacks/game.js"
+              jq -e '
+                has("subpackages") and
+                (.subpackages | type == "array" and length == 2) and
+                (has("subPackages") | not)
+              ' "$out/game.json" >/dev/null
+              jq -e '
+                (.appid | type == "string" and length > 0) and
+                .compileType == "game"
+              ' "$out/project.config.json" >/dev/null
+              grep -F 'PlatformRuntime.requirePlatform("tiktok"' "$out/game.js"
+              if grep -R -n -F --include='*.js' 'eval(' "$out"; then
+                echo "TikTok JavaScript output contains forbidden eval(" >&2
+                exit 1
+              fi
+              ;;
+            *)
+              echo "Unknown platform contract: ${{ matrix.platform }}" >&2
+              exit 1
+              ;;
+          esac
+          jq -e \
+            --arg platform "${{ matrix.platform }}" \
+            --arg runtime_type "native" \
+            --arg api_namespace "$(jq -r '.platformContracts["${{ matrix.platform }}"].apiNamespace' support-matrix.json)" \
+            --arg subpackage_field "$(jq -r '.platformContracts["${{ matrix.platform }}"].subpackageField' support-matrix.json)" \
+            '
+              .platform == $platform and
+              .platform_contract.runtime_type == $runtime_type and
+              .platform_contract.api_namespace == $api_namespace and
+              .platform_contract.subpackage_field == $subpackage_field
+            ' "$out/.godot-mini-game-export.json" >/dev/null
+
+      - name: Run TikTok native package pre-check
+        if: matrix.platform == 'tiktok'
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/ttmg-pack-output
+          node_path="/tmp/ttmg-cli/node_modules:/tmp/ttmg-cli/node_modules/@ttmg/cli/node_modules"
+          actual_pack_version="$(NODE_PATH="$node_path" node -p 'require("ttmg-pack/package.json").version')"
+          test "$actual_pack_version" = "0.4.8"
+          NODE_PATH="$node_path" node <<'NODE'
+          const { checkPkgs } = require("ttmg-pack");
+
+          (async () => {
+            const results = await checkPkgs({
+              entry: "/tmp/export_out",
+              output: "/tmp/ttmg-pack-output",
+              dev: {
+                enable: true,
+                port: 3000,
+                host: "localhost",
+                enableSourcemap: false,
+                enableLog: false,
+              },
+              build: {
+                enableOdr: false,
+                enableAPICheck: true,
+                pkgSizeLimit: 30 * 1024 * 1024,
+                mainPkgSizeLimit: 4 * 1024 * 1024,
+                independentSubPkgSizeLimit: 4 * 1024 * 1024,
+              },
+            }, { lang: "en-US" });
+            for (const item of results) {
+              console.log(`${item.passed ? "PASS" : "WARN"} [${item.type}] ${item.msg}`);
+            }
+            const failures = results.filter(
+              (item) => !item.passed && (item.required || item.level === 'error'),
+            );
+            if (failures.length > 0) {
+              console.error(`TikTok package pre-check failed: ${failures.length} blocking result(s)`);
+              process.exit(1);
+            }
+          })().catch((error) => {
+            console.error(error);
+            process.exit(1);
+          });
+          NODE
 
       - name: Validate generated configuration
         run: |
@@ -361,21 +467,28 @@ jobs:
             exit 1
           fi
 
-      - name: Validate WeChat main-package limit
-        if: matrix.platform == 'wechat'
+      - name: Validate native main-package limits
+        if: matrix.platform == 'wechat' || matrix.platform == 'tiktok'
         run: |
           set -euo pipefail
           root_size=$(find /tmp/export_out -maxdepth 1 -type f -printf '%s\n' | awk '{sum += $1} END {print sum + 0}')
           asset_size=$(find /tmp/export_out/js /tmp/export_out/images /tmp/export_out/audio -type f -printf '%s\n' | awk '{sum += $1} END {print sum + 0}')
           main_size=$((root_size + asset_size))
           if [ "$main_size" -gt 4194304 ]; then
-            echo "WeChat main package exceeds 4 MB: $main_size" >&2
+            echo "${{ matrix.platform }} main package exceeds 4 MB: $main_size" >&2
             exit 1
+          fi
+          if [ "${{ matrix.platform }}" = "tiktok" ]; then
+            total_size=$(find /tmp/export_out -type f -printf '%s\n' | awk '{sum += $1} END {print sum + 0}')
+            if [ "$total_size" -gt 31457280 ]; then
+              echo "TikTok project exceeds 30 MB: $total_size" >&2
+              exit 1
+            fi
           fi
 
       - name: Upload export artifact
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: export-${{ matrix.godotTag }}-${{ matrix.platform }}
           path: /tmp/export_out

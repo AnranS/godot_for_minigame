@@ -406,6 +406,20 @@
   background: rgba(7, 193, 96, 0.07);
 }
 
+.compatibility > span[data-platform="provider-specific"],
+.platformBadge[data-platform="provider-specific"] {
+  border-color: rgba(183, 132, 255, 0.3);
+  color: #c4a3f5;
+  background: rgba(142, 92, 204, 0.08);
+}
+
+.compatibility > span[data-platform="tiktok"],
+.platformBadge[data-platform="tiktok"] {
+  border-color: rgba(37, 244, 238, 0.3);
+  color: #69e4df;
+  background: rgba(37, 244, 238, 0.07);
+}
+
 .unions {
   display: flex;
   align-items: center;

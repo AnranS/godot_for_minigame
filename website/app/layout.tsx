@@ -5,10 +5,10 @@ const siteUrl = "https://anrans.github.io/godot_for_minigame/";
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
-  title: "Godot Mini Game — 一键导出微信与抖音小游戏",
+  title: "Godot Mini Game — 导出微信、抖音与 TikTok 小游戏",
   description:
-    "面向 Godot 4.x 的开源小游戏导出插件。内置真机兼容 WASM 引擎，一键发布到微信小游戏与抖音小游戏。",
-  keywords: ["Godot", "微信小游戏", "抖音小游戏", "WeChat Mini Game", "Douyin Mini Game", "Godot plugin"],
+    "面向 Godot 4.x 的开源小游戏导出插件，支持微信、抖音与 TikTok。",
+  keywords: ["Godot", "微信小游戏", "抖音小游戏", "TikTok Mini Game", "WeChat Mini Game", "Douyin Mini Game", "Godot plugin"],
   authors: [{ name: "AnranS", url: "https://github.com/AnranS" }],
   alternates: { canonical: siteUrl },
   icons: {
@@ -21,14 +21,14 @@ export const metadata: Metadata = {
     alternateLocale: "en_US",
     url: siteUrl,
     siteName: "Godot Mini Game",
-    title: "Godot Mini Game — 把 Godot 游戏一键发布到微信与抖音",
-    description: "真机兼容的 WASM 引擎、平台适配层与 20+ 类原生 API，全部收进一次导出。",
+    title: "Godot Mini Game — 把 Godot 游戏发布到微信、抖音与 TikTok",
+    description: "小游戏兼容的 WASM 引擎、平台适配层与能力桥接，支持微信、抖音与 TikTok。",
     images: [{ url: `${siteUrl}og.png`, width: 1200, height: 630, alt: "Godot Mini Game" }],
   },
   twitter: {
     card: "summary_large_image",
     title: "Godot Mini Game",
-    description: "One-click export from Godot to WeChat & Douyin mini games.",
+    description: "Export Godot games to WeChat, Douyin, and TikTok.",
     images: [`${siteUrl}og.png`],
   },
 };

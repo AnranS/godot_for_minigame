@@ -17,6 +17,7 @@ const DEMO_AUDIO_DURATION := 0.85
 const DEMO_AUDIO_FREQUENCY := 660.0
 const DEMO_AUDIO_VOLUME := 0.28
 const DEMO_INNER_AUDIO_SRC := "audio/demo-tone.wav"
+const DEMO_LOADING_AUTO_HIDE_SECONDS := 1.0
 
 var score := 0
 var colors: Array[Color] = [
@@ -525,25 +526,34 @@ func _build_sdk_tests() -> void:
 
 func _add_section(title: String, buttons: Array, hint: String = "") -> void:
 	var section := VBoxContainer.new()
+	section.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	section.add_theme_constant_override("separation", 6)
 
 	var header := Label.new()
 	header.text = title if hint.is_empty() else "%s  (%s)" % [title, hint]
+	header.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	header.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	header.add_theme_font_size_override("font_size", 18)
 	header.add_theme_color_override("font_color", Color(0.3, 0.75, 1.0))
 	section.add_child(header)
 
-	var hbox := HBoxContainer.new()
-	hbox.add_theme_constant_override("separation", 8)
+	# A single HBox makes the widest SDK section dictate the width of the whole
+	# ScrollContainer. On narrow phone viewports that turns the demo into a
+	# horizontally clipped page. Flow rows keep every section inside the visible
+	# width while preserving large touch targets.
+	var button_flow := HFlowContainer.new()
+	button_flow.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	button_flow.add_theme_constant_override("h_separation", 8)
+	button_flow.add_theme_constant_override("v_separation", 8)
 	for btn_def in buttons:
 		var btn := Button.new()
 		btn.text = btn_def[0]
-		btn.custom_minimum_size = Vector2(0, 44)
+		btn.custom_minimum_size = Vector2(96, 44)
 		btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		btn.add_theme_font_size_override("font_size", 15)
 		btn.pressed.connect(btn_def[1])
-		hbox.add_child(btn)
-	section.add_child(hbox)
+		button_flow.add_child(btn)
+	section.add_child(button_flow)
 
 	var result := Label.new()
 	result.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -900,6 +910,8 @@ func _connect_sdk_signals() -> void:
 				is_charging,
 				data_json.left(120),
 			])
+		elif str(MiniGameSDK.bridge_info.get("platform", "")) == "tiktok":
+			_set_result("Battery", "Battery unavailable on TikTok Native")
 		else:
 			_set_result("Battery", "Battery failed: %s" % err))
 
@@ -1011,6 +1023,14 @@ func _connect_sdk_signals() -> void:
 	MiniGameSDK.modal_result.connect(func(confirmed: bool) -> void:
 		_set_result("Screen / UI", "Modal confirmed: %s" % confirmed))
 
+	MiniGameSDK.generic_api_result.connect(func(api_name: String, ok: bool, _data_json: String, err: String) -> void:
+		if api_name != "showModal" or ok:
+			return
+		if str(MiniGameSDK.bridge_info.get("platform", "")) == "tiktok":
+			_set_result("Screen / UI", "Modal unavailable on TikTok Native")
+		else:
+			_set_result("Screen / UI", "Modal failed: %s" % err))
+
 	MiniGameSDK.app_shown.connect(func(opts: String) -> void:
 		_set_result("Lifecycle", "onShow: %s" % opts.left(100)))
 
@@ -1046,6 +1066,11 @@ func _test_storage_clear() -> void:
 
 func _test_storage_info() -> void:
 	var info := MiniGameSDK.storage_info()
+	if not bool(info.get("supported", true)):
+		var platform := str(MiniGameSDK.bridge_info.get("platform", ""))
+		var platform_name := "TikTok Native" if platform == "tiktok" else "this platform"
+		_set_result("Storage", "Info unavailable on %s" % platform_name)
+		return
 	_set_result("Storage", "keys=%d size=%s" % [
 		(info.get("keys", []) as Array).size(),
 		info.get("currentSize", info.get("size", "?")),
@@ -1443,11 +1468,17 @@ func _test_camera_destroy() -> void:
 # Video
 func _test_video_create() -> void:
 	_set_result("Video", "Creating video...")
+	var window_info := MiniGameSDK.get_window_info()
+	var host_width := float(window_info.get("windowWidth", 408.0))
+	if host_width <= 0.0:
+		host_width = 408.0
+	var video_width := minf(360.0, maxf(1.0, host_width - 48.0))
+	var video_height := video_width * 220.0 / 360.0
 	MiniGameSDK.create_video({
 		"x": 24,
 		"y": 120,
-		"width": 360,
-		"height": 220,
+		"width": roundi(video_width),
+		"height": roundi(video_height),
 		"src": "video/intro.mp4",
 		"poster": "images/poster.png",
 		"objectFit": "contain",
@@ -1921,12 +1952,18 @@ func _test_device_motion_stop() -> void:
 
 # Battery
 func _test_battery_info() -> void:
-	MiniGameSDK.get_battery_info()
 	_set_result("Battery", "Reading battery info...")
+	MiniGameSDK.get_battery_info()
 
 
 func _test_battery_info_sync() -> void:
-	_set_result("Battery", str(MiniGameSDK.get_battery_info_sync()).left(180))
+	var info := MiniGameSDK.get_battery_info_sync()
+	if not bool(info.get("supported", true)):
+		var platform := str(MiniGameSDK.bridge_info.get("platform", ""))
+		var platform_name := "TikTok Native" if platform == "tiktok" else "this platform"
+		_set_result("Battery", "Battery unavailable on %s" % platform_name)
+		return
+	_set_result("Battery", str(info).left(180))
 
 
 # Audio interruption
@@ -2202,13 +2239,16 @@ func _test_toast() -> void:
 
 
 func _test_modal() -> void:
-	MiniGameSDK.show_modal("Confirm", "Do you like Godot?")
 	_set_result("Screen / UI", "Modal shown, waiting...")
+	MiniGameSDK.show_modal("Confirm", "Do you like Godot?")
 
 
 func _test_show_loading() -> void:
 	MiniGameSDK.show_loading("Loading...")
-	_set_result("Screen / UI", "Loading overlay shown")
+	_set_result("Screen / UI", "Loading overlay shown; hiding automatically...")
+	await get_tree().create_timer(DEMO_LOADING_AUTO_HIDE_SECONDS).timeout
+	MiniGameSDK.hide_loading()
+	_set_result("Screen / UI", "Loading overlay hidden automatically")
 
 
 func _test_hide_loading() -> void:

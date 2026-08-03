@@ -1,10 +1,10 @@
 # Architecture and versioning / 架构与多版本策略
 
-Godot Mini Game 0.2 treats an export as a validated transaction and an engine
+Godot Mini Game 0.3 treats an export as a validated transaction and an engine
 template as an immutable bundle. This document describes the contracts that
 must stay aligned when the plugin, Godot, or a mini-game host evolves.
 
-Godot Mini Game 0.2 把一次导出视为“经过验证的事务”，把引擎模板视为“不可拆分的
+Godot Mini Game 0.3 把一次导出视为“经过验证的事务”，把引擎模板视为“不可拆分的
 版本包”。本文说明插件、Godot 与小游戏宿主升级时必须保持一致的契约。
 
 ## Components / 组件边界
@@ -34,8 +34,9 @@ OutputGuard  engine pack   PlatformRuntime + GodotSDK bridge
   and WASM can no longer be selected from different directories.
 - `core/output_guard.gd` canonicalizes paths, keeps output outside the project,
   and only accepts an empty directory or one with a valid ownership manifest.
-- `templates/common/js/platform_runtime.js` normalizes `wx` and `tt`, owns
-  provider identity, and exposes host capabilities.
+- `templates/common/js/platform_runtime.js` selects one first-class provider:
+  WeChat `wx`, Douyin `tt`, or TikTok Native `TTMinis.game`. It owns provider
+  identity and exposes host capabilities.
 - `templates/common/js/libs/sdk.js` and `MiniGameSDK.gd` own the versioned
   JavaScript/GDScript Bridge ABI handshake. Lifecycle binding starts only after
   brand, global name, ABI, and required methods match.
@@ -137,6 +138,31 @@ ABI、模板 revision”分别编码，因此多个版本可以并存。解析�
 revision 相同则选数值上更新的 Emscripten 版本，最后按稳定路径排序。未来 manifest 语义变化时新增 `v2` 目录，不会静默
 重解释已有的 `v1` 数据。
 
+## Platform contracts / 平台契约
+
+The export identity and the runtime namespace are separate contracts. TikTok
+is not normalized into Douyin: both are ByteDance hosts, but they have distinct
+entry points, configuration, validation, and release requirements.
+
+| Export target | Runtime namespace | `game.json` subpackage field | Validation state |
+|---|---|---|---|
+| `wechat` | `wx` | `subpackages` | automated export smoke; DevTools/device remain manual |
+| `douyin` | `tt` | `subPackages` | automated export smoke; DevTools/device remain manual |
+| `tiktok` | `TTMinis.game` | `subpackages` | Native **beta**; automated export smoke, then required `ttmg` compile and real-device release gate |
+
+TikTok Native requires client 43.4.0 or newer for `TTWebAssembly`. The HTML
+runtime has a different boot and configuration contract and is intentionally
+outside the v0.3 exporter. A method present in the 224-method SDK surface is not
+automatically supported by all three hosts: same-name APIs pass through
+capability gating, while payments and other host-specific behavior require an
+explicit provider mapping.
+
+导出平台身份与运行时命名空间是两份独立契约。TikTok 不会被归一化成抖音；两者虽然
+同属字节系宿主，但入口、配置、校验与发布门禁不同。TikTok Native 要求客户端
+43.4.0+ 才能使用 `TTWebAssembly`，v0.3 不包含 HTML runtime。SDK 中出现某个方法
+也不代表三个宿主均支持：同名能力先过 capability gating，支付等平台特有能力必须
+显式映射到对应 Provider。
+
 ## Version policy / 版本策略
 
 The project has four independent version numbers:
@@ -152,7 +178,7 @@ Godot compatibility is data in `support-matrix.json`, not a broad `4.x` claim.
 Each certified row records an exact tag, source commit, Emscripten version,
 profile, ABI, revision, and per-platform automation status. Adding Godot 4.7, for example, means building
 and verifying a new bundle, importing it beside 4.6.1, extending the matrix,
-and running both WeChat and Douyin smoke exports. It does not require replacing
+and running the WeChat, Douyin, and TikTok smoke exports. It does not require replacing
 the 4.6.1 bundle.
 
 Exactly one row uses `template.source: bundled`. Additional rows use a pinned
@@ -162,9 +188,28 @@ testing, so adding a row also adds the corresponding test jobs.
 
 插件 SemVer、模板 schema、Bridge ABI、输出 manifest schema 是四条独立版本轴。
 Godot 支持范围只由 `support-matrix.json` 的精确记录定义；新增 4.7 时，应新增并验证
-一份并存模板、扩展矩阵并跑双平台冒烟，而不是覆盖 4.6.1。
+一份并存模板、扩展矩阵并跑微信、抖音与 TikTok 三个平台冒烟，而不是覆盖 4.6.1。
 其中恰好一行使用 `template.source: bundled`；其它版本引用固定的模板 Release tag 与
 asset。CI 会把每个 `automated` 平台项展开为对应 Godot 精确版本的导出任务。
+`automated` 只描述仓库导出冒烟，不等于 DevTool 编译或真机认证；展示层与发布流程
+还必须读取 `platformContracts.*.validation`。
+
+## Platform boundary introduced in 0.3 / 0.3 平台边界
+
+- TikTok Native is a third first-class export target with the `TTMinis.game`
+  provider; it is not an alias for Douyin `tt`.
+- TikTok remains beta; every release candidate must pass the pinned `ttmg`
+  DevTool and a client 43.4.0+ real-device run.
+- Douyin keeps the case-sensitive `subPackages` manifest field. WeChat and
+  TikTok use lower-case `subpackages`.
+- TikTok HTML packaging is not part of this release.
+
+- TikTok Native 是第三个一级导出目标，使用 `TTMinis.game` Provider，不是抖音
+  `tt` 的别名。
+- TikTok 保持 beta；每个 Release 候选产物都必须通过固定版本的 `ttmg` 和
+  TikTok 43.4.0+ 真机发布门禁。
+- 抖音继续使用大小写敏感的 `subPackages`；微信与 TikTok 使用 `subpackages`。
+- 本版本不包含 TikTok HTML 打包。
 
 ## Breaking changes in 0.2 / 0.2 破坏性变更
 

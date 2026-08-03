@@ -5,7 +5,7 @@
  * XMLHttpRequest / WebSocket / performance / location into the global scope
  * so Emscripten glue code and Godot Engine.js can run unmodified.
  *
- * Works on both WeChat and Douyin through the shared PlatformRuntime provider.
+ * Works on WeChat, Douyin, and TikTok through the shared PlatformRuntime provider.
  *
  * No build step required — this is a single self-contained ES module.
  */
@@ -111,7 +111,7 @@ function _dispatchEvent(type, evt) {
   }
 }
 
-// Bridge canvas event listeners — WeChat canvas has NO native addEventListener,
+// Bridge canvas event listeners — mini-game canvases may have no native addEventListener,
 // so we must provide one that routes into our central _eventListeners system.
 // Godot's GodotEventListeners.add(canvas, "mousedown", fn) calls canvas.addEventListener.
 const _wrappedAddEL = function (type, fn, capture) { _addEventListener(type, fn); };
@@ -148,7 +148,7 @@ const _canvasAddELOK = _installCanvasEvents(_mainCanvas, "_mainCanvas");
 // ── Proxy fallback ────────────────────────────────────────────────
 // If either getContext or addEventListener wrapping failed on the native canvas,
 // create a Proxy that intercepts all critical methods.
-// NOTE: GameGlobal.canvas is often a non-configurable getter in WeChat, so we
+// NOTE: GameGlobal.canvas may be a non-configurable host getter, so we
 // may not be able to replace it.  Instead we store the "usable" canvas in
 // GameGlobal.__adapter.canvas and have the loader read from there.
 let _usableCanvas = _mainCanvas;
@@ -351,13 +351,24 @@ const _navigator = {
 };
 
 // ── localStorage ──────────────────────────────────────────────────
+// TikTok Native currently exposes getStorageInfoSync(), but invoking it can
+// terminate the host process before JavaScript can catch an exception. Keep
+// localStorage enumeration unavailable there while preserving get/set/remove.
+const _canEnumerateStorage = PlatformRuntime.platform !== "tiktok"
+  && typeof _api.getStorageInfoSync === "function";
 const _localStorage = {
   getItem(k) { try { return _api.getStorageSync(k); } catch { return null; } },
   setItem(k, v) { try { _api.setStorageSync(k, v); } catch {} },
   removeItem(k) { try { _api.removeStorageSync(k); } catch {} },
   clear() { try { _api.clearStorageSync(); } catch {} },
-  get length() { try { return _api.getStorageInfoSync().keys.length; } catch { return 0; } },
-  key(i) { try { return _api.getStorageInfoSync().keys[i] || null; } catch { return null; } },
+  get length() {
+    if (!_canEnumerateStorage) return 0;
+    try { return _api.getStorageInfoSync().keys.length; } catch { return 0; }
+  },
+  key(i) {
+    if (!_canEnumerateStorage) return null;
+    try { return _api.getStorageInfoSync().keys[i] || null; } catch { return null; }
+  },
 };
 
 // ── indexedDB stub ───────────────────────────────────────────────
@@ -524,7 +535,7 @@ class _WebSocket {
 }
 
 // ── AudioContext ──────────────────────────────────────────────────
-// WeChat provides wx.createWebAudioContext() — a real Web Audio API.
+// Hosts may provide createWebAudioContext() — a real Web Audio API.
 // We try to use it; if unavailable we fall back to a no-op stub.
 
 class _AudioNode {
@@ -546,7 +557,7 @@ class _AudioParam {
 }
 
 // Try to get a native Web Audio Context from the platform
-// WeChat: wx.createWebAudioContext()   Douyin: tt.getAudioContext()
+// WeChat: wx.createWebAudioContext(); ByteDance hosts may expose either API.
 let _nativeWebAudio = null;
 try {
   if (typeof _api.createWebAudioContext === "function") {
@@ -563,7 +574,7 @@ try {
 }
 
 // Auto-resume suspended AudioContext on first user touch (autoplay policy).
-// Both WeChat and Douyin may start the context in "suspended" state.
+// Mini-game hosts may start the context in "suspended" state.
 let _audioResumed = false;
 function _tryResumeAudio() {
   if (_audioResumed || !_nativeWebAudio) return;
@@ -584,7 +595,7 @@ function _tryResumeAudio() {
   }
 }
 
-// ── InnerAudioContext fallback (Douyin and platforms without WebAudio) ──
+// ── InnerAudioContext fallback (Douyin, TikTok, and hosts without WebAudio) ──
 // When createWebAudioContext is unavailable, use InnerAudioContext to play audio.
 // decodeAudioData saves raw audio bytes to a temp file; BufferSourceNode.start()
 // creates an InnerAudioContext pointing to that file.
@@ -620,7 +631,7 @@ function _createInnerPlayer(filePath, loop, volume) {
 }
 
 // Patch native AudioNode for mini-game compatibility:
-// 1. connect() must return destination (Web Audio spec, WeChat returns undefined)
+// 1. connect() must return destination (Web Audio spec; some hosts return undefined)
 // 2. addEventListener/removeEventListener may be missing on native WebAudio nodes;
 //    Godot's WASM calls node.addEventListener("ended", cb) on BufferSourceNodes.
 function _patchAudioNode(node) {
@@ -851,24 +862,51 @@ const _window = {
 
   crypto: _hostCrypto || _fallbackCrypto,
 };
+// Godot Web checks for this property with `"ontouchstart" in window` before
+// enabling touch-drag behaviour in controls such as ScrollContainer. Define
+// non-enumerable DOM-style capability markers so they stay on adapter.window
+// instead of being copied over any host-owned GameGlobal touch properties.
+for (const property of ["ontouchstart", "ontouchmove", "ontouchend", "ontouchcancel"]) {
+  _safeDefine(_window, property, null);
+}
 _window.self = _window; _window.top = _window; _window.parent = _window; _window.window = _window;
 
 // ── Touch input forwarding ────────────────────────────────────────
-// WeChat/Douyin canvas has NO native addEventListener — all touch input
-// comes from platform APIs (wx.onTouchStart etc.).  We convert these to
-// mouse, touch, AND pointer events and dispatch through _eventListeners
-// which is where Godot's GodotEventListeners.add() has stored its handlers.
+// Mini-game canvases may have no native addEventListener — all touch input
+// comes from platform APIs (wx.onTouchStart etc.). Prefer one canonical touch
+// stream when the consumer registered touch listeners; only synthesize the
+// pointer/mouse pair as a compatibility fallback when it did not. Dispatch
+// through _eventListeners where GodotEventListeners.add() stored its handlers.
 const _evtCanvas = _global.canvas || _mainCanvas;
+const _activeTouchPositions = new Map();
+const _touchDispatchModes = new Map();
+
+function _finiteCoordinate(...values) {
+  for (const value of values) {
+    if (value === undefined || value === null || value === "") continue;
+    const number = Number(value);
+    if (Number.isFinite(number)) return number;
+  }
+  return 0;
+}
 
 // Wrap individual touches so Emscripten sees every field it reads
 function _wrapTouch(t) {
+  const source = t || {};
+  // TikTok Native documents screenX/screenY, while WeChat and Douyin commonly
+  // expose clientX/clientY. Keep all providers in the logical canvas space;
+  // the canvas rect scaling in Godot handles the final viewport transform.
+  const clientX = _finiteCoordinate(source.clientX, source.screenX);
+  const clientY = _finiteCoordinate(source.clientY, source.screenY);
   return {
-    identifier: t.identifier ?? 0,
-    clientX: t.clientX ?? 0, clientY: t.clientY ?? 0,
-    pageX: t.pageX ?? t.clientX ?? 0, pageY: t.pageY ?? t.clientY ?? 0,
-    screenX: t.screenX ?? t.clientX ?? 0, screenY: t.screenY ?? t.clientY ?? 0,
-    radiusX: t.radiusX ?? 0, radiusY: t.radiusY ?? 0,
-    rotationAngle: t.rotationAngle ?? 0, force: t.force ?? 1,
+    identifier: source.identifier ?? 0,
+    clientX, clientY,
+    pageX: _finiteCoordinate(source.pageX, clientX),
+    pageY: _finiteCoordinate(source.pageY, clientY),
+    screenX: _finiteCoordinate(source.screenX, clientX),
+    screenY: _finiteCoordinate(source.screenY, clientY),
+    radiusX: source.radiusX ?? 0, radiusY: source.radiusY ?? 0,
+    rotationAngle: source.rotationAngle ?? 0, force: source.force ?? 1,
     target: _evtCanvas,
   };
 }
@@ -880,12 +918,58 @@ function _wrapTouchList(raw) {
   return arr;
 }
 
-function _toMouseEvt(type, t) {
+function _changedTouches(r) {
+  return r && r.changedTouches ? r.changedTouches : [];
+}
+
+function _hasTouchListeners() {
+  return ["touchstart", "touchmove", "touchend", "touchcancel"]
+    .some((type) => _eventListeners[type] && _eventListeners[type].length > 0);
+}
+
+function _setTouchDispatchMode(rawTouches, useTouchEvents) {
+  for (let i = 0; i < rawTouches.length; i++) {
+    _touchDispatchModes.set(_wrapTouch(rawTouches[i]).identifier, useTouchEvents);
+  }
+}
+
+function _usesTouchEvents(t) {
+  const selected = _touchDispatchModes.get(t.identifier);
+  return selected === undefined ? _hasTouchListeners() : selected;
+}
+
+function _rememberTouches(rawTouches) {
+  for (let i = 0; i < rawTouches.length; i++) {
+    const touch = _wrapTouch(rawTouches[i]);
+    _activeTouchPositions.set(touch.identifier, {
+      clientX: touch.clientX,
+      clientY: touch.clientY,
+    });
+  }
+}
+
+function _forgetTouches(rawTouches) {
+  for (let i = 0; i < rawTouches.length; i++) {
+    const identifier = _wrapTouch(rawTouches[i]).identifier;
+    _activeTouchPositions.delete(identifier);
+    _touchDispatchModes.delete(identifier);
+  }
+}
+
+function _movementFor(t) {
+  const previous = _activeTouchPositions.get(t.identifier);
+  return {
+    x: previous ? t.clientX - previous.clientX : 0,
+    y: previous ? t.clientY - previous.clientY : 0,
+  };
+}
+
+function _toMouseEvt(type, t, movementX = 0, movementY = 0) {
   return { type, clientX: t.clientX, clientY: t.clientY,
     pageX: t.pageX ?? t.clientX, pageY: t.pageY ?? t.clientY,
     screenX: t.screenX ?? t.clientX, screenY: t.screenY ?? t.clientY,
     offsetX: t.clientX, offsetY: t.clientY,
-    movementX: 0, movementY: 0,
+    movementX, movementY,
     button: 0, buttons: type === "mouseup" ? 0 : 1, detail: 0,
     target: _evtCanvas, currentTarget: _evtCanvas, srcElement: _evtCanvas,
     cancelable: true, bubbles: true, timeStamp: Date.now(),
@@ -899,18 +983,19 @@ function _toTouchEvt(type, r) {
     cancelable: true, bubbles: true, timeStamp: Date.now(),
     preventDefault() {}, stopPropagation() {}, stopImmediatePropagation() {} };
 }
-function _toPointerEvt(type, t) {
+function _toPointerEvt(type, t, movementX = 0, movementY = 0) {
+  const released = type === "pointerup" || type === "pointercancel";
   return { type,
     pointerId: t.identifier ?? 0, pointerType: "touch",
     clientX: t.clientX, clientY: t.clientY,
     pageX: t.pageX ?? t.clientX, pageY: t.pageY ?? t.clientY,
     screenX: t.screenX ?? t.clientX, screenY: t.screenY ?? t.clientY,
     offsetX: t.clientX, offsetY: t.clientY,
-    movementX: 0, movementY: 0,
-    width: 1, height: 1, pressure: type === "pointerup" ? 0 : 0.5,
+    movementX, movementY,
+    width: 1, height: 1, pressure: released ? 0 : 0.5,
     tiltX: 0, tiltY: 0, twist: 0, isPrimary: true,
     button: type === "pointermove" ? -1 : 0,
-    buttons: type === "pointerup" ? 0 : 1, detail: 0,
+    buttons: released ? 0 : 1, detail: 0,
     target: _evtCanvas, currentTarget: _evtCanvas, srcElement: _evtCanvas,
     cancelable: true, bubbles: true, timeStamp: Date.now(),
     preventDefault() {}, stopPropagation() {}, stopImmediatePropagation() {},
@@ -919,29 +1004,61 @@ function _toPointerEvt(type, t) {
 
 let _touchDebugCount = 0;
 _api.onTouchStart((r) => {
-  const t = r.changedTouches[0]; if (!t) return;
+  const changed = _changedTouches(r); if (!changed.length) return;
+  const t = _wrapTouch(changed[0]);
+  const useTouchEvents = _hasTouchListeners();
+  _setTouchDispatchMode(changed, useTouchEvents);
+  _rememberTouches(changed);
   _tryResumeAudio();
   if (_touchDebugCount < 5) { console.log("[Touch] START", t.clientX?.toFixed(0), t.clientY?.toFixed(0), "audio:", _nativeWebAudio ? _nativeWebAudio.state : "stub", "listeners:", Object.keys(_eventListeners).filter(k => _eventListeners[k]?.length).join(",")); _touchDebugCount++; }
-  _dispatchEvent("pointerdown", _toPointerEvt("pointerdown", t));
-  _dispatchEvent("mousedown", _toMouseEvt("mousedown", t));
-  _dispatchEvent("touchstart", _toTouchEvt("touchstart", r));
+  if (useTouchEvents) {
+    // Godot's default emulate_mouse_from_touch path creates exactly one mouse
+    // sequence from this canonical touch stream. Sending compatibility mouse
+    // events as well can fire press-mode buttons twice.
+    _dispatchEvent("touchstart", _toTouchEvt("touchstart", r));
+  } else {
+    _dispatchEvent("pointerdown", _toPointerEvt("pointerdown", t));
+    _dispatchEvent("mousedown", _toMouseEvt("mousedown", t));
+  }
 });
 _api.onTouchMove((r) => {
-  const t = r.changedTouches[0]; if (!t) return;
-  _dispatchEvent("pointermove", _toPointerEvt("pointermove", t));
-  _dispatchEvent("mousemove", _toMouseEvt("mousemove", t));
-  _dispatchEvent("touchmove", _toTouchEvt("touchmove", r));
+  const changed = _changedTouches(r); if (!changed.length) return;
+  const t = _wrapTouch(changed[0]);
+  const movement = _movementFor(t);
+  _rememberTouches(changed);
+  if (_usesTouchEvents(t)) {
+    // touchmove becomes ScreenDrag and Godot computes its relative movement.
+    // Do not also send pointermove or the engine receives the delta twice.
+    _dispatchEvent("touchmove", _toTouchEvt("touchmove", r));
+  } else {
+    _dispatchEvent("pointermove", _toPointerEvt("pointermove", t, movement.x, movement.y));
+    _dispatchEvent("mousemove", _toMouseEvt("mousemove", t, movement.x, movement.y));
+  }
 });
 _api.onTouchEnd((r) => {
-  const t = r.changedTouches[0]; if (!t) return;
-  _dispatchEvent("pointerup", _toPointerEvt("pointerup", t));
-  _dispatchEvent("mouseup", _toMouseEvt("mouseup", t));
-  _dispatchEvent("touchend", _toTouchEvt("touchend", r));
+  const changed = _changedTouches(r); if (!changed.length) return;
+  const t = _wrapTouch(changed[0]);
+  if (_usesTouchEvents(t)) {
+    _dispatchEvent("touchend", _toTouchEvt("touchend", r));
+  } else {
+    _dispatchEvent("pointerup", _toPointerEvt("pointerup", t));
+    _dispatchEvent("mouseup", _toMouseEvt("mouseup", t));
+  }
+  _forgetTouches(changed);
 });
 if (typeof _api.onTouchCancel === "function") {
   _api.onTouchCancel((r) => {
-    if (r.changedTouches[0]) _dispatchEvent("pointercancel", _toPointerEvt("pointercancel", r.changedTouches[0]));
-    _dispatchEvent("touchcancel", _toTouchEvt("touchcancel", r));
+    const changed = _changedTouches(r);
+    if (changed.length) {
+      const t = _wrapTouch(changed[0]);
+      if (_usesTouchEvents(t)) {
+        _dispatchEvent("touchcancel", _toTouchEvt("touchcancel", r));
+      } else {
+        _dispatchEvent("pointercancel", _toPointerEvt("pointercancel", t));
+        _dispatchEvent("mouseup", _toMouseEvt("mouseup", t));
+      }
+    }
+    _forgetTouches(changed);
   });
 }
 
@@ -1103,10 +1220,30 @@ try {
     if (!shim.Table && _stdWasm) shim.Table = _stdWasm.Table;
     if (!shim.Global && _stdWasm) shim.Global = _stdWasm.Global;
     if (!shim.validate && _stdWasm) shim.validate = _stdWasm.validate?.bind(_stdWasm);
+    // ES modules resolve a bare `WebAssembly` identifier from their realm's
+    // global object. TikTok keeps GameGlobal separate from globalThis, so
+    // installing the shim only on GameGlobal leaves Godot's imported glue
+    // using the unpatched WebAssembly implementation and its ArrayBuffer
+    // instantiate path. Publish the same shim to every runtime-facing realm.
+    const targets = Array.from(new Set([_global, globalThis, _window].filter(Boolean)));
+    let installed = 0;
+    for (const target of targets) {
+      _safeDefine(target, "WebAssembly", shim);
+      if (target.WebAssembly === shim) installed += 1;
+    }
+    // TikTok's DevTool bundles modules inside `with (sandboxGlobal)`. That
+    // object is not exposed as globalThis/GameGlobal, so property writes above
+    // cannot update the identifier resolved by bundled engine code. Assigning
+    // the global binding itself reaches both that sandbox realm and ordinary
+    // browser-style globals.
+    let activeRealmInstalled = false;
     try {
-      Object.defineProperty(_global, "WebAssembly", { value: shim, configurable: true, writable: true });
-    } catch (_) {
-      try { _global.WebAssembly = shim; } catch (_2) {}
+      WebAssembly = shim;
+      activeRealmInstalled = WebAssembly === shim;
+    } catch (_) {}
+    console.log(`[WASM] shim installed in ${installed}/${targets.length} realms`);
+    if (installed !== targets.length || !activeRealmInstalled) {
+      console.warn("[WASM] shim could not be installed in every runtime realm");
     }
   }
 })();

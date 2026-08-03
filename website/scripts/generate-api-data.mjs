@@ -13,7 +13,8 @@ const categories = [
   { id: "debug", title: "调试与日志", titleEn: "Debug logging", summary: "平台调试开关、日志管理器和实时日志。", platform: "wechat-docs" },
   { id: "share", title: "分享", titleEn: "Share", summary: "主动分享与分享菜单控制。", platform: "bridge" },
   { id: "ads", title: "广告", titleEn: "Ads", summary: "激励视频、Banner 与插屏广告生命周期。", platform: "bridge" },
-  { id: "payment", title: "支付", titleEn: "Payment", summary: "小游戏虚拟支付请求与结果。", platform: "wechat" },
+  { id: "payment", title: "支付", titleEn: "Payment", summary: "按 Provider 显式映射的小游戏支付请求与结果；参数不可跨宿主复用。", platform: "provider-specific" },
+  { id: "tiktok-missions", title: "TikTok 入口任务", titleEn: "TikTok missions", summary: "桌面快捷方式、入口任务与奖励领取状态。", platform: "tiktok" },
   { id: "input", title: "振动与键盘", titleEn: "Input", summary: "设备振动和平台原生键盘。", platform: "bridge" },
   { id: "http", title: "HTTP 与文件传输", titleEn: "HTTP & transfer", summary: "网络请求、文件下载与上传。", platform: "dual" },
   { id: "websocket", title: "WebSocket", titleEn: "WebSocket", summary: "长连接、消息发送和连接事件。", platform: "dual" },
@@ -39,7 +40,7 @@ const categories = [
   { id: "system", title: "系统信息", titleEn: "System information", summary: "能力探测、设备、窗口、启动参数和安全区。", platform: "bridge" },
   { id: "generic", title: "通用平台桥接", titleEn: "Generic bridge", summary: "调用尚未封装的平台 API，并用统一信号接收结果。", platform: "dual" },
   { id: "native-ui", title: "剪贴板与原生 UI", titleEn: "Clipboard & native UI", summary: "剪贴板、常亮、Toast、Loading 和 Modal。", platform: "bridge" },
-  { id: "lifecycle", title: "应用生命周期", titleEn: "Lifecycle", summary: "前后台切换和 JavaScript 运行时错误事件。", platform: "bridge" },
+  { id: "lifecycle", title: "应用生命周期", titleEn: "Lifecycle", summary: "前后台切换，以及宿主实际暴露时的 JavaScript 运行时错误事件。", platform: "bridge" },
 ];
 
 const sectionCategory = new Map([
@@ -54,6 +55,7 @@ const sectionCategory = new Map([
   ["Banner Ad", "ads"],
   ["Interstitial Ad", "ads"],
   ["Payment", "payment"],
+  ["TikTok Shortcut / Entrance Missions", "tiktok-missions"],
   ["Vibration", "input"],
   ["Keyboard", "input"],
   ["Network / HTTP", "http"],
@@ -153,6 +155,7 @@ function categoryForSignal(name) {
     [/^debug_/, "debug"],
     [/^(ad_|rewarded_|interstitial_)/, "ads"],
     [/^payment_/, "payment"],
+    [/^tiktok_mission_/, "tiktok-missions"],
     [/^keyboard_/, "input"],
     [/^(http_|file_transfer_)/, "http"],
     [/^socket_/, "websocket"],

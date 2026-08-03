@@ -29,6 +29,8 @@ This guide walks through every step from install to store submission, and docume
 | Godot | 4.6.1 certified; exact template required otherwise | Engine |
 | WeChat DevTools | latest stable | Debug + upload WeChat mini games |
 | Douyin DevTools | latest stable | Debug + upload Douyin mini games |
+| TikTok client | 43.4.0+ | Native `TTWebAssembly` runtime |
+| `ttmg` DevTool | 0.4.1-beta.wasm1 | Compile and debug TikTok Native packages with `ttmg dev` |
 
 Normal export needs no Node.js, Brotli CLI, Emscripten, or standard Godot Web
 template. A Release already contains a validated Brotli engine bundle. The
@@ -98,15 +100,21 @@ The dock sits at the bottom of the editor and contains:
 |--------|-------|
 | 微信小游戏 | `wechat` template; writes `project.config.json` + `project.private.config.json` |
 | 抖音小游戏 | `douyin` template; writes the Douyin-shaped `project.config.json` |
+| TikTok Mini Game (beta) | `tiktok` Native template; uses the `TTMinis.game` namespace |
 
 Platform differences:
 - WeChat `game.json` includes `iOSHighPerformance` and `workers.path` (audio worklet hookup)
 - Douyin does not declare workers
+- Douyin's case-sensitive subpackage field is `subPackages`; WeChat and TikTok
+  use lower-case `subpackages`
+- TikTok support is Native-only in v0.3. The HTML runtime and its different
+  boot/configuration files are not generated
 
 ### AppID
 
 - WeChat: the `wx...` ID from [mp.weixin.qq.com](https://mp.weixin.qq.com)
 - Douyin: the `tt...` ID from [developer.open-douyin.com](https://developer.open-douyin.com)
+- TikTok: the **Client Key** registered for the Native mini game
 - Leave blank or type anything for local dev; must be real for upload
 
 ### Orientation
@@ -137,7 +145,7 @@ Click — the dock log shows seven transactional stages:
 Step 1/7: export the resource pack to staging
 Step 2/7: copy one validated engine bundle
 Step 3/7: copy the shared JavaScript runtime
-Step 4/7: assemble WeChat or Douyin files
+Step 4/7: assemble WeChat, Douyin, or TikTok Native files
 Step 5/7: create required package placeholders
 Step 6/7: write and verify the artifact manifest
 Step 7/7: lock, recheck, and transactionally publish
@@ -210,7 +218,7 @@ If a file has already been patched, the patch is skipped.
 ```
 <output>/
 ├── .godot-mini-game-export.json   # ownership, template identity, artifact hashes
-├── game.js                # platform entry (wechat/douyin-specific)
+├── game.js                # platform entry (wechat/douyin/tiktok-specific)
 ├── game.json              # platform manifest
 ├── project.config.json
 ├── project.private.config.json   # WeChat only
@@ -230,7 +238,7 @@ If a file has already been patched, the patch is skipped.
 │   │   └── sdk.js         # GDScript ↔ JS bridge
 │   ├── image_loader.js    # host image loader
 │   ├── loader.js          # loading screen + engine startup
-│   ├── platform_runtime.js # wx/tt provider + capability contract
+│   ├── platform_runtime.js # wx/tt/TTMinis.game provider + capability contract
 │   └── worker/
 │       └── position_reporting.js  # required by game.json → workers.path
 └── images/
@@ -240,7 +248,7 @@ If a file has already been patched, the patch is skipped.
 
 ### Contracts worth noting
 
-- **`engine/` is the `engine` subpackage**: declared in `game.json` as `{"root":"engine/","name":"engine"}`. The loader calls the selected `wx`/`tt` provider's `loadSubpackage({name:"engine"})`, so cold-start only downloads the main bundle upfront.
+- **`engine/` is the `engine` subpackage**: declared in `game.json` as `{"root":"engine/","name":"engine"}`. The loader calls the selected `wx`, `tt`, or `TTMinis.game` provider's `loadSubpackage({name:"engine"})`, so cold-start only downloads the main bundle upfront.
 - **The listed top-level files and `audio/`, `engine/`, `images/`, `js/`, `subpacks/` are exporter-owned.** Do not add custom files inside them: preflight rejects unlisted content instead of silently deleting it. Put sidecar files under a different top-level name, or package game assets through the Godot export preset/PCK.
 - **`js/worker/` must exist**: WeChat's `game.json` declares `workers.path: js/worker`; even if you never spawn a Worker, the directory must be there or upload/real device errors out.
 
@@ -267,6 +275,34 @@ After import:
 2. Pick the output folder; AppID auto-detected from `project.config.json`
 3. **Compile**
 
+### TikTok Native (beta)
+
+TikTok is a separate first-class target, not a Douyin alias. Export with
+**TikTok Mini Game**, then run the pinned Native DevTool from the output folder:
+
+```bash
+ttmg setup --lang en-US
+ttmg login
+cd /absolute/path/to/tiktok-output
+ttmg init  # enter the same Client Key used for this export
+ttmg dev
+```
+
+Use `ttmg 0.4.1-beta.wasm1`; do not pass `--h5`, because the HTML runtime is
+outside v0.3. The target client must be 43.4.0 or newer for `TTWebAssembly`.
+The pinned CLI reads the Native Client Key only from `~/.ttmgrc` and does not
+populate it from `project.config.json.appid`. Run `ttmg init` inside every fresh
+export directory and enter the same Client Key; `Missing clientKey` means this
+step or the earlier login/setup is incomplete.
+
+In the pinned CLI, Native `ttmg build` is currently a placeholder and is not a
+validation gate. `ttmg dev` is the Native compile/debug entry; CI performs its
+separate offline package precheck through the bundled `ttmg-pack.checkPkgs`.
+
+The repository automates export, manifest, WASM, and package smoke checks for
+TikTok. Beta does not mean device-certified: a DevTool build and a real-device
+run are required before every release.
+
 ### Common first-run errors
 
 | Symptom | Cause | Fix |
@@ -275,6 +311,8 @@ After import:
 | `GameGlobal.canvas is not defined` | `game.js` wasn't treated as the entry | Don't rename the entry in `game.json` |
 | `loadSubpackage fail` | Subpackage directory missing | Ensure both `engine/` and `subpacks/` contain the placeholder `game.js` |
 | Black screen, log shows `GL.createContext failed` | `getContext` called a second time and failed | Upgrade base library to 3.2+, or restart DevTools |
+| `TTMinis.game` or `TTWebAssembly` is missing | HTML preview, wrong target, or old TikTok client | Use Native `ttmg dev` and TikTok 43.4.0+ |
+| `Missing clientKey` | `ttmg init` was skipped; `project.config.json.appid` does not populate `~/.ttmgrc` | Run setup/login, then `ttmg init` in the export directory with the same Client Key |
 
 ---
 
@@ -283,6 +321,12 @@ After import:
 The plugin registers `MiniGameSDK` as an autoload. In non-mini-game environments (editor, desktop export) every method is a safe no-op, so you can call it freely during development.
 
 Async calls deliver results via **signals** — no `await`. Sync calls (`storage_*`, `vibrate_*`) return immediately.
+
+The 224 public methods and 83 signals are the complete bridge surface, not a
+blanket three-platform compatibility claim. Same-name APIs are dispatched to
+`wx`, `tt`, or `TTMinis.game` only when the selected host exposes the required
+capability. Payments and other platform-specific flows use explicit mappings;
+check `can_i_use()` and test the exact host/version before relying on an API.
 
 ### Detect runtime
 
@@ -624,7 +668,7 @@ MiniGameSDK.show_interstitial_ad()
 
 > Ad unit IDs must be approved in the platform console. Simulator usually accepts test IDs.
 
-### Payment (WeChat virtual currency)
+### Payment (provider-specific)
 
 ```gdscript
 MiniGameSDK.payment_result.connect(func(ok, err):
@@ -638,6 +682,43 @@ MiniGameSDK.request_payment({
     "zoneId": "1",
 })
 ```
+
+The parameter dictionary is provider-specific: the bridge maps WeChat to
+`requestMidasPayment`, Douyin to `requestGamePayment`, and TikTok Native to
+`TTMinis.game.pay`. Do not reuse the example fields across hosts, and do not
+treat a successful `can_i_use()` check as approval for production payments.
+
+### TikTok shortcut & entrance missions
+
+These four typed methods are available only on TikTok Native. The JavaScript
+bridge checks `TTMinis.game.canIUse()` when available and verifies the concrete
+host method before invoking it; unsupported client versions fail safely through
+the same result signal.
+
+```gdscript
+MiniGameSDK.tiktok_mission_result.connect(func(
+    action: String,
+    ok: bool,
+    can_receive_reward: bool,
+    data_json: String,
+    error: String,
+) -> void:
+    if not ok:
+        push_warning("%s failed: %s" % [action, error])
+        return
+    print(action, " can_receive_reward=", can_receive_reward)
+    print(JSON.parse_string(data_json))
+)
+
+MiniGameSDK.add_shortcut()
+MiniGameSDK.get_shortcut_mission_reward()
+MiniGameSDK.start_entrance_mission()
+MiniGameSDK.get_entrance_mission_reward()
+```
+
+`can_receive_reward` mirrors the host's `canReceiveReward` field and is mainly
+meaningful for the two reward-query methods. Keep checking the raw `data_json`
+because mission payloads and eligibility rules are controlled by TikTok.
 
 ### Vibration & keyboard
 
@@ -657,7 +738,7 @@ func _on_kb(event: String, value: String) -> void:
 
 ### HTTP
 
-`http_request` goes through `wx.request` / `tt.request`, not the `fetch` polyfill. CORS is governed by the platform "request whitelisted domain" list:
+`http_request` goes through `wx.request`, `tt.request`, or `TTMinis.game.request`, not the `fetch` polyfill. CORS is governed by the platform "request whitelisted domain" list:
 
 ```gdscript
 MiniGameSDK.http_response.connect(func(status, data, err):
@@ -676,7 +757,11 @@ MiniGameSDK.http_request(
 
 ### File transfer
 
-`download_file()` wraps `wx.downloadFile` / `tt.downloadFile`, and `upload_file()` wraps `wx.uploadFile` / `tt.uploadFile`. WeChat keeps `request`, `uploadFile`, and `downloadFile` domains in separate whitelists, so configure each domain category you use. WeChat also limits a single `downloadFile` response to 200 MB.
+`download_file()` and `upload_file()` dispatch to the selected provider's
+same-name capability (`wx`, `tt`, or `TTMinis.game`). WeChat keeps `request`,
+`uploadFile`, and `downloadFile` domains in separate whitelists, so configure
+each domain category you use. WeChat also limits a single `downloadFile`
+response to 200 MB.
 
 ```gdscript
 MiniGameSDK.file_transfer_result.connect(func(action, ok, status, data_json, err):
@@ -704,7 +789,18 @@ The typed wrapper currently reports the basic success/fail result, HTTP status, 
 
 ### File system
 
-`call_file_system(method, options)` is a generic bridge to `wx.getFileSystemManager()[method](options)` / `tt.getFileSystemManager()[method](options)`. It covers the async FileSystemManager APIs that use an options object, such as `access`, `writeFile`, `readFile`, `appendFile`, `mkdir`, `readdir`, `saveFile`, `removeSavedFile`, `getFileInfo`, `stat`, `unlink`, and `unzip`.
+`call_file_system(method, options)` is a generic bridge to the selected
+WeChat or Douyin provider's `getFileSystemManager()[method](options)`. It
+covers async FileSystemManager APIs that use an options object, such as
+`access`, `writeFile`, `readFile`,
+`appendFile`, `mkdir`, `readdir`, `saveFile`, `removeSavedFile`, `getFileInfo`,
+`stat`, `unlink`, and `unzip`.
+
+TikTok beta exports currently fail this public bridge closed without invoking
+the host. A TikTok 46.0.0 Native real-device test crashed the host process while
+dispatching `FileSystemManager.writeFile`, before a JavaScript callback or
+`try/catch` could run. Use the key-value storage wrappers for TikTok saves until
+that host regression is resolved and re-certified.
 
 ```gdscript
 MiniGameSDK.file_system_result.connect(func(action, ok, data_json, err):
@@ -731,7 +827,11 @@ When `readFile` returns binary `ArrayBuffer` data, the JS bridge serializes it a
 
 ### Subpackages
 
-`load_subpackage()` wraps `wx.loadSubpackage` / `tt.loadSubpackage`, and `pre_download_subpackage()` wraps `wx.preDownloadSubpackage` / `tt.preDownloadSubpackage`. `loadSubpackage` downloads and executes the code package; `preDownloadSubpackage` only downloads it ahead of time. Both task wrappers report progress through `subpackage_progress`.
+`load_subpackage()` and `pre_download_subpackage()` dispatch to the selected
+`wx`, `tt`, or `TTMinis.game` provider. `loadSubpackage` downloads and executes
+the code package; `preDownloadSubpackage` only downloads it ahead of time. Both
+task wrappers report progress through `subpackage_progress` when the host
+exposes the task callback.
 
 ```gdscript
 MiniGameSDK.subpackage_result.connect(func(action, ok, data_json, err):
@@ -1409,7 +1509,9 @@ func _on_debug_operation(action: String, ok: bool, data_json: String, err: Strin
 
 ### Generic fallback for unwrapped APIs
 
-For WeChat / Douyin APIs that do not have a typed wrapper yet, call the same platform method through `call_api()`. Async results are normalized through the `generic_api_result` signal.
+For WeChat, Douyin, or TikTok Native APIs that do not have a typed wrapper yet,
+call the same platform method through `call_api()`. Async results are normalized
+through the `generic_api_result` signal. This does not bypass capability gating.
 
 ```gdscript
 MiniGameSDK.generic_api_result.connect(func(api_name, ok, data_json, err):
@@ -1447,7 +1549,7 @@ developer console before submission.
 
 ### Large assets and `subpacks/`
 
-Version 0.2 produces one `.pck` and does not yet expose a managed multi-pack
+Version 0.3 produces one `.pck` and does not yet expose a managed multi-pack
 input. Use the selected Web preset's export filters (the plugin preserves them)
 and normal Godot asset compression to reduce `godot.zip`. Do not place a custom
 PCK in the exported `subpacks/` or edit `game.json`: both paths are exporter-owned
@@ -1468,14 +1570,19 @@ record them in the ownership manifest.
 
 Godot `user://` normally maps to IDBFS. Inside a mini-game host the loader bridges it:
 
-- At startup `godotSdk.copyLocalToFS(p)` restores persistent paths from the selected `wx`/`tt` provider into the Emscripten FS
-- Every 5s a `setInterval` calls `godotSdk.syncfs()` to push the FS back into host storage
+- At startup `godotSdk.copyLocalToFS(p)` restores persistent paths from the selected `wx`, `tt`, or `TTMinis.game` provider into the Emscripten FS
+- On WeChat and Douyin, every 5s a `setInterval` calls `godotSdk.syncfs()` to push the FS back into host storage
+- On WeChat and Douyin, the selected provider's `onHide` event triggers an
+  immediate flush; the listener is removed when the loader is disposed
+- TikTok keeps startup restore read-only for now. Its persistent writeback is
+  disabled before any host write call because the same TikTok 46.0.0 Native
+  device crash also affects public file-system writes
 
-To force a flush at a critical moment (no dedicated API yet):
-
-```gdscript
-JavaScriptBridge.eval("GameGlobal.godotSdk.syncfs(null, ()=>{})")
-```
+v0.3 does not expose a cross-platform manual flush API. Do not use
+`JavaScriptBridge.eval()` as a workaround: TikTok Native exports disable
+JavaScript evaluation. For TikTok, persist game state through
+`MiniGameSDK.storage_set()` / `storage_get()` / `storage_remove()`; those paths
+are real-device verified and do not depend on file-system writeback.
 
 ### Migrating old saves
 
@@ -1488,6 +1595,11 @@ First time a Web-published game becomes a mini-game, `user://` is empty — the 
 ### Preview on a phone
 
 - WeChat DevTools → **Preview** (scan QR). First real-device run: watch the Vconsole for WASM compile time (an iPhone 7 takes ~8–12s).
+- TikTok Native → run `ttmg dev`, then repeat the smoke on a TikTok 43.4.0+
+  device. Confirm `TTWebAssembly`, subpackage loading, input, audio, networking,
+  key-value persistence, and login. Public file-system writes must report
+  unsupported without reaching the host; the repository's export smoke is not
+  device certification.
 - Real-device black screen is almost always one of:
   1. WASM incompat → you picked the standard Web template. Swap to a compatible one.
   2. `GameGlobal.canvas` acquisition failed → base library < 3.0. Upgrade WeChat or pin the base library version.
@@ -1520,7 +1632,8 @@ Enable CLI / HTTP access in **WeChat DevTools → Settings → Security Settings
 
 `scripts/build_wasm_template.sh` can build a mini-game-compatible template from
 an exact Godot 4.x tag. A new version is not certified until its bundle is added
-to `support-matrix.json` and passes both platform smoke exports.
+to `support-matrix.json` and passes the generated platform smoke matrix. TikTok
+additionally remains behind the required `ttmg` and real-device release gates.
 
 ```bash
 # Default: Godot 4.6.1-stable + Emscripten 4.0.3
@@ -1563,12 +1676,12 @@ A: Check the **Engine Template** status at the top of the dock:
 ### Q: Export works on simulator, but real device throws `CompileError: OOM / magic Tag section`
 
 A: The running project contains an incompatible or externally replaced engine.
-The 0.2 exporter no longer selects the standard Web template. Re-export with a
+Since 0.2, the exporter no longer selects the standard Web template. Re-export with a
 validated exact bundle, or build one with `./scripts/build_wasm_template.sh`.
 
 ### Q: Why is an older template ZIP rejected?
 
-A: Version 0.2 requires a complete `template.json` and does not synthesize one
+A: Since version 0.2, a complete `template.json` is required and the exporter does not synthesize one
 from unknown binaries. Rebuild the template with the current script or download
 a validated bundle from Releases.
 
@@ -1592,7 +1705,7 @@ A: Prefix your keys with an account id, e.g. `"user:%s:level" % openid`. `wx.set
 
 A: Please use [issues](https://github.com/AnranS/godot_for_minigame/issues) and [discussions](https://github.com/AnranS/godot_for_minigame/discussions). Bug reports benefit from:
 - Godot version
-- Platform (WeChat / Douyin)
+- Platform (WeChat / Douyin / TikTok Native)
 - Base library version
 - Dock export log screenshot
 - DevTools or on-device Vconsole log

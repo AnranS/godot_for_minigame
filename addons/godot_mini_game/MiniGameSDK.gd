@@ -1,5 +1,5 @@
 extends Node
-## Unified mini-game platform SDK (WeChat / Douyin).
+## Unified mini-game platform SDK (WeChat / Douyin / TikTok Native).
 ##
 ## Add as an autoload (singleton) named "MiniGameSDK".
 ## All async results are delivered via signals.
@@ -30,6 +30,7 @@ signal rewarded_ad_result(is_ended: bool, error: String)
 signal interstitial_ad_result(success: bool, error: String)
 
 signal payment_result(success: bool, error: String)
+signal tiktok_mission_result(action: String, success: bool, can_receive_reward: bool, data_json: String, error: String)
 
 signal keyboard_event(event_type: String, value: String)
 
@@ -800,6 +801,51 @@ func _on_payment(args: Array) -> void:
 	payment_result.emit(
 		_b(args[0]) if args.size() > 0 else false,
 		_s(args[1]) if args.size() > 1 else "")
+
+
+# ── TikTok Shortcut / Entrance Missions ───────────────────────────
+
+func add_shortcut(params: Dictionary = {}) -> void:
+	if not _sdk:
+		_emit_tiktok_mission_not_in_runtime("addShortcut")
+		return
+	_sdk.addShortcut(JSON.stringify(params), _track_oneshot(_on_tiktok_mission))
+
+
+func get_shortcut_mission_reward(params: Dictionary = {}) -> void:
+	if not _sdk:
+		_emit_tiktok_mission_not_in_runtime("getShortcutMissionReward")
+		return
+	_sdk.getShortcutMissionReward(
+		JSON.stringify(params), _track_oneshot(_on_tiktok_mission))
+
+
+func start_entrance_mission(params: Dictionary = {}) -> void:
+	if not _sdk:
+		_emit_tiktok_mission_not_in_runtime("startEntranceMission")
+		return
+	_sdk.startEntranceMission(JSON.stringify(params), _track_oneshot(_on_tiktok_mission))
+
+
+func get_entrance_mission_reward(params: Dictionary = {}) -> void:
+	if not _sdk:
+		_emit_tiktok_mission_not_in_runtime("getEntranceMissionReward")
+		return
+	_sdk.getEntranceMissionReward(
+		JSON.stringify(params), _track_oneshot(_on_tiktok_mission))
+
+
+func _emit_tiktok_mission_not_in_runtime(action: String) -> void:
+	tiktok_mission_result.emit(action, false, false, "", NOT_IN_RUNTIME)
+
+
+func _on_tiktok_mission(args: Array) -> void:
+	tiktok_mission_result.emit(
+		_s(args[0]) if args.size() > 0 else "",
+		_b(args[1]) if args.size() > 1 else false,
+		_b(args[2]) if args.size() > 2 else false,
+		_s(args[3]) if args.size() > 3 else "",
+		_s(args[4]) if args.size() > 4 else "")
 
 
 # ── Vibration ─────────────────────────────────────────────────────
@@ -2668,11 +2714,17 @@ func show_toast(title: String, icon: String = "none", duration_ms: int = 1500) -
 func show_modal(title: String, content: String) -> void:
 	if not _sdk:
 		modal_result.emit(false)
+		generic_api_result.emit("showModal", false, "", NOT_IN_RUNTIME)
 		return
 	_sdk.showModal(title, content, _track_oneshot(_on_modal))
 
 
 func _on_modal(args: Array) -> void:
+	var error := _s(args[2]) if args.size() > 2 else ""
+	if not error.is_empty():
+		modal_result.emit(false)
+		generic_api_result.emit("showModal", false, "", error)
+		return
 	modal_result.emit(_b(args[0]) if args.size() > 0 else false)
 
 
