@@ -171,7 +171,9 @@ jobs:
           set -euo pipefail
           test -n "$TTMG_VERSION"
           npm install --prefix /tmp/ttmg-cli --no-save "@ttmg/cli@${TTMG_VERSION}"
-          actual_version="$(/tmp/ttmg-cli/node_modules/.bin/ttmg --version)"
+          # The pinned wasmtool is macOS/Windows-only. On the Linux runner,
+          # validate the exact package contract without loading the CLI entry.
+          actual_version="$(node -p 'require("/tmp/ttmg-cli/node_modules/@ttmg/cli/package.json").version')"
           test "$actual_version" = "$TTMG_VERSION"
 
       - name: Install Godot

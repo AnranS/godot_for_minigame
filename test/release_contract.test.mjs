@@ -197,6 +197,14 @@ assert.ok(
 );
 assert.ok(smokeWorkflow.includes("Verify exported certified identity"));
 assert.ok(smokeWorkflow.includes("ttmg-pack"), "TikTok exports must run the pinned DevTool package checks");
+assert.ok(
+  smokeWorkflow.includes('require("/tmp/ttmg-cli/node_modules/@ttmg/cli/package.json").version'),
+  "Linux CI must validate the pinned CLI package without loading its macOS/Windows-only entry",
+);
+assert.ok(
+  !smokeWorkflow.includes("node_modules/.bin/ttmg --version"),
+  "Linux CI must not execute the platform-restricted ttmg CLI",
+);
 assert.ok(smokeWorkflow.includes('actual_pack_version" = "0.4.8"'));
 assert.ok(smokeWorkflow.includes("level === 'error'"));
 assert.ok(
