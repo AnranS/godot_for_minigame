@@ -42,8 +42,11 @@ Godot Mini Game 可以把普通 Godot 项目转换成微信或抖音小游戏工
 ## 系统架构
 
 <p align="center">
-  <a href="assets/export-architecture-zh.svg">
-    <img src="assets/export-architecture-zh.svg" width="720" alt="架构：单个目标平台依次经过预检、精确模板解析、同级暂存、验证与锁内受管路径发布，产物运行时再通过 PlatformRuntime 和版本化 JavaScript 到 GDScript Bridge 工作" />
+  <a href="assets/export-architecture-zh.png">
+    <picture>
+      <source media="(max-width: 600px)" srcset="assets/export-architecture-zh-mobile.png" />
+      <img src="assets/export-architecture-zh.png" width="720" alt="架构：单个 wx 或 tt 目标经过精确模板门禁、同级暂存、清单、哈希、锁与受管路径发布；导出产物再使用唯一 PlatformRuntime Provider、GodotSDK 到 MiniGameSDK 的 Bridge ABI，以及精确身份发布门禁" />
+    </picture>
   </a>
 </p>
 

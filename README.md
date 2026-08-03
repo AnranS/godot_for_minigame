@@ -43,8 +43,11 @@ Emscripten, or a separate Godot Web template download.
 ## Architecture
 
 <p align="center">
-  <a href="assets/export-architecture.svg">
-    <img src="assets/export-architecture.svg" width="720" alt="Architecture: one selected platform passes through preflight, exact template resolution, sibling staging, validation, locked managed-path publishing, then runs through PlatformRuntime and the versioned JavaScript-to-GDScript bridge" />
+  <a href="assets/export-architecture.png">
+    <picture>
+      <source media="(max-width: 600px)" srcset="assets/export-architecture-mobile.png" />
+      <img src="assets/export-architecture.png" width="720" alt="Architecture: one selected wx or tt target passes through the exact template gate, sibling staging, manifest, hash, lock, and managed-path publish; the exported game then uses one PlatformRuntime provider, the GodotSDK to MiniGameSDK Bridge ABI, and an exact-identity release gate" />
+    </picture>
   </a>
 </p>
 

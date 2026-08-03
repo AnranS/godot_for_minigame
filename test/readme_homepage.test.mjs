@@ -38,29 +38,6 @@ function assertRelativeLinksExist(markdown, sourceName) {
   }
 }
 
-function svgIds(svg) {
-  return Array.from(svg.matchAll(/\sid="([^"]+)"/g), (match) => match[1]);
-}
-
-function assertSafeSvg(svg, sourceName, expectedSize) {
-  assert.ok(Buffer.byteLength(svg) < 120_000, `${sourceName} should stay below 120 KB`);
-  assert.match(svg, new RegExp(`<svg[^>]+width="${expectedSize.width}"[^>]+height="${expectedSize.height}"`));
-  assert.match(svg, new RegExp(`viewBox="0 0 ${expectedSize.width} ${expectedSize.height}"`));
-  assert.match(svg, /role="img"/);
-  assert.match(svg, /aria-labelledby="[^"]+"/);
-  assert.match(svg, /<title\s+id="[^"]+">[^<]+<\/title>/);
-  assert.match(svg, /<desc\s+id="[^"]+">[^<]+<\/desc>/);
-  assert.doesNotMatch(svg, /<(?:script|style|foreignObject|a|image|use|iframe|object|embed|animate|set)\b/i);
-  assert.doesNotMatch(svg, /\s(?:href|xlink:href|on[a-z]+)\s*=/i);
-  assert.doesNotMatch(svg, /<!DOCTYPE|<!ENTITY|javascript:|data:|@import|@font-face/i);
-
-  const ids = svgIds(svg);
-  assert.equal(new Set(ids).size, ids.length, `${sourceName} must not repeat IDs`);
-  for (const reference of svg.matchAll(/url\(#([^)]+)\)/g)) {
-    assert.ok(ids.includes(reference[1]), `${sourceName} references missing #${reference[1]}`);
-  }
-}
-
 function pngChunks(png, sourceName) {
   const chunks = [];
   let offset = 8;
@@ -78,10 +55,10 @@ function pngChunks(png, sourceName) {
   return chunks;
 }
 
-function assertSafePng(png, sourceName, expectedSize, expectedColorType) {
+function assertSafePng(png, sourceName, expectedSize, expectedColorType, maxBytes = 600_000) {
   const signature = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
   assert.ok(png.subarray(0, 8).equals(signature), `${sourceName} must be a real PNG`);
-  assert.ok(png.byteLength < 600_000, `${sourceName} should stay below 600 KB`);
+  assert.ok(png.byteLength < maxBytes, `${sourceName} should stay below ${maxBytes} bytes`);
   assert.equal(png.toString("ascii", 12, 16), "IHDR");
   assert.equal(png.readUInt32BE(16), expectedSize.width);
   assert.equal(png.readUInt32BE(20), expectedSize.height);
@@ -102,8 +79,10 @@ const english = read("README.md");
 const chinese = read("README_zh.md");
 const bannerDark = readBinary("assets/banner-dark-v2.png");
 const bannerLight = readBinary("assets/banner-light.png");
-const architectureEnglish = read("assets/export-architecture.svg");
-const architectureChinese = read("assets/export-architecture-zh.svg");
+const architectureEnglish = readBinary("assets/export-architecture.png");
+const architectureEnglishMobile = readBinary("assets/export-architecture-mobile.png");
+const architectureChinese = readBinary("assets/export-architecture-zh.png");
+const architectureChineseMobile = readBinary("assets/export-architecture-zh-mobile.png");
 const sdkSource = read("addons/godot_mini_game/MiniGameSDK.gd");
 const matrix = JSON.parse(read("support-matrix.json"));
 const bundled = matrix.certified.find((target) => target.template.source === "bundled");
@@ -139,9 +118,14 @@ for (const readme of [english, chinese]) {
   assert.doesNotMatch(readme, /Certified|认证|Full API Reference|完整 API 参考|TikTok|Real-device ready|ready for submission/);
 }
 
-assert.match(english, /assets\/export-architecture\.svg/);
-assert.doesNotMatch(english, /assets\/export-architecture-zh\.svg/);
-assert.match(chinese, /assets\/export-architecture-zh\.svg/);
+assert.match(english, /<source media="\(max-width: 600px\)" srcset="assets\/export-architecture-mobile\.png"/);
+assert.match(english, /<img src="assets\/export-architecture\.png" width="720"/);
+assert.doesNotMatch(english, /assets\/export-architecture-zh(?:-mobile)?\.png/);
+assert.match(chinese, /<source media="\(max-width: 600px\)" srcset="assets\/export-architecture-zh-mobile\.png"/);
+assert.match(chinese, /<img src="assets\/export-architecture-zh\.png" width="720"/);
+for (const readme of [english, chinese]) {
+  assert.doesNotMatch(readme, /assets\/export-architecture(?:-zh)?\.svg/);
+}
 
 const sourceMethodCount = sdkSource.match(/^func\s+[a-z][A-Za-z0-9_]*\(/gm)?.length ?? 0;
 const sourceSignalCount = sdkSource.match(/^signal\s+[A-Za-z0-9_]+\(/gm)?.length ?? 0;
@@ -149,29 +133,16 @@ assert.equal(methods.length, sourceMethodCount, "generated API method count must
 assert.equal(signals.length, sourceSignalCount, "generated API signal count must match MiniGameSDK.gd");
 assertSafePng(bannerDark, "assets/banner-dark-v2.png", { width: 1440, height: 360 }, 6);
 assertSafePng(bannerLight, "assets/banner-light.png", { width: 1440, height: 360 }, 2);
-assertSafeSvg(architectureEnglish, "assets/export-architecture.svg", { width: 720, height: 980 });
-assertSafeSvg(architectureChinese, "assets/export-architecture-zh.svg", { width: 720, height: 980 });
-
-const requiredArchitectureIds = [
-  "stage-input",
-  "stage-preflight",
-  "stage-staging",
-  "stage-runtime",
-  "stage-assembly",
-  "stage-validation",
-  "stage-publish",
-  "target-wechat",
-  "target-douyin",
-];
-for (const id of requiredArchitectureIds) {
-  assert.match(architectureEnglish, new RegExp(`id="${id}"`));
-  assert.match(architectureChinese, new RegExp(`id="${id}"`));
-}
-const semanticIds = (svg) => svgIds(svg).filter((id) => /^(?:plane-|stage-|target-|version-contract$)/.test(id)).sort();
-assert.deepEqual(semanticIds(architectureEnglish), semanticIds(architectureChinese));
-for (const architecture of [architectureEnglish, architectureChinese]) {
-  assert.doesNotMatch(architecture, /atomic|Certified|认证|TikTok|ready for submission/i);
-}
+assertSafePng(architectureEnglish, "assets/export-architecture.png", { width: 1440, height: 960 }, 2, 1_350_000);
+assertSafePng(architectureEnglishMobile, "assets/export-architecture-mobile.png", { width: 720, height: 1280 }, 2, 950_000);
+assertSafePng(architectureChinese, "assets/export-architecture-zh.png", { width: 1440, height: 960 }, 2, 1_350_000);
+assertSafePng(architectureChineseMobile, "assets/export-architecture-zh-mobile.png", { width: 720, height: 1280 }, 2, 950_000);
+assert.match(english, /each transaction selects WeChat or Douyin/);
+assert.match(english, /game\.js` selects exactly one `PlatformRuntime` provider/);
+assert.match(english, /not a filesystem-wide crash-atomic primitive/);
+assert.match(chinese, /每次事务只选择微信或抖音之一/);
+assert.match(chinese, /game\.js` 只选择一个 `PlatformRuntime` Provider/);
+assert.match(chinese, /不是跨文件系统的 crash-atomic/);
 assert.match(english, new RegExp(`${methods.length} methods and ${signals.length} signals`));
 assert.match(chinese, new RegExp(`${methods.length} 个方法、${signals.length} 个信号`));
 assertRelativeLinksExist(english, "README.md");
