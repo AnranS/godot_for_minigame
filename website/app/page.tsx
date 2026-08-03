@@ -67,36 +67,25 @@ const copy = {
       ["03", "选择目标平台", "在 Dock 中填写平台标识、方向与输出目录。"],
       ["04", "打开开发者工具", "点击导出，再用对应平台的开发与调试工具打开。"],
     ],
-    architectureKicker: "可验证的导出内核",
-    architectureTitle: "从一次点击，到一次事务发布",
+    architectureTitle: "一套 Godot 工程，分流到三端运行时",
     architectureBody:
-      "Dock 与无界面自动化脚本进入同一条事务式导出管线。构建失败只影响 staging；进程内发布错误会回滚，崩溃则保留 lock、backup 与 journal 供人工归档比对。",
+      "导出器把游戏内容、认证引擎与共享适配层装配成平台工程，再交给微信、抖音和 TikTok 运行时。",
     architectureCaption:
-      "Godot Mini Game 产品架构：Dock 或无界面脚本进入 exporter.gd，依次经过预检、模板解析、资源包构建、平台装配与输出验证，最后从 staging 目录事务式发布。",
-    architectureEntry: "统一入口",
-    architectureEntryBody: "编辑器操作与自动化脚本共享同一控制面。",
-    architectureControllerBody: "持有一次导出事务，统一调度、日志与错误边界。",
-    architecturePipeline: "构建管线",
-    architectureServices: [
-      ["预检", "校验项目、预设、输出所有权与目标参数"],
-      ["模板解析", "匹配版本、提交、Emscripten、ABI 与 revision"],
-      ["资源构建", "在 staging 中生成游戏资源包"],
-      ["平台装配", "装配微信、抖音或 TikTok 运行时与配置"],
-      ["输出验证", "校验结构、体积与每个产物的 SHA-256"],
+      "Godot Mini Game 架构：Godot 4.x 项目进入导出器，导出器装配游戏资源包、认证引擎模板、共享浏览器适配与平台桥，最后分流到微信、抖音和 TikTok 运行时。",
+    architectureProject: ["Godot 4.x 项目", "场景、脚本、资源和 Web 导出预设"],
+    architectureExporter: ["Godot Mini Game Exporter", "一次导出事务，完成资源打包、引擎选择与平台装配。"],
+    architectureModules: [
+      ["PACK", "游戏资源包", "把场景、脚本与资源打包为 Godot 资源包。", "engine/godot.zip"],
+      ["ENGINE", "认证引擎模板", `锁定 Godot ${GODOT_VERSION}、Emscripten ${EMSCRIPTEN_VERSION} 与校验和。`, "godot.wasm.br"],
+      ["BRIDGE", "共享浏览器适配与平台桥", "浏览器兼容层统一输入、网络、音频和 MiniGameSDK 能力。", "adapter.js + PlatformRuntime"],
     ],
-    architectureDelivery: "安全交付",
-    architectureOutputs: [
-      ["staging/", "所有构建产物先写入隔离目录"],
-      ["transaction publish", "加锁复核后替换封闭的受管顶层路径，失败时回滚"],
+    architectureRuntimeTitle: "平台运行时",
+    architectureRuntimeBody: "按目标注入入口、配置与分包规则。",
+    architectureRuntimes: [
+      ["WeChat", "微信小游戏", "/wechat.svg"],
+      ["Douyin", "抖音小游戏", "/douyin.svg"],
+      ["TikTok", "TikTok Mini Game", "/tiktok.svg"],
     ],
-    architectureFoundation: "支撑层与运行时契约",
-    architectureFoundationBody: "稳定内核与可替换能力包，为上层管线提供明确边界。",
-    architectureSupports: [
-      ["Plugin Core", "插件生命周期、输出所有权、进程内回滚与崩溃日志", "plugin.gd · output_guard.gd · exporter.gd"],
-      ["Engine Packs", "由版本、提交、工具链、ABI 与校验和锁定", "template_bundle.gd"],
-      ["Bridge ABI", "PlatformRuntime 统一能力；SDK 两端完成版本握手", "platform_runtime.js · sdk.js ↔ MiniGameSDK.gd"],
-    ],
-    architecturePlatforms: "平台适配器",
     techKicker: "真实设备优先",
     techTitle: "不是“模拟器能跑”，而是真机可用",
     techBody:
@@ -165,7 +154,7 @@ const copy = {
     ],
     sectionFeatures: "Built for mini-game delivery",
     sectionFeaturesBody:
-      "Engine compilation, runtime adaptation, and platform configuration—made approachable inside one Godot Dock.",
+      "Engine compilation, runtime adaptation, and platform configuration fit inside one approachable Godot Dock.",
     features: [
       ["01", "Zero configuration", "A compatible engine template is bundled. No Emscripten setup for everyday use."],
       ["02", "One-click export", "Generate the pack, engine, JavaScript adapters, and platform configuration together."],
@@ -183,36 +172,25 @@ const copy = {
       ["03", "Choose a platform", "Set the platform ID, orientation, and output folder in the Dock."],
       ["04", "Open DevTools", "Export once, then open the result with the matching platform development tools."],
     ],
-    architectureKicker: "Verifiable export core",
-    architectureTitle: "From one command to one transactional publish",
+    architectureTitle: "One Godot project, routed to three runtimes",
     architectureBody:
-      "The Dock and headless automation enter one transactional pipeline. Build failures affect staging only; in-process publish errors roll back, while a crash preserves its lock, backup, and journal for operator review.",
+      "The exporter assembles game content, a certified engine, and a shared adapter into projects for WeChat, Douyin, and TikTok.",
     architectureCaption:
-      "Godot Mini Game product architecture: the Dock or a headless script enters exporter.gd, then passes through preflight, template resolution, pack building, platform assembly, and output validation before a transactional publish from staging.",
-    architectureEntry: "Shared entry points",
-    architectureEntryBody: "Editor actions and automation use one control plane.",
-    architectureControllerBody: "Owns one export transaction, orchestration, logs, and error boundaries.",
-    architecturePipeline: "Build pipeline",
-    architectureServices: [
-      ["Preflight", "Validate the project, preset, output ownership, and target"],
-      ["Template resolution", "Match version, commit, Emscripten, ABI, and revision"],
-      ["Pack build", "Build the game pack inside staging"],
-      ["Platform assembly", "Add WeChat, Douyin, or TikTok runtime and configuration"],
-      ["Output validation", "Verify structure, size, and artifact SHA-256 hashes"],
+      "Godot Mini Game architecture: a Godot 4.x project enters the exporter, which assembles the game resource pack, certified engine templates, shared browser adapter, and platform bridge before routing the result to WeChat, Douyin, and TikTok runtimes.",
+    architectureProject: ["Godot 4.x project", "Scenes, scripts, assets, and a Web export preset"],
+    architectureExporter: ["Godot Mini Game Exporter", "One export transaction packages resources, selects the engine, and assembles the platform project."],
+    architectureModules: [
+      ["PACK", "Game resource pack", "Package scenes, scripts, and assets into the Godot resource pack.", "engine/godot.zip"],
+      ["ENGINE", "Certified engine templates", `Pin Godot ${GODOT_VERSION}, Emscripten ${EMSCRIPTEN_VERSION}, and artifact checksums.`, "godot.wasm.br"],
+      ["BRIDGE", "Shared browser adapter and platform bridge", "Unify input, networking, audio, and MiniGameSDK capabilities.", "adapter.js + PlatformRuntime"],
     ],
-    architectureDelivery: "Safe delivery",
-    architectureOutputs: [
-      ["staging/", "Write every generated artifact to an isolated directory"],
-      ["transaction publish", "Lock, recheck, replace closed managed top-level paths, and roll back"],
+    architectureRuntimeTitle: "Platform runtimes",
+    architectureRuntimeBody: "Inject the matching entry point, configuration, and subpackage rules.",
+    architectureRuntimes: [
+      ["WeChat", "WeChat Mini Game", "/wechat.svg"],
+      ["Douyin", "Douyin Mini Game", "/douyin.svg"],
+      ["TikTok", "TikTok Mini Game", "/tiktok.svg"],
     ],
-    architectureFoundation: "Foundation and runtime contracts",
-    architectureFoundationBody: "A stable core and replaceable capability packs give the pipeline explicit boundaries.",
-    architectureSupports: [
-      ["Plugin Core", "Plugin lifecycle, output ownership, in-process rollback, and crash journals", "plugin.gd · output_guard.gd · exporter.gd"],
-      ["Engine Packs", "Pinned by version, commit, toolchain, ABI, and checksums", "template_bundle.gd"],
-      ["Bridge ABI", "PlatformRuntime owns capabilities; both SDK ends negotiate versions", "platform_runtime.js · sdk.js ↔ MiniGameSDK.gd"],
-    ],
-    architecturePlatforms: "Platform adapters",
     techKicker: "Real devices first",
     techTitle: "Beyond “it works in the simulator”",
     techBody:
@@ -358,7 +336,7 @@ export default function Home() {
             <div className="platform-line">
               <span>{t.supports}</span>
               <span className="platform-chip"><img src={asset("/wechat.svg")} alt="" />WeChat</span>
-              <span className="platform-chip"><img src={asset("/tiktok.svg")} alt="" />Douyin</span>
+              <span className="platform-chip"><img src={asset("/douyin.svg")} alt="" />Douyin</span>
               <span className="platform-chip"><img src={asset("/tiktok.svg")} alt="" />TikTok</span>
             </div>
           </div>
@@ -368,7 +346,7 @@ export default function Home() {
             <div className="window-frame">
               <div className="window-bar">
                 <div className="traffic-lights"><span /><span /><span /></div>
-                <span className="window-title">Godot Engine — game_project</span>
+                <span className="window-title">Godot Engine - game_project</span>
                 <span className="window-version">{GODOT_VERSION}</span>
               </div>
               <div className="window-content">
@@ -423,7 +401,7 @@ export default function Home() {
                   <div className="output-platforms">
                     <span><img src={asset("/wechat.svg")} alt="WeChat" /></span>
                     <i>+</i>
-                    <span><img src={asset("/tiktok.svg")} alt="Douyin" /></span>
+                    <span><img src={asset("/douyin.svg")} alt="Douyin" /></span>
                     <i>+</i>
                     <span><img src={asset("/tiktok.svg")} alt="TikTok" /></span>
                   </div>
@@ -481,87 +459,69 @@ export default function Home() {
 
       <section className="section architecture-section" id="architecture" aria-labelledby="architecture-title">
         <div className="container">
-          <div className="split-heading architecture-heading reveal">
-            <div>
-              <p className="section-kicker">{t.architectureKicker}</p>
-              <h2 id="architecture-title">{t.architectureTitle}</h2>
-            </div>
+          <header className="architecture-heading reveal">
+            <h2 id="architecture-title">{t.architectureTitle}</h2>
             <p>{t.architectureBody}</p>
-          </div>
+          </header>
 
-          <figure className="architecture-figure reveal" aria-label={t.architectureCaption}>
-            <figcaption className="sr-only">{t.architectureCaption}</figcaption>
+          <figure className="architecture-diagram reveal" aria-labelledby="architecture-title architecture-caption">
+            <figcaption className="sr-only" id="architecture-caption">{t.architectureCaption}</figcaption>
 
-            <ol className="architecture-flow">
-              <li className="architecture-stage architecture-entry">
-                <div className="architecture-stage-head"><span>01</span><small>ENTRY</small></div>
-                <h3>{t.architectureEntry}</h3>
-                <p>{t.architectureEntryBody}</p>
-                <ul className="architecture-entry-points" aria-label={t.architectureEntry}>
-                  <li><span aria-hidden="true">◫</span><code>Godot Dock</code></li>
-                  <li><span aria-hidden="true">›_</span><code>Headless script</code></li>
-                </ul>
+            <ol className="architecture-path">
+              <li className="architecture-project-node">
+                <article className="architecture-project">
+                  <span className="architecture-node-type">SOURCE</span>
+                  <div className="architecture-project-mark" aria-hidden="true">
+                    <img src={asset("/godot.svg")} alt="" />
+                  </div>
+                  <h3>{t.architectureProject[0]}</h3>
+                  <p>{t.architectureProject[1]}</p>
+                  <code>project.godot</code>
+                </article>
               </li>
 
-              <li className="architecture-stage architecture-controller">
-                <div className="architecture-stage-head"><span>02</span><small>CONTROL</small></div>
-                <div className="architecture-controller-mark" aria-hidden="true"><i /><b>CTRL</b></div>
-                <h3><code>exporter.gd</code></h3>
-                <p>{t.architectureControllerBody}</p>
-              </li>
-
-              <li className="architecture-stage architecture-pipeline">
-                <div className="architecture-stage-head"><span>03</span><small>PIPELINE</small></div>
-                <h3>{t.architecturePipeline}</h3>
-                <ul className="architecture-services">
-                  {t.architectureServices.map(([name, detail], index) => (
-                    <li key={name}>
-                      <span aria-hidden="true">0{index + 1}</span>
-                      <div><code>{name}</code><p>{detail}</p></div>
-                      <i aria-hidden="true">✓</i>
-                    </li>
-                  ))}
-                </ul>
-              </li>
-
-              <li className="architecture-stage architecture-delivery">
-                <div className="architecture-stage-head"><span>04</span><small>COMMIT</small></div>
-                <h3>{t.architectureDelivery}</h3>
-                <div className="architecture-output-path">
-                  {t.architectureOutputs.map(([name, detail], index) => (
-                    <div className="architecture-output-node" key={name}>
-                      <code>{name}</code>
-                      <p>{detail}</p>
-                      {index === 0 && <span className="architecture-output-arrow" aria-hidden="true">↓</span>}
+              <li className="architecture-exporter-node">
+                <article className="architecture-exporter">
+                  <header className="architecture-exporter-heading">
+                    <div>
+                      <span className="architecture-node-type">EXPORTER</span>
+                      <h3>{t.architectureExporter[0]}</h3>
+                      <code>exporter.gd</code>
                     </div>
-                  ))}
-                </div>
+                    <p>{t.architectureExporter[1]}</p>
+                  </header>
+                  <div className="architecture-module-grid">
+                    {t.architectureModules.map(([label, title, body, target], index) => (
+                      <section className={`architecture-module architecture-module-${index + 1}`} key={title}>
+                        <span>{label}</span>
+                        <h4>{title}</h4>
+                        <p>{body}</p>
+                        <code>{target}</code>
+                      </section>
+                    ))}
+                  </div>
+                </article>
+              </li>
+
+              <li className="architecture-runtime-node">
+                <section className="architecture-runtime-group" aria-labelledby="architecture-runtime-title">
+                  <header>
+                    <span className="architecture-node-type">OUTPUT</span>
+                    <h3 id="architecture-runtime-title">{t.architectureRuntimeTitle}</h3>
+                    <p>{t.architectureRuntimeBody}</p>
+                  </header>
+                  <ul className="architecture-runtime-list" aria-label={t.architectureRuntimeTitle}>
+                    {t.architectureRuntimes.map(([name, detail, icon]) => (
+                      <li key={name}>
+                        <span className="architecture-runtime-mark"><img src={asset(icon)} alt="" /></span>
+                        <span><strong>{name}</strong><small>{detail}</small></span>
+                        <i aria-hidden="true">→</i>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
               </li>
             </ol>
-
-            <aside className="architecture-foundation" aria-labelledby="architecture-foundation-title">
-              <div className="architecture-foundation-heading">
-                <div><span aria-hidden="true">DEPENDENCIES</span><h3 id="architecture-foundation-title">{t.architectureFoundation}</h3></div>
-                <p>{t.architectureFoundationBody}</p>
-              </div>
-              <div className="architecture-support-grid">
-                {t.architectureSupports.map(([name, detail, target], index) => (
-                  <article className={`architecture-support-card architecture-support-${index + 1}`} key={name}>
-                    <div className="architecture-support-top"><span>{index === 0 ? "CORE" : index === 1 ? "ENGINE" : "RUNTIME"}</span><i aria-hidden="true" /></div>
-                    <h4><code>{name}</code></h4>
-                    <p>{detail}</p>
-                    {name === "Bridge ABI" && (
-                      <div className="architecture-platforms" aria-label={t.architecturePlatforms}>
-                        <span><i aria-hidden="true" />WeChat</span>
-                        <span><i aria-hidden="true" />Douyin</span>
-                        <span><i aria-hidden="true" />TikTok</span>
-                      </div>
-                    )}
-                    <div className="architecture-binding"><span aria-hidden="true">↳</span><code>{target}</code></div>
-                  </article>
-                ))}
-              </div>
-            </aside>
           </figure>
         </div>
       </section>
@@ -645,7 +605,7 @@ export default function Home() {
       <section className="final-cta">
         <div className="final-grid" aria-hidden="true" />
         <div className="container final-content reveal">
-          <div className="final-logos"><span><img src={asset("/godot.svg")} alt="Godot" /></span><i>→</i><span><img src={asset("/wechat.svg")} alt="WeChat" /></span><span><img src={asset("/tiktok.svg")} alt="Douyin" /></span><span><img src={asset("/tiktok.svg")} alt="TikTok" /></span></div>
+          <div className="final-logos"><span><img src={asset("/godot.svg")} alt="Godot" /></span><i>→</i><span><img src={asset("/wechat.svg")} alt="WeChat" /></span><span><img src={asset("/douyin.svg")} alt="Douyin" /></span><span><img src={asset("/tiktok.svg")} alt="TikTok" /></span></div>
           <h2>{t.finalTitle}</h2>
           <p>{t.finalBody}</p>
           <div className="hero-actions">

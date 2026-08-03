@@ -125,8 +125,13 @@ async function testByteDanceAdapterFetchLoaderAndSdkImports(platform) {
   );
   await import(adapterUrl);
 
+  const expectedDpr = platform === "tiktok" ? 2 : 1;
   assert.equal(globalThis.GameGlobal.PlatformRuntime.platform, platform);
   assert.equal(globalThis.GameGlobal.__adapter.window.innerWidth, 360);
+  assert.equal(globalThis.GameGlobal.__adapter.window.devicePixelRatio, expectedDpr);
+  assert.equal(globalThis.GameGlobal.__adapter.canvas.clientWidth, 360);
+  assert.equal(globalThis.GameGlobal.__adapter.canvas.width, 360 * expectedDpr);
+  assert.equal(globalThis.GameGlobal.__adapter.canvas.height, 780 * expectedDpr);
 
   const fetchUrl = moduleUrl(
     replaceSpecifier(read("fetch.js"), "./js/platform_runtime", runtimeUrl),

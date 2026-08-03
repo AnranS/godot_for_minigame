@@ -5,7 +5,7 @@ import { releaseData } from "../site-data.generated";
 const apiUrl = "https://anrans.github.io/godot_for_minigame/api/";
 
 export const metadata: Metadata = {
-  title: `MiniGameSDK v${releaseData.pluginVersion} API 参考 — Godot Mini Game`,
+  title: `MiniGameSDK v${releaseData.pluginVersion} API 参考 - Godot Mini Game`,
   description: `MiniGameSDK v${releaseData.pluginVersion} 完整 API 参考：${apiMethods.length} 个公开方法、${apiSignals.length} 个信号、参数默认值、返回类型、平台兼容性与源码链接。`,
   alternates: { canonical: apiUrl },
   openGraph: {

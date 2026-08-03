@@ -16,19 +16,26 @@ test("exports a complete static homepage", async () => {
   assert.match(html, /MiniGameSDK/);
   assert.match(html, /href="(?:\/godot_for_minigame)?\/api\/"/);
   assert.match(html, /og\.png/);
+  assert.match(html, /douyin\.svg/);
+  assert.match(html, /tiktok\.svg/);
   assert.match(html, /id="architecture"/);
+  assert.match(html, /<figure class="architecture-diagram/);
+  assert.match(html, /<ol class="architecture-path"/);
+  assert.match(html, /<article class="architecture-exporter"/);
+  assert.match(html, /<ul class="architecture-runtime-list"/);
+  assert.match(html, /Godot 4\.x 项目/);
+  assert.match(html, /Godot Mini Game Exporter/);
   assert.match(html, /exporter\.gd/);
-  assert.match(html, /预检/);
-  assert.match(html, /模板解析/);
-  assert.match(html, /资源构建/);
-  assert.match(html, /平台装配/);
-  assert.match(html, /输出验证/);
-  assert.match(html, /staging\//);
-  assert.match(html, /transaction publish/);
-  assert.doesNotMatch(html, /atomic publish|>CLI</);
-  assert.match(html, /Plugin Core/);
-  assert.match(html, /Engine Packs/);
-  assert.match(html, /Bridge ABI/);
+  assert.match(html, /游戏资源包/);
+  assert.match(html, /认证引擎模板/);
+  assert.match(html, /共享浏览器适配与平台桥/);
+  assert.match(html, /engine\/godot\.zip/);
+  assert.match(html, /godot\.wasm\.br/);
+  assert.match(html, /adapter\.js \+ PlatformRuntime/);
+  assert.match(html, /微信小游戏/);
+  assert.match(html, /抖音小游戏/);
+  assert.match(html, /TikTok Mini Game/);
+  assert.doesNotMatch(html, /architecture-stage-head|transaction publish|atomic publish|>CLI</);
   assert.match(html, /v0\.3\.0/);
   assert.match(html, /godot_mini_game_vX\.Y\.Z\.zip/);
   assert.doesNotMatch(html, /v0\.1\.1|v0\.2\.1|4\.3–4\.6/);
@@ -62,6 +69,7 @@ test("keeps required deployment and brand assets", async () => {
     access(new URL(".openai/hosting.json", root)),
     access(new URL("public/godot.svg", root)),
     access(new URL("public/wechat.svg", root)),
+    access(new URL("public/douyin.svg", root)),
     access(new URL("public/tiktok.svg", root)),
     access(new URL("public/og.png", root)),
   ]);

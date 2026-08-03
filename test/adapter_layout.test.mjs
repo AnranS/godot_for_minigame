@@ -101,18 +101,19 @@ async function loadAdapter() {
   await import(moduleUrl(source));
 }
 
-async function testCanvasUsesLogicalMetricsForGodotViewport(platform) {
+async function testCanvasSeparatesLogicalMetricsFromPhysicalBacking(platform) {
   const { hostCrypto, mainCanvas } = installMiniGameGlobals(platform);
   await loadAdapter();
 
   const adapter = globalThis.GameGlobal.__adapter;
   const rect = adapter.canvas.getBoundingClientRect();
+  const expectedDpr = platform === "tiktok" ? 3 : 1;
 
-  assert.equal(mainCanvas.width, 390);
-  assert.equal(mainCanvas.height, 844);
+  assert.equal(mainCanvas.width, 390 * expectedDpr);
+  assert.equal(mainCanvas.height, 844 * expectedDpr);
   assert.equal(adapter.window.innerWidth, 390);
   assert.equal(adapter.window.innerHeight, 844);
-  assert.equal(adapter.window.devicePixelRatio, 1);
+  assert.equal(adapter.window.devicePixelRatio, expectedDpr);
   assert.equal(adapter.window.navigator.maxTouchPoints, 10);
   assert.equal("ontouchstart" in adapter.window, true);
   assert.equal(Object.prototype.propertyIsEnumerable.call(adapter.window, "ontouchstart"), false);
@@ -134,6 +135,8 @@ async function testCanvasUsesLogicalMetricsForGodotViewport(platform) {
     { x: rect.x, y: rect.y, width: rect.width, height: rect.height, right: rect.right, bottom: rect.bottom },
     { x: 0, y: 0, width: 390, height: 844, right: 390, bottom: 844 },
   );
+  assert.equal(mainCanvas.width / rect.width, expectedDpr);
+  assert.equal(mainCanvas.height / rect.height, expectedDpr);
 }
 
 async function testResizeKeepsMetricsInTheSameCoordinateSpace(platform) {
@@ -143,12 +146,13 @@ async function testResizeKeepsMetricsInTheSameCoordinateSpace(platform) {
   callbacks.resize({ size: { windowWidth: 430, windowHeight: 932 } });
   const adapter = globalThis.GameGlobal.__adapter;
   const rect = adapter.canvas.getBoundingClientRect();
+  const expectedDpr = platform === "tiktok" ? 3 : 1;
 
-  assert.equal(mainCanvas.width, 430);
-  assert.equal(mainCanvas.height, 932);
+  assert.equal(mainCanvas.width, 430 * expectedDpr);
+  assert.equal(mainCanvas.height, 932 * expectedDpr);
   assert.equal(adapter.window.innerWidth, 430);
   assert.equal(adapter.window.innerHeight, 932);
-  assert.equal(adapter.window.devicePixelRatio, 1);
+  assert.equal(adapter.window.devicePixelRatio, expectedDpr);
   assert.equal(adapter.document.documentElement.clientWidth, 430);
   assert.equal(adapter.document.documentElement.clientHeight, 932);
   assert.equal(adapter.canvas.clientWidth, 430);
@@ -286,7 +290,7 @@ async function testModernWindowInfoAndOptionalTouchCancel(platform) {
   });
   await loadAdapter();
 
-  assert.equal(mainCanvas.width, 390);
+  assert.equal(mainCanvas.width, platform === "tiktok" ? 1170 : 390);
   assert.equal(globalThis.GameGlobal.__adapter.window.navigator.platform, "devtools");
 }
 
@@ -362,7 +366,7 @@ async function testTiktokWebAssemblyShimCoversRuntimeRealms() {
 }
 
 for (const platform of ["wechat", "douyin", "tiktok"]) {
-  await testCanvasUsesLogicalMetricsForGodotViewport(platform);
+  await testCanvasSeparatesLogicalMetricsFromPhysicalBacking(platform);
   await testResizeKeepsMetricsInTheSameCoordinateSpace(platform);
   await testTouchCoordinatesStayInCssPixels(platform);
   await testCanonicalTapDoesNotDoubleDispatch(platform);

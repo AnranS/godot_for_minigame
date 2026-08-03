@@ -87,9 +87,12 @@ class Loader {
   constructor(config) {
     this.config = { ...LoaderConfig, ...config };
     const info = PlatformRuntime.getSystemInfo();
-    const loadingDpr = Math.max(1, Number(info.pixelRatio) || 1);
-    const logicalWidth = Math.max(1, Number(_window.innerWidth) || 1);
-    const logicalHeight = Math.max(1, Number(_window.innerHeight) || 1);
+    const loadingDpr = Math.max(
+      1,
+      Number(info.pixelRatio ?? info.devicePixelRatio)
+        || Number(_window.devicePixelRatio)
+        || 1,
+    );
     this.progress = 0;
     this.state = "idle";
     this.engine = null;
@@ -108,11 +111,9 @@ class Loader {
     }
     this.loadingDpr = loadingDpr;
     this._syncLoadingSurfaceSize();
-    // The adapter exposes DPR=1 to Godot so viewport and touch coordinates
-    // share logical pixels. Keep the engine canvas in that coordinate space;
-    // only the temporary loading canvas uses the physical DPR.
-    _canvas.width = logicalWidth;
-    _canvas.height = logicalHeight;
+    // The adapter owns the main canvas backing size. Do not rewrite it after
+    // creating WebGL: collapsing it to logical pixels would discard the real
+    // DPR and make Godot's entire framebuffer blurry on high-DPI devices.
     this.bgImage = _api.createImage();
     this.bgImage.src = this.config.background;
     this.logoImage = _api.createImage();
@@ -210,10 +211,8 @@ class Loader {
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-    // The loading canvas is a high-DPR texture, while the engine canvas uses
-    // logical pixels. The viewport belongs to the destination framebuffer,
-    // not to the source texture; using the loading canvas dimensions here
-    // magnifies the loading screen by DPR and clips it on real devices.
+    // The viewport belongs to the destination framebuffer. Read its actual
+    // size instead of assuming that either canvas has a particular DPR.
     gl.viewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight);
 
     const clean = () => {

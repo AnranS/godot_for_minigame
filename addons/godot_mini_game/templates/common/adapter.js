@@ -25,15 +25,20 @@ console.log("[Adapter] GameGlobal.canvas 存在:", !!_global.canvas, "类型:", 
 // and Godot engine will actually render to). Only create a new one as fallback.
 const _mainCanvas = _global.canvas || _api.createCanvas();
 const _winInfo = PlatformRuntime.getSystemInfo();
-// Godot Web uses window.devicePixelRatio to scale canvas.width/height and then
-// reports canvas.width/height back as the window size. Mini-game touch and
-// window APIs use logical pixels, so expose a logical-pixel DPR to Godot.
-const _dpr = 1;
+// Mini-game window and touch APIs use logical pixels, while the WebGL backing
+// store must use physical pixels to stay sharp on high-DPI screens. TikTok's
+// native runtime is device-certified for this split; keep the established 1x
+// behavior on WeChat and Douyin until the same real-device gate is repeated.
+const _reportedDpr = Number(_winInfo.pixelRatio ?? _winInfo.devicePixelRatio ?? 1);
+const _hostDpr = Number.isFinite(_reportedDpr) && _reportedDpr > 0 ? _reportedDpr : 1;
+const _dpr = PlatformRuntime.platform === "tiktok" ? _hostDpr : 1;
 let _viewportWidth = Number(_winInfo.windowWidth || _winInfo.screenWidth || _mainCanvas.width || 1);
 let _viewportHeight = Number(_winInfo.windowHeight || _winInfo.screenHeight || _mainCanvas.height || 1);
 
 function _backingSize(value) {
-  return Math.max(1, Math.round(value * _dpr));
+  // Match GodotDisplayScreen.updateSize() exactly so engine startup does not
+  // rewrite an already-created WebGL drawing buffer by a fractional pixel.
+  return Math.max(1, Math.floor(value * _dpr));
 }
 
 _mainCanvas.width = _backingSize(_viewportWidth);

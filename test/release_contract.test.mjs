@@ -113,9 +113,28 @@ assert.ok(gdSdkSource.includes("candidate.validateBridge("), "GDScript must perf
 assert.ok(gdSdkSource.includes("bridge_initialization_failed.emit"));
 
 const loaderSource = read("addons/godot_mini_game/templates/common/js/loader.js");
+const adapterSource = read("addons/godot_mini_game/templates/common/adapter.js");
 assert.ok(loaderSource.includes("this._loadPromise = this._loadOnce()"));
 assert.ok(loaderSource.includes("dispose()"));
-assert.ok(!loaderSource.includes("_canvas.width = _window.innerWidth *"));
+assert.ok(
+  !loaderSource.includes("_canvas.width =") && !loaderSource.includes("_canvas.height ="),
+  "the loader must not overwrite the adapter-owned high-DPI backing store",
+);
+assert.ok(
+  adapterSource.includes("_winInfo.pixelRatio ?? _winInfo.devicePixelRatio ?? 1"),
+  "the adapter must derive its backing scale from the host-reported DPR",
+);
+assert.ok(!adapterSource.includes("const _dpr = 1;"));
+assert.ok(
+  adapterSource.includes('PlatformRuntime.platform === "tiktok" ? _hostDpr : 1'),
+  "high-DPI backing must remain gated to the TikTok runtime until other hosts are device-certified",
+);
+const projectConfig = read("project.godot");
+const exportPresets = read("export_presets.cfg");
+assert.ok(projectConfig.includes('window/stretch/mode="canvas_items"'));
+assert.ok(projectConfig.includes('window/stretch/aspect="keep_width"'));
+assert.ok(projectConfig.includes("window/dpi/allow_hidpi=true"));
+assert.ok(exportPresets.includes("html/canvas_resize_policy=2"));
 for (const [platform, expected] of [
   ["wechat", "wechat"],
   ["douyin", "douyin"],

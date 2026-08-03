@@ -17,7 +17,7 @@ function replaceSpecifier(source, specifier, replacement) {
   return source.replaceAll(JSON.stringify(specifier), JSON.stringify(replacement));
 }
 
-function makeWebGl() {
+function makeWebGl(width = 390, height = 844) {
   const viewportCalls = [];
   let deleteTextureCalls = 0;
   return {
@@ -44,8 +44,8 @@ function makeWebGl() {
     VERSION: 20,
     FRAMEBUFFER: 21,
     RENDERBUFFER: 22,
-    drawingBufferWidth: 390,
-    drawingBufferHeight: 844,
+    drawingBufferWidth: width,
+    drawingBufferHeight: height,
     createShader() { return {}; },
     shaderSource() {},
     compileShader() {},
@@ -105,10 +105,11 @@ async function loadLoaderFixture(platform = "wechat") {
   delete globalThis.godotSdk;
   delete globalThis.godotMiniGameBridgeV1;
 
-  const gl = makeWebGl();
+  const renderDpr = platform === "tiktok" ? 3 : 1;
+  const gl = makeWebGl(390 * renderDpr, 844 * renderDpr);
   const mainCanvas = {
-    width: 390,
-    height: 844,
+    width: 390 * renderDpr,
+    height: 844 * renderDpr,
     getContext(type) { return type === "webgl2" ? gl : null; },
   };
   const loadingCanvas = {
@@ -124,7 +125,7 @@ async function loadLoaderFixture(platform = "wechat") {
   const adapterWindow = {
     innerWidth: 390,
     innerHeight: 844,
-    devicePixelRatio: 1,
+    devicePixelRatio: renderDpr,
     setInterval() { timerCount += 1; return 101; },
     clearInterval(id) { clearedTimers.push(id); },
     addEventListener(type, fn) {
@@ -257,8 +258,10 @@ async function loadLoaderFixture(platform = "wechat") {
     triggerWindowResize(width, height) {
       adapterWindow.innerWidth = width;
       adapterWindow.innerHeight = height;
-      gl.drawingBufferWidth = width;
-      gl.drawingBufferHeight = height;
+      mainCanvas.width = width * adapterWindow.devicePixelRatio;
+      mainCanvas.height = height * adapterWindow.devicePixelRatio;
+      gl.drawingBufferWidth = mainCanvas.width;
+      gl.drawingBufferHeight = mainCanvas.height;
       for (const fn of windowListeners.get("resize") || []) fn({ type: "resize" });
     },
     windowListenerCount: (type) => windowListeners.get(type)?.size || 0,
@@ -266,14 +269,14 @@ async function loadLoaderFixture(platform = "wechat") {
   };
 }
 
-async function testLogicalCanvasSingleLoadAndDispose() {
+async function testLegacyCanvasSingleLoadAndDispose() {
   const fixture = await loadLoaderFixture();
   const loader = new fixture.Loader();
 
-  assert.equal(fixture.mainCanvas.width, 390, "engine canvas must remain in logical pixels");
-  assert.equal(fixture.mainCanvas.height, 844, "engine canvas must remain in logical pixels");
-  assert.equal(fixture.loadingCanvas.width, 1170, "loading canvas may use physical DPR");
-  assert.equal(fixture.loadingCanvas.height, 2532, "loading canvas may use physical DPR");
+  assert.equal(fixture.mainCanvas.width, 390, "legacy hosts must retain their logical backing width");
+  assert.equal(fixture.mainCanvas.height, 844, "legacy hosts must retain their logical backing height");
+  assert.equal(fixture.loadingCanvas.width, 1170, "loading canvas must use physical DPR");
+  assert.equal(fixture.loadingCanvas.height, 2532, "loading canvas must use physical DPR");
   assert.deepEqual(
     fixture.gl.viewportCalls,
     [[0, 0, 390, 844]],
@@ -415,6 +418,20 @@ async function testDouyinRestoreAndWritebackRemainEnabled() {
 async function testTikTokKeepsReadOnlyRestoreAndSkipsWriteback() {
   const fixture = await loadLoaderFixture("tiktok");
   const loader = new fixture.Loader();
+
+  assert.equal(fixture.mainCanvas.width, 1170, "TikTok must preserve the physical backing width");
+  assert.equal(fixture.mainCanvas.height, 2532, "TikTok must preserve the physical backing height");
+  assert.equal(fixture.loadingCanvas.width, 1170);
+  assert.equal(fixture.loadingCanvas.height, 2532);
+  assert.deepEqual(fixture.gl.viewportCalls, [[0, 0, 1170, 2532]]);
+
+  fixture.triggerWindowResize(430, 932);
+  assert.equal(fixture.mainCanvas.width, 1290);
+  assert.equal(fixture.mainCanvas.height, 2796);
+  assert.equal(fixture.loadingCanvas.width, 1290);
+  assert.equal(fixture.loadingCanvas.height, 2796);
+  assert.deepEqual(fixture.gl.viewportCalls.at(-1), [0, 0, 1290, 2796]);
+
   await loader.load();
 
   assert.equal(loader.state, "running");
@@ -430,7 +447,7 @@ async function testTikTokKeepsReadOnlyRestoreAndSkipsWriteback() {
   assert.deepEqual(fixture.clearedTimers, []);
 }
 
-await testLogicalCanvasSingleLoadAndDispose();
+await testLegacyCanvasSingleLoadAndDispose();
 await testLoadingBlitTracksDrawingBufferResize();
 await testLoadFailureIsObservableAndStable();
 await testEmptyPersistentDirectoryExistsBeforeMain();

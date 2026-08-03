@@ -32,6 +32,7 @@ window/size/viewport_height=1280
 window/stretch/mode="canvas_items"
 window/stretch/aspect="keep_width"
 window/handheld/orientation=1
+window/dpi/allow_hidpi=true
 
 [editor_plugins]
 
