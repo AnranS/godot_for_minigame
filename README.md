@@ -1,3 +1,5 @@
+
+
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="assets/banner-dark-v2.png" />
@@ -67,7 +69,7 @@ not a filesystem-wide crash-atomic primitive. Full boundaries are documented in
 | Plugin release | `v0.3.0` |
 | Godot | `4.6.1.stable` · commit `14d19694e0c8` |
 | Emscripten | `4.0.3` |
-| Build | `2d_full` · `release` · revision `1` |
+| Build | `2d_full` · `release` · revision `2` |
 | Runtime contract | Bridge ABI `1` · template schema `1` · output schema `1` |
 
 - ✅ **WeChat Mini Game (`wx`)** — full export, manifest, WASM, and package checks.
