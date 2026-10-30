@@ -3655,6 +3655,39 @@ async function testFileSystemManagerWrapperReportsUnsupportedMethods() {
   ]);
 }
 
+async function testCdnSubpackDownloadRejectsHttpErrorsAndStripsQuery() {
+  let response = null;
+  const requests = [];
+  const { GodotSDK } = await loadSdkWithApi({
+    request(options) {
+      requests.push(options);
+      options.success(response);
+    },
+  });
+  const sdk = new GodotSDK();
+  const copied = [];
+  const download = (url) => new Promise((resolve) => {
+    sdk.downloadCDNSubpacks(url, () => resolve(""), (error) => resolve(String(error && error.message)));
+  });
+
+  assert.match(await download("https://cdn.example/levels.pck"), /initialized Engine/,
+    "downloads must fail before an Engine can receive files");
+  assert.equal(requests.length, 0, "no request is sent without an Engine");
+
+  sdk.set_engine({ copyToFS(target, bytes) { copied.push([target, [...bytes]]); } });
+  response = { statusCode: 404, data: new TextEncoder().encode("not found").buffer };
+  assert.match(await download("https://cdn.example/levels.pck"), /HTTP 404/);
+  response = { statusCode: 200, data: new ArrayBuffer(0) };
+  assert.match(await download("https://cdn.example/levels.pck"), /no binary data/);
+  assert.deepEqual(copied, [], "error pages and empty bodies are never installed as packs");
+
+  response = { statusCode: 200, data: new Uint8Array([1, 2, 3]).buffer };
+  assert.equal(await download("https://cdn.example/v2/levels.pck?v=7#cache"), "");
+  assert.equal(requests.at(-1).responseType, "arraybuffer");
+  assert.deepEqual(copied, [["subpacks/levels.pck", [1, 2, 3]]],
+    "query strings and fragments are not part of the pack name");
+}
+
 async function testSubpackageWrappersReportUnsupportedMethods() {
   const { GodotSDK } = await loadSdkWithApi({});
   const sdk = new GodotSDK();
@@ -4193,6 +4226,7 @@ await testDebugLoggingWrappersReportUnsupportedMethods();
 await testFileTransferWrappersReportUnsupportedMethods();
 await testSocketTaskWrappersReportUnsupportedMethods();
 await testFileSystemManagerWrapperReportsUnsupportedMethods();
+await testCdnSubpackDownloadRejectsHttpErrorsAndStripsQuery();
 await testSubpackageWrappersReportUnsupportedMethods();
 await testWorkerWrappersReportUnsupportedMethods();
 await testMediaWrappersReportUnsupportedMethods();

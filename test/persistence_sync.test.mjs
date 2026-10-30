@@ -130,7 +130,11 @@ async function fixture({ host = new Map(), platform = "wechat" } = {}) {
 
 async function testDigestMatchesSha256() {
   const { sdk } = await fixture();
-  for (const size of [0, 1, 55, 56, 63, 64, 65, 127, 128, 129, 4096, 1024 * 1024]) {
+  // Includes sizes around the 64 KiB hashing chunk and its padded tail.
+  for (const size of [
+    0, 1, 55, 56, 63, 64, 65, 127, 128, 129, 4096,
+    65535, 65536, 65537, 65536 + 55, 65536 + 56, 131072 + 63, 1024 * 1024,
+  ]) {
     const storage = new Uint8Array(size + 11);
     for (let i = 0; i < storage.length; i++) storage[i] = (i * 73 + (i >>> 8)) & 255;
     const bytes = storage.subarray(7, 7 + size);
