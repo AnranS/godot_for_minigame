@@ -24,7 +24,24 @@ GODOT_BIN="$(command -v "$GODOT_BIN")"
 export PATH="$(dirname "$NODE_BIN"):$PATH"
 
 cd "$PROJECT_DIR"
-"$NODE_BIN" --test test/*.test.mjs
+# Export tests need an engine template for this exact Godot build. Say so up
+# front instead of leaving a version mismatch to surface as unrelated failures.
+"$NODE_BIN" -e '
+const [line, matrixPath] = process.argv.slice(1);
+const bundled = require(matrixPath).certified.find((row) => row.template?.source === "bundled");
+const m = /^(\d+)\.(\d+)(?:\.(\d+))?\.([A-Za-z0-9]+)/.exec(line.trim());
+const editor = m ? `${m[1]}.${m[2]}.${m[3] || 0}.${m[4]}` : line.trim();
+console.log(`Godot ${editor} | bundled engine template ${bundled?.godotVersion}`);
+if (bundled && editor !== bundled.godotVersion) {
+  console.log(`WARNING: export tests pass only with Godot ${bundled.godotVersion} or an imported ${editor} template.`);
+}
+' "$("$GODOT_BIN" --headless --version 2>/dev/null | tail -n 1)" "$PROJECT_DIR/support-matrix.json"
+
+# Run every suite so one failure does not hide the rest; report them together.
+FAILED=""
+if ! "$NODE_BIN" --test test/*.test.mjs; then
+    FAILED="$FAILED node"
+fi
 
 TEST_DIR="$(mktemp -d "${TMPDIR:-/tmp}/godot-minigame-tests.XXXXXX")"
 trap 'rm -rf "$TEST_DIR"' EXIT
@@ -51,5 +68,15 @@ run_godot() {
 
 run_godot import --import --quit
 for test_file in "$TEST_DIR"/project/test/*_test.gd; do
-    run_godot "$(basename "$test_file")" --script "res://test/$(basename "$test_file")"
+    name="$(basename "$test_file")"
+    if ! run_godot "$name" --script "res://test/$name"; then
+        echo "FAIL $name" >&2
+        FAILED="$FAILED $name"
+    fi
 done
+
+if [ -n "$FAILED" ]; then
+    echo "Failed:$FAILED" >&2
+    exit 1
+fi
+echo "All tests passed."
