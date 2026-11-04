@@ -8,113 +8,80 @@
 <h1 align="center">Godot Mini Game</h1>
 
 <p align="center">
-  <strong>Export Godot games to WeChat, Douyin, and TikTok Mini Games.</strong><br />
-  CI-validated WASM engine · guarded export transaction · one versioned GDScript SDK
+  <strong>Export Godot games to WeChat, Douyin, and TikTok Mini Games — from inside the editor.</strong>
 </p>
 
 <p align="center">
   <a href="https://github.com/AnranS/godot_for_minigame/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/AnranS/godot_for_minigame?display_name=tag&style=flat-square" /></a>
   <a href="https://github.com/AnranS/godot_for_minigame/actions/workflows/smoke-test-export.yml"><img alt="Export tests" src="https://img.shields.io/github/actions/workflow/status/AnranS/godot_for_minigame/smoke-test-export.yml?branch=main&label=export%20tests&style=flat-square" /></a>
-  <img alt="Godot 4.6.1" src="https://img.shields.io/badge/Godot-4.6.1-478CBF?logo=godot-engine&logoColor=white&style=flat-square" />
+  <img alt="Godot 4.6.1 and 4.6.3" src="https://img.shields.io/badge/Godot-4.6.1%20%7C%204.6.3-478CBF?logo=godot-engine&logoColor=white&style=flat-square" />
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/github/license/AnranS/godot_for_minigame?style=flat-square" /></a>
 </p>
 
 <p align="center">
-  <strong><a href="https://github.com/AnranS/godot_for_minigame/releases/latest">Download latest →</a></strong> ·
-  <a href="https://anrans.github.io/godot_for_minigame/">Website</a> ·
-  <a href="#quick-start">Quick start</a> ·
+  <strong><a href="https://github.com/AnranS/godot_for_minigame/releases/latest">Download</a></strong> ·
+  <a href="https://anrans.github.io/godot_for_minigame/quick-start/">Quick start</a> ·
+  <a href="https://anrans.github.io/godot_for_minigame/guide/">Integration guide</a> ·
   <a href="https://anrans.github.io/godot_for_minigame/api/">API reference</a> ·
   <a href="README_zh.md">简体中文</a>
 </p>
 
----
-
-Godot Mini Game turns a normal Godot project into a platform-ready WeChat,
-Douyin, or TikTok Mini Game package. Day-to-day export does not require Node.js, Brotli,
-Emscripten, or a separate Godot Web template download.
-
-## Why Godot Mini Game?
-
-| | |
-|---|---|
-| **Editor-native workflow**<br />Build the PCK, assemble platform files, validate, and publish from one Dock. | **Exact template identity**<br />Godot source, Emscripten, profile, revision, schemas, features, and hashes stay aligned. |
-| **One capability-gated SDK**<br />`MiniGameSDK` exposes 225 methods and 84 signals over `wx`, `tt`, and `TTMinis.game`; availability still depends on the selected host. | **Guarded publishing**<br />Staging, ownership manifests, hashes, an output lock, backup, and rollback protect managed paths while preserving sidecars. |
-
-## Architecture
-
 <p align="center">
-  <a href="assets/export-architecture-v3.png">
-    <picture>
-      <source media="(max-width: 600px)" srcset="assets/export-architecture-mobile-v3.png" />
-      <img src="assets/export-architecture-v3.png" width="720" alt="Architecture: one selected wx, tt, or TTMinis.game target passes through the exact template gate, sibling staging, manifest, hash, lock, and managed-path publish; the exported game then uses one PlatformRuntime provider, the GodotSDK to MiniGameSDK Bridge ABI, and an exact-identity release gate" />
-    </picture>
-  </a>
+  <img src="website/public/screenshots/godot-editor-dock.webp" width="560" alt="The Mini Game Export dock in the Godot editor with WeChat selected" />
+  <img src="website/public/screenshots/wechat-simulator.webp" width="176" alt="The exported Godot demo running in the WeChat DevTools simulator" />
 </p>
+<p align="center"><sub>Export from the Mini Game Export dock (left), then run the result in the platform DevTools (right).</sub></p>
 
-<p align="center"><sub>Click the diagram to open it at full size.</sub></p>
+## Features
 
-- **Export control plane** — each transaction selects WeChat, Douyin, or TikTok Native, resolves one complete engine bundle, assembles outside the destination, validates every managed artifact, and publishes under a lock.
-- **Exported package runtime** — `game.js` selects exactly one `PlatformRuntime` provider; the loader starts the patched engine and PCK, while `GodotSDK` and `MiniGameSDK` negotiate the Bridge ABI.
+- **One-click export.** Pick a platform in the Mini Game Export dock and export. No Node.js, Emscripten, Brotli, or Godot Web export templates to install.
+- **An engine built for mini games.** A single-threaded WebGL 2 build of Godot, pinned to the exact editor version it was validated with.
+- **One SDK for three hosts.** `MiniGameSDK` offers 225 methods and 84 signals over `wx`, `tt`, and `TTMinis.game`, and checks what each host supports before calling it.
+- **Safe re-exports.** Files are built and validated in a staging directory first; only paths the plugin owns are replaced, and your other files are kept.
 
-The publish step has in-process rollback and records recovery evidence, but is
-not a filesystem-wide crash-atomic primitive. Full boundaries are documented in
-[Architecture and versioning](docs/ARCHITECTURE.md).
+## Platforms and versions
 
-## Validated compatibility
+| Platform | Runtime API | `game.json` subpackage field | Status |
+|---|---|---|---|
+| WeChat Mini Game | `wx` | `subpackages` | ✅ Supported |
+| Douyin Mini Game | `tt` | `subPackages` | ✅ Supported |
+| TikTok Mini Game Native | `TTMinis.game` | `subpackages` | 🧪 Beta — TikTok 43.4.0+; every release needs a `ttmg` compile and a real-device run |
 
-| Contract | Bundled value |
+| Godot editor | Engine template |
 |---|---|
-| Plugin release | `v0.3.0` |
-| Godot | `4.6.1.stable` · commit `14d19694e0c8` |
-| Emscripten | `4.0.3` |
-| Build | `2d_full` · `release` · revision `1` |
-| Runtime contract | Bridge ABI `1` · template schema `1` · output schema `1` |
+| `4.6.1.stable` · commit `14d19694e0c8` | Bundled with the plugin |
+| `4.6.3.stable` (official editor) | [Template release](https://github.com/AnranS/godot_for_minigame/releases/tag/template-4.6.3-stable-emsdk-4.0.3-2d-full-release-abi-1-r1) — import it from the dock |
 
-- ✅ **WeChat Mini Game (`wx`)** — full export, manifest, WASM, and package checks.
-- ✅ **Douyin Mini Game (`tt`)** — full export, manifest, WASM, and package checks.
-- 🧪 **TikTok Mini Game Native (`TTMinis.game`)** — first-class **beta** target with automated export checks. Requires TikTok client 43.4.0+, `ttmg` DevTool compilation, and real-device validation before release.
+Plugin `v0.3.0` · Emscripten `4.0.3` · build `2d_full` · `release` · revision `1` ·
+Bridge ABI `1` · template schema `1` · output schema `1`.
+[`support-matrix.json`](support-matrix.json) is the source of truth for these
+values in releases, CI, and the website.
 
-> [!IMPORTANT]
-> The bundled engine is validated by this project only for the exact identity
-> above. Another Godot editor build requires a matching template pack.
-> Automated checks do not replace final testing in platform DevTools and on
-> target devices.
-
-TikTok support in v0.3 is for the Native runtime and writes lower-case
-`subpackages`; Douyin continues to require `subPackages`. The TikTok HTML
-runtime is outside this release's scope.
-
-For the first TikTok run, complete `ttmg setup` and `ttmg login`, enter the
-export directory, run `ttmg init` with the same Client Key, then run `ttmg dev`.
-The pinned CLI does not copy `project.config.json.appid` into `~/.ttmgrc`;
-skipping init results in `Missing clientKey`.
-
-TikTok Native shortcut and entrance missions have typed SDK wrappers:
-`add_shortcut()`, `get_shortcut_mission_reward()`, `start_entrance_mission()`,
-and `get_entrance_mission_reward()`. Each call is capability-gated before the
-host API runs and reports through `tiktok_mission_result`.
-
-Current TikTok beta builds fail closed for storage enumeration, battery reads,
-and public file-system writes where real-device host calls can crash or hang.
-Key-value storage get/set/remove remains supported and device-verified; see the
-[usage guide](docs/USAGE.md#file-system) for the exact boundary.
-
-[`support-matrix.json`](support-matrix.json) is the release, CI, and website
-source of truth for validated identities and platform status.
+> [!NOTE]
+> Other Godot versions need a template built for that exact version; see
+> [custom templates](docs/USAGE.md#12-building-a-custom-engine-template).
+> Automated checks do not replace testing in the platform DevTools and on
+> real devices.
 
 ## Quick start
 
-### 1 · Install the release asset
+1. **Install.** Download `godot_mini_game_vX.Y.Z.zip` from the
+   [latest release](https://github.com/AnranS/godot_for_minigame/releases/latest)
+   **Assets** (not GitHub's source archive) and extract it into your project root,
+   so you get `addons/godot_mini_game/`.
+2. **Enable.** Turn on **Godot Mini Game Export** in
+   **Project > Project Settings > Plugins**.
+3. **Add a Web preset.** In **Project > Export**, add a **Web** preset with any
+   name. The standard Web export templates are not needed.
+4. **Export.** In the **Mini Game Export** dock, choose a platform, enter the App
+   ID (TikTok: Client Key), an orientation, the Web preset, and an empty output
+   folder outside the project, then click **Export**.
+5. **Run.** Open the folder in WeChat or Douyin DevTools. For TikTok, run
+   `ttmg setup` and `ttmg login` once, then `ttmg init` in the export folder with
+   the same Client Key and `ttmg dev`; skipping `ttmg init` fails with
+   `Missing clientKey`.
 
-Open the [latest release](https://github.com/AnranS/godot_for_minigame/releases/latest),
-download `godot_mini_game_vX.Y.Z.zip` from **Assets**, and extract it into the
-root of your Godot project. Do not use GitHub's generated source archive.
-
-```text
-your_project/
-└── addons/
-    └── godot_mini_game/
-```
+**[Step-by-step guide with screenshots →](https://anrans.github.io/godot_for_minigame/quick-start/)**
 
 <details>
 <summary>Install from source for development</summary>
@@ -127,26 +94,10 @@ cp -R godot_for_minigame/addons/godot_mini_game your_project/addons/godot_mini_g
 
 </details>
 
-### 2 · Enable the plugin
-
-Open **Project > Project Settings > Plugins** and enable
-**Godot Mini Game Export**.
-
-### 3 · Add a Web preset
-
-Open **Project > Export** and add a **Web** preset. Its name is up to you; the
-standard Web export templates do not need to be downloaded.
-
-### 4 · Export
-
-Open the **Mini Game Export** Dock, then select one platform, enter the App ID,
-or TikTok Client Key, choose an orientation, Web preset, and dedicated output directory, and click
-**Export**. Open the result in the matching platform DevTools.
-
 ## SDK in 60 seconds
 
-`MiniGameSDK` is registered as an Autoload. Async calls return through signals;
-methods remain safe to call while developing outside a mini-game runtime.
+`MiniGameSDK` is registered as an Autoload. Async calls report through signals,
+and every method is safe to call while you develop outside a mini-game host.
 
 ```gdscript
 MiniGameSDK.login_completed.connect(func(code: String, error: String) -> void:
@@ -160,43 +111,64 @@ var level := MiniGameSDK.storage_get("level", "1")
 MiniGameSDK.show_toast("Level %s" % level, "success")
 ```
 
-At startup the SDK verifies the bridge brand, global name, ABI, and required
-methods before lifecycle binding. Inspect `bridge_info` and
-`bridge_initialization_error` when diagnosing integration issues.
-
 **[Browse all 225 methods and 84 signals →](https://anrans.github.io/godot_for_minigame/api/)**
+The reference lists the whole bridge; it is not a promise that every method
+works on every host. Shared names are capability-checked, and payments and
+other host-specific features use explicit per-platform mappings.
 
-The reference is the complete bridge surface, not a claim that every method is
-available on every host. Shared names use capability gating; payment and other
-platform-specific features use explicit provider mappings.
+## Known limitations
+
+- The engine is single-threaded: no `Thread`, GDExtension, C#, or WebRTC.
+- WeChat and Douyin currently render at 1× logical pixels, so high-DPI screens look slightly soft.
+- Each export produces one resource pack; splitting game resources into custom subpackages is not supported yet.
+- TikTok beta restores `user://` at startup but does not write it back, and fails closed for storage enumeration, battery reads, and public file-system writes. Use `storage_set()` / `storage_get()` for saves; see the [usage guide](docs/USAGE.md#file-system).
+
+The [integration guide](https://anrans.github.io/godot_for_minigame/guide/) has
+the full compatibility table.
 
 ## Documentation
 
 | I want to… | Read |
 |---|---|
-| Install, configure, and export a game | [Usage guide](docs/USAGE.md) |
-| Find an SDK method or signal | [Searchable API reference](https://anrans.github.io/godot_for_minigame/api/) |
-| Understand transactions and versioning | [Architecture and versioning](docs/ARCHITECTURE.md) |
-| Build or import another engine pack | [Custom template guide](docs/USAGE.md#12-building-a-custom-engine-template) |
+| Export my first game | [Quick start](https://anrans.github.io/godot_for_minigame/quick-start/) |
+| Check compatibility and release requirements | [Integration guide](https://anrans.github.io/godot_for_minigame/guide/) |
+| Configure every option in detail | [Usage guide](docs/USAGE.md) |
+| Find an SDK method or signal | [API reference](https://anrans.github.io/godot_for_minigame/api/) |
+| Build or import another engine template | [Custom templates](docs/USAGE.md#12-building-a-custom-engine-template) |
+| Understand export transactions and versioning | [Architecture](docs/ARCHITECTURE.md) |
 | Publish a new plugin version | [Release process](docs/RELEASING.md) |
 | Report a problem or request a feature | [GitHub Issues](https://github.com/AnranS/godot_for_minigame/issues) |
 
-Chinese documentation: [使用指南](docs/USAGE_zh.md) · [中文首页](README_zh.md)
+<details>
+<summary>How it works</summary>
+
+<p align="center">
+  <a href="assets/export-architecture-v3.png">
+    <picture>
+      <source media="(max-width: 600px)" srcset="assets/export-architecture-mobile-v3.png" />
+      <img src="assets/export-architecture-v3.png" width="720" alt="Architecture: one selected wx, tt, or TTMinis.game target passes through the exact template gate, sibling staging, manifest, hash, lock, and managed-path publish; the exported game then uses one PlatformRuntime provider, the GodotSDK to MiniGameSDK Bridge ABI, and an exact-identity release gate" />
+    </picture>
+  </a>
+</p>
+
+- **Export** — each transaction selects WeChat, Douyin, or TikTok Native, resolves one complete engine bundle, assembles outside the destination, validates every managed artifact, and publishes under a lock.
+- **Runtime** — `game.js` selects exactly one `PlatformRuntime` provider; the loader starts the patched engine and PCK, while `GodotSDK` and `MiniGameSDK` negotiate the Bridge ABI.
+
+Publishing rolls back in-process failures and records recovery evidence, but it
+is not a filesystem-wide crash-atomic primitive. See
+[Architecture and versioning](docs/ARCHITECTURE.md).
+
+</details>
 
 ## Contributing
 
-Issues and pull requests are welcome. Keep platform-specific behavior behind
-the shared runtime and bridge contracts, and run the export test suite before
-submitting a change. Maintainers should follow the immutable
-[release process](docs/RELEASING.md).
-
-Run `./scripts/test.sh` with Node.js 22+ and the matching Godot editor installed.
-Use `GODOT_BIN=/path/to/Godot` if needed. GDScript tests use a temporary project
-and the committed Web preset, so local export settings are preserved.
+Issues and pull requests are welcome. Keep platform-specific behavior behind the
+shared runtime and bridge contracts, and run `./scripts/test.sh` (Node.js 22+ and
+the matching Godot editor; set `GODOT_BIN` if needed) before submitting.
+Maintainers follow the immutable [release process](docs/RELEASING.md).
 
 ## License
 
-The plugin is available under the [MIT License](LICENSE). The bundled Godot
-engine retains its upstream notices; see
+[MIT](LICENSE). The bundled Godot engine keeps its upstream notices; see
 [`GODOT_COPYRIGHT.txt`](addons/godot_mini_game/GODOT_COPYRIGHT.txt) and
 [`THIRD_PARTY_NOTICES.md`](addons/godot_mini_game/THIRD_PARTY_NOTICES.md).
