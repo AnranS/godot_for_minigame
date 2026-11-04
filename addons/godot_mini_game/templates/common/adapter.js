@@ -1083,11 +1083,19 @@ if (typeof _api.onWindowResize === "function") {
 // `canvas` is pre-created by the mini game runtime as a read-only global.
 // We must NOT overwrite it — just make sure our _mainCanvas IS that global.
 const _skipKeys = new Set(["canvas"]);
+// DevTools runs the game in a browser frame and loads every subpackage with
+// its own script, which resolves `window.alert` (falling back to
+// `window.parent.__global.alert`) to report completion. Replacing the host's
+// frame aliases or adding a global `alert` swallows that message and
+// loadSubpackage() never settles. Godot reaches the adapter window through
+// the scoped variables patched into godot.js, so it keeps its own alert.
+const _devtoolsFrameKeys = new Set(["window", "self", "top", "parent"]);
 
 if (_sysInfo.platform === "devtools") {
   for (const key of Object.keys(_window)) {
-    if (_skipKeys.has(key)) continue;
+    if (_skipKeys.has(key) || key === "alert") continue;
     const desc = Object.getOwnPropertyDescriptor(_global, key);
+    if (desc && _devtoolsFrameKeys.has(key)) continue;
     if (!desc || desc.configurable) {
       try { Object.defineProperty(_global, key, { value: _window[key], configurable: true }); } catch {}
     }

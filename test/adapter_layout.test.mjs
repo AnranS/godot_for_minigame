@@ -375,8 +375,30 @@ for (const platform of ["wechat", "douyin", "tiktok"]) {
   await testModernWindowInfoAndOptionalTouchCancel(platform);
 }
 
+async function testDevtoolsKeepsHostFrameAliasesAndSubpackageAlert() {
+  installMiniGameGlobals("wechat");
+  const host = globalThis.GameGlobal;
+  // WeChat DevTools exposes these frame aliases as configurable accessors and
+  // has no global alert; its subpackage loader reads window.alert, then
+  // window.parent.__global.alert, to report completion.
+  for (const key of ["self", "parent"]) {
+    Object.defineProperty(host, key, { get: () => host, configurable: true, enumerable: true });
+  }
+  await loadAdapter();
+
+  assert.equal(host.self, host, "DevTools self must stay the host frame");
+  assert.equal(host.parent, host, "DevTools parent must stay the host frame");
+  assert.equal(Object.prototype.hasOwnProperty.call(host, "alert"), false,
+    "a global alert would swallow the DevTools subpackage completion message");
+  assert.equal(host.window, host.__adapter.window, "an absent window is still provided");
+  assert.equal(typeof host.__adapter.window.alert, "function", "Godot keeps the adapter alert");
+  assert.equal(host.XMLHttpRequest, host.__adapter.window.XMLHttpRequest,
+    "other browser globals are still installed");
+}
+
 await testLocalStorageEnumerationQuarantinesTikTokNative();
 await testLocalStorageEnumerationStillWorksOnWeChatAndDouyin();
 await testTiktokWebAssemblyShimCoversRuntimeRealms();
+await testDevtoolsKeepsHostFrameAliasesAndSubpackageAlert();
 
 console.log("adapter_layout.test.mjs: ok");
