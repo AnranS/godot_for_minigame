@@ -48,8 +48,11 @@ NEXT_PUBLIC_BASE_PATH=/godot_for_minigame npm --prefix website test
 The test runner requires Node.js 22+ and the exact Godot editor listed in
 `support-matrix.json`. Set `NODE_BIN` or `GODOT_BIN` when they are not on PATH.
 It runs GDScript tests in a temporary project with the committed Web preset,
-without replacing a developer's `export_presets.cfg`. JavaScript-only checks
-can also run directly with `node --test test/*.test.mjs` on a fresh checkout.
+without replacing a developer's `export_presets.cfg`. It prints the editor and
+bundled template versions first and warns when they differ, then runs every
+suite and lists all failures at the end instead of stopping at the first one.
+JavaScript-only checks can also run directly with `node --test test/*.test.mjs`
+on a fresh checkout.
 
 TikTok Native is a beta target with an additional release gate. Export a fresh
 TikTok package from the release candidate, then:

@@ -317,6 +317,8 @@ run are required before every release.
 | `WXWebAssembly.compile CompileError` | Using the standard Web template (SIMD / exception tags) | Switch to bundled or imported compatible template |
 | `GameGlobal.canvas is not defined` | `game.js` wasn't treated as the entry | Don't rename the entry in `game.json` |
 | `loadSubpackage fail` | Subpackage directory missing | Ensure both `engine/` and `subpacks/` contain the placeholder `game.js` |
+| WeChat DevTools stops at 33%; the log ends at `await loadSubpackage('engine')...` with no success or failure callback | In plugin v0.3.0 and earlier, the adapter replaced the global `alert` and `parent` inside DevTools, swallowing the DevTools subpackage completion message | Update to a plugin version that includes the fix and export again |
+| WeChat DevTools reports `loadSubpackage:fail module not found`, the simulator storage folder is `touristappid`, and the DevTools log shows `41002, appid missing` | The project runs in tourist mode: the signed-in account has no developer access to this AppID | Use an AppID your account can develop, or add the account as a developer of the mini game in the WeChat admin console |
 | Black screen, log shows `GL.createContext failed` | `getContext` called a second time and failed | Upgrade base library to 3.2+, or restart DevTools |
 | `TTMinis.game` or `TTWebAssembly` is missing | HTML preview, wrong target, or old TikTok client | Use Native `ttmg dev` and TikTok 43.4.0+ |
 | `Missing clientKey` | `ttmg init` was skipped; `project.config.json.appid` does not populate `~/.ttmgrc` | Run setup/login, then `ttmg init` in the export directory with the same Client Key |
