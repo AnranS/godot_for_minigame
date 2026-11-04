@@ -20,7 +20,7 @@ const toc = [
   { id: "next", label: "下一步" },
 ];
 
-const exportLog = `平台: wechat | AppID: wx0123456789abcdef | 方向: portrait
+const exportLog = `平台: wechat | AppID: <你的 AppID> | 方向: portrait
 输出目录: /tmp/my-minigame/wechat
 步骤 1/7: 导出资源包 (.pck) ...
   PCK 已导出 → engine/godot.zip (耗时 2.1s)
