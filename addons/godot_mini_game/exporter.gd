@@ -1607,6 +1607,21 @@ func _patch_godot_js(path: String, platform: String = "wechat") -> Error:
 		_log("  [color=red]godot.js 缺少 AudioWorklet 兼容补丁锚点[/color]")
 		return ERR_FILE_CORRUPT
 
+	# Mini-game hosts have no AudioWorklet. The adapter only stubs
+	# audioWorklet.addModule() because GodotAudio.init() loads the position
+	# worklet unconditionally. Reporting the worklet as available made Godot
+	# pick the AudioWorklet driver, whose processor is a no-op stub, so the
+	# mixer never ran: AudioStreamGenerator, Stream playback and bus effects
+	# were silent. Report it unavailable so Godot uses the ScriptProcessor driver.
+	var _has_worklet_old := "function _godot_audio_has_worklet(){return GodotAudio.ctx&&GodotAudio.ctx.audioWorklet?1:0}"
+	var _has_worklet_new := "function _godot_audio_has_worklet(){return 0}"
+	if content.find(_has_worklet_old) != -1:
+		content = content.replace(_has_worklet_old, _has_worklet_new)
+		modified = true
+	elif content.find(_has_worklet_new) == -1:
+		_log("  [color=red]godot.js 缺少音频驱动选择补丁锚点[/color]")
+		return ERR_FILE_CORRUPT
+
 	# Also patch isWebGLAvailable to always report true for WebGL2
 	# (the actual context works, but the test canvas may fail due to context limits)
 	var _webgl_check := "return !!document.createElement('canvas').getContext(['webgl', 'webgl2'][majorVersion - 1]);"

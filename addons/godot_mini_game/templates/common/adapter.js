@@ -673,6 +673,52 @@ function _patchAudioNode(node) {
   return node;
 }
 
+// Godot's ScriptProcessor audio driver needs createScriptProcessor(). Some
+// host WebAudio contexts omit it, so emulate the node: render about two
+// buffers ahead on a timer and schedule each one with a buffer source on the
+// host clock. A suspended context keeps its clock still, so nothing piles up.
+function _createScheduledScriptProcessor(native, bufferSize, inputChannels, outputChannels) {
+  const node = new _AudioNode();
+  node.bufferSize = bufferSize || 4096;
+  node.onaudioprocess = null;
+  const sampleRate = native.sampleRate;
+  const seconds = node.bufferSize / sampleRate;
+  const lead = 0.02;
+  const inputBuffer = native.createBuffer(Math.max(1, inputChannels || 1), node.bufferSize, sampleRate);
+  let destination = null;
+  let timer = null;
+  let nextTime = 0;
+  const pump = function () {
+    while (destination && nextTime < native.currentTime + lead + seconds * 2) {
+      // After a stall, restart slightly ahead instead of scheduling in the past.
+      if (nextTime < native.currentTime) nextTime = native.currentTime + lead;
+      const outputBuffer = native.createBuffer(Math.max(1, outputChannels || 2), node.bufferSize, sampleRate);
+      if (typeof node.onaudioprocess === "function") {
+        node.onaudioprocess({ inputBuffer, outputBuffer, playbackTime: nextTime });
+      }
+      const source = native.createBufferSource();
+      source.buffer = outputBuffer;
+      source.connect(destination);
+      source.start(nextTime);
+      nextTime += seconds;
+    }
+  };
+  node.connect = function (dest) {
+    destination = dest;
+    if (timer === null) {
+      nextTime = native.currentTime + lead;
+      timer = setInterval(pump, Math.max(5, Math.floor(seconds * 500)));
+      pump();
+    }
+    return dest;
+  };
+  node.disconnect = function () {
+    destination = null;
+    if (timer !== null) { clearInterval(timer); timer = null; }
+  };
+  return node;
+}
+
 class _AudioContext {
   constructor(opts = {}) {
     // If native Web Audio is available, delegate to it
@@ -750,7 +796,11 @@ class _AudioContext {
     return n;
   }
   createOscillator()          { if (this._native) return _patchAudioNode(this._native.createOscillator()); const n = new _AudioNode(); n.frequency = new _AudioParam(440); n.detune = new _AudioParam(0); n.type = "sine"; n.start = () => {}; n.stop = () => {}; return n; }
-  createScriptProcessor(a,b,c){ if (this._native) return _patchAudioNode(this._native.createScriptProcessor(a,b,c)); const n = new _AudioNode(); n.onaudioprocess = null; n.bufferSize = 4096; return n; }
+  createScriptProcessor(a,b,c){
+    if (this._native && typeof this._native.createScriptProcessor === "function") return _patchAudioNode(this._native.createScriptProcessor(a,b,c));
+    if (this._native) return _createScheduledScriptProcessor(this._native, a, b, c);
+    const n = new _AudioNode(); n.onaudioprocess = null; n.bufferSize = a || 4096; return n;
+  }
   createAnalyser()            { if (this._native) return _patchAudioNode(this._native.createAnalyser()); const n = new _AudioNode(); n.fftSize = 2048; n.frequencyBinCount = 1024; n.getByteFrequencyData = () => {}; n.getFloatFrequencyData = () => {}; n.getByteTimeDomainData = () => {}; n.getFloatTimeDomainData = () => {}; return n; }
   createBiquadFilter()        { if (this._native) return _patchAudioNode(this._native.createBiquadFilter()); const n = new _AudioNode(); n.frequency = new _AudioParam(350); n.Q = new _AudioParam(1); n.gain = new _AudioParam(0); n.detune = new _AudioParam(0); n.type = "lowpass"; return n; }
   createDynamicsCompressor()  { if (this._native) return _patchAudioNode(this._native.createDynamicsCompressor()); const n = new _AudioNode(); n.threshold = new _AudioParam(-24); n.knee = new _AudioParam(30); n.ratio = new _AudioParam(12); n.attack = new _AudioParam(0.003); n.release = new _AudioParam(0.25); n.reduction = 0; return n; }

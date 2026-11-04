@@ -151,8 +151,13 @@ func _init() -> void:
 		"var instantiateOperation=Module[\"instantiateWasm\"]",
 		"return operation;",
 		"godot_js_eval:_godot_js_disabled",
+		"function _godot_audio_has_worklet(){return 0}",
 	]:
 		_assert_true(patched.contains(marker), "patched engine missing: %s" % marker)
+	_assert_true(
+		not patched.contains("GodotAudio.ctx.audioWorklet?1:0"),
+		"the stubbed AudioWorklet must not be reported as an audio driver",
+	)
 	var syntax_output: Array = []
 	var syntax_exit := OS.execute(
 		"node", ["--check", tiktok_engine], syntax_output, true)

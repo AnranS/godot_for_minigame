@@ -73,6 +73,7 @@ function installMiniGameGlobals(platform = "wechat", options = {}) {
   };
   if (options.modernWindowInfoOnly) delete api.getSystemInfoSync;
   if (options.withoutTouchCancel) delete api.onTouchCancel;
+  if (options.webAudio) api.createWebAudioContext = () => options.webAudio;
   delete globalThis.wx;
   delete globalThis.tt;
   delete globalThis.TTMinis;
@@ -396,9 +397,64 @@ async function testDevtoolsKeepsHostFrameAliasesAndSubpackageAlert() {
     "other browser globals are still installed");
 }
 
+async function testScriptProcessorIsEmulatedWhenHostWebAudioLacksIt() {
+  const scheduled = [];
+  // Host WebAudio without createScriptProcessor(); its clock only moves when the test says so.
+  const host = {
+    sampleRate: 48000,
+    state: "running",
+    currentTime: 0,
+    destination: { channelCount: 2, maxChannelCount: 2, connect() {} },
+    listener: {},
+    createBuffer(channels, length, sampleRate) {
+      const data = Array.from({ length: channels }, () => new Float32Array(length));
+      return { numberOfChannels: channels, length, sampleRate, getChannelData: (channel) => data[channel] };
+    },
+    createBufferSource() {
+      const source = {
+        buffer: null,
+        connect(dest) { source.dest = dest; return dest; },
+        start(when) { scheduled.push({ when, buffer: source.buffer, dest: source.dest }); },
+      };
+      return source;
+    },
+    resume() { return Promise.resolve(); },
+  };
+  installMiniGameGlobals("wechat", { webAudio: host });
+  await loadAdapter();
+
+  const ctx = new globalThis.GameGlobal.__adapter.window.AudioContext();
+  const node = ctx.createScriptProcessor(1024, 2, 2);
+  assert.equal(node.bufferSize, 1024, "the emulated node reports the requested buffer size to Godot");
+  let calls = 0;
+  node.onaudioprocess = (event) => {
+    calls++;
+    event.outputBuffer.getChannelData(0).fill(0.5);
+    event.outputBuffer.getChannelData(1).fill(-0.5);
+  };
+  node.connect(ctx.destination);
+  assert.equal(calls, 2, "two buffers are rendered ahead of a still clock");
+  assert.equal(scheduled.length, 2);
+  assert.ok(scheduled[1].when > scheduled[0].when, "buffers are queued back to back");
+  assert.equal(scheduled[0].buffer.getChannelData(0)[0], 0.5, "rendered samples reach the scheduled buffer");
+  assert.equal(scheduled[0].dest, host.destination, "buffers play on the host destination");
+
+  host.currentTime = 1;
+  await new Promise((resolve) => setTimeout(resolve, 60));
+  assert.ok(calls > 2, "the timer keeps rendering as the host clock advances");
+  assert.ok(scheduled.at(-1).when >= 1, "a stalled queue restarts at the current time");
+
+  node.disconnect();
+  const rendered = calls;
+  host.currentTime = 5;
+  await new Promise((resolve) => setTimeout(resolve, 60));
+  assert.equal(calls, rendered, "disconnect stops rendering");
+}
+
 await testLocalStorageEnumerationQuarantinesTikTokNative();
 await testLocalStorageEnumerationStillWorksOnWeChatAndDouyin();
 await testTiktokWebAssemblyShimCoversRuntimeRealms();
 await testDevtoolsKeepsHostFrameAliasesAndSubpackageAlert();
+await testScriptProcessorIsEmulatedWhenHostWebAudioLacksIt();
 
 console.log("adapter_layout.test.mjs: ok");
