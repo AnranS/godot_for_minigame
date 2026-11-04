@@ -80,3 +80,4 @@ jobs:
             dist/godot_mini_game_v${{ steps.version.outputs.version }}.zip.sha256
           draft: false
           prerelease: false
+          make_latest: true

@@ -273,9 +273,12 @@ jobs:
           TEMPLATE_SCHEMA: ${{ steps.contract.outputs.template_schema }}
         run: |
           set -euo pipefail
+          # Template releases must never become "Latest": releases/latest is
+          # the plugin download link used by the README and the website.
           gh release create "$RELEASE_TAG" \
             "$BUNDLE_PATH" \
             "${BUNDLE_PATH}.sha256" \
+            --latest=false \
             --target "$GITHUB_SHA" \
             --title "Mini-Game Template ${GODOT_TAG} / Emscripten ${EMSDK_VERSION} / ABI ${BRIDGE_ABI} / r${TEMPLATE_REVISION}" \
             --notes "Validated profile=${BUILD_PROFILE}, target=${BUILD_TARGET}, templateSchema=${TEMPLATE_SCHEMA}. Exact Godot source commit: ${GODOT_COMMIT}."

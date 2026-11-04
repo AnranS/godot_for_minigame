@@ -105,7 +105,10 @@ verifies the ZIP and checksum, refuses an existing Release, and publishes:
 ## 4. Verify the published result
 
 Confirm that the Release is neither a draft nor prerelease, both assets exist,
-and the uploaded ZIP digest matches the local reproducible package. Finally,
+and the uploaded ZIP digest matches the local reproducible package. Check that
+`releases/latest` resolves to the new plugin release: the README and the
+website use it as the plugin download link. Engine template releases are
+published with `--latest=false` so they never take it over. Finally,
 open the public homepage and API reference to verify that they point to the new
 release.
 

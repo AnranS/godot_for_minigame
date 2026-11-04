@@ -196,6 +196,14 @@ for (const source of [buildWorkflow, read("scripts/build_wasm_template.sh")]) {
   assert.ok(source.includes("editorCommits"), "templates must be able to list official editor commits");
 }
 assert.ok(
+  buildWorkflow.includes("--latest=false"),
+  "template releases must not take over releases/latest from the plugin",
+);
+assert.ok(
+  read(".github/workflows/release-plugin.yml").includes("make_latest: true"),
+  "plugin releases must own releases/latest",
+);
+assert.ok(
   buildWorkflow.includes("scripts/official_editor_commit.sh"),
   "CI must read editor commits from the verified official editor build",
 );
