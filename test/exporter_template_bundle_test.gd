@@ -184,6 +184,49 @@ func _init() -> void:
 		"commit", commit_bundle, "4.6.1.stable", "")
 	_assert_true(not missing_editor_commit.valid, "an editor without a verifiable commit must be rejected")
 
+	# Official release binaries may report a commit other than the tag commit.
+	var listed_bundle := _root.path_join("editor-commits")
+	var listed_manifest := _make_bundle(listed_bundle, "4.6.1.stable", COMMIT_A)
+	listed_manifest.godot["editorCommits"] = [COMMIT_B]
+	TemplateBundle.write_manifest(
+		listed_bundle.path_join(TemplateBundle.MANIFEST_FILE), listed_manifest)
+	var listed_editor = TemplateBundle.load_from_directory(
+		"listed", listed_bundle, "4.6.1.stable", COMMIT_B.substr(0, 9))
+	_assert_true(
+		listed_editor.valid and listed_editor.commit_verified,
+		"an editor commit listed in editorCommits must validate",
+	)
+	_assert_true(
+		listed_editor.godot_commit == COMMIT_A,
+		"the template identity must stay the source commit it was built from",
+	)
+	_assert_true(
+		TemplateBundle.load_from_directory(
+			"listed", listed_bundle, "4.6.1.stable", "abcdef123").valid,
+		"the source commit must still validate when editorCommits is present",
+	)
+	_assert_true(
+		not TemplateBundle.load_from_directory(
+			"listed", listed_bundle, "4.6.1.stable", "0123456789").valid,
+		"an unlisted editor commit must still be rejected",
+	)
+	listed_manifest.godot["editorCommits"] = [COMMIT_B.substr(0, 9)]
+	TemplateBundle.write_manifest(
+		listed_bundle.path_join(TemplateBundle.MANIFEST_FILE), listed_manifest)
+	_assert_true(
+		not TemplateBundle.load_from_directory(
+			"listed", listed_bundle, "4.6.1.stable", COMMIT_B.substr(0, 9)).valid,
+		"abbreviated editorCommits entries must be rejected",
+	)
+	listed_manifest.godot["editorCommits"] = COMMIT_B
+	TemplateBundle.write_manifest(
+		listed_bundle.path_join(TemplateBundle.MANIFEST_FILE), listed_manifest)
+	_assert_true(
+		not TemplateBundle.load_from_directory(
+			"listed", listed_bundle, "4.6.1.stable", COMMIT_B.substr(0, 9)).valid,
+		"editorCommits must be an array",
+	)
+
 	var missing_emscripten := _root.path_join("missing-emscripten")
 	var missing_emscripten_manifest := _make_bundle(
 		missing_emscripten, "4.6.1.stable", COMMIT_A)

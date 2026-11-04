@@ -63,6 +63,10 @@ for (const target of supportMatrix.certified) {
     assert.match(target.template.releaseTag, /^[0-9A-Za-z._-]+$/);
     assert.match(target.template.asset, /^[0-9A-Za-z._-]+\.zip$/);
   }
+  for (const editorCommit of target.godotEditorCommits ?? []) {
+    assert.match(editorCommit, /^[0-9a-f]{40}$/, "editor commits must be full lowercase commits");
+    assert.notEqual(editorCommit, target.godotCommit, "editor commits list only commits that differ from the source");
+  }
 }
 assert.equal(
   supportMatrix.certified.filter((target) => target.template.source === "bundled").length,
@@ -184,6 +188,21 @@ assert.ok(buildWorkflow.includes("GODOT_COPYRIGHT.txt"));
 assert.ok(buildWorkflow.includes("touch -t 198001010000"));
 assert.ok(buildWorkflow.includes("pip install scons==4.9.1"));
 assert.ok(!buildWorkflow.includes("head -1"), "CI must reject ambiguous stale build artifacts");
+for (const source of [buildWorkflow, read("scripts/build_wasm_template.sh")]) {
+  assert.ok(
+    source.includes("godot.web.template_release.wasm32*.zip"),
+    "templates must take godot.js from Godot's packaged web template, not the raw Emscripten module",
+  );
+  assert.ok(source.includes("editorCommits"), "templates must be able to list official editor commits");
+}
+assert.ok(
+  buildWorkflow.includes("scripts/official_editor_commit.sh"),
+  "CI must read editor commits from the verified official editor build",
+);
+assert.ok(
+  read("scripts/verify_wasm_template.sh").includes("Engine.prototype['copyToFS']"),
+  "the shared verifier must reject a godot.js without the Engine wrapper",
+);
 assert.match(
   buildWorkflow,
   /template_revision:[\s\S]*?default: "2"/,
@@ -281,7 +300,7 @@ assert.ok(
 
 const localBuildScript = read("scripts/build_wasm_template.sh");
 assert.ok(localBuildScript.includes("status --porcelain --untracked-files=all"));
-assert.ok(localBuildScript.includes("Expected exactly one JavaScript artifact"));
+assert.ok(localBuildScript.includes("Expected exactly one packaged web template archive"));
 assert.ok(localBuildScript.includes("GODOT_COPYRIGHT.txt"));
 assert.ok(!localBuildScript.includes("head -1"), "local builds must reject stale ambiguous artifacts");
 

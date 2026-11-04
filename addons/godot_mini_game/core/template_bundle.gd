@@ -19,6 +19,9 @@ var manifest_path: String = ""
 var manifest: Dictionary = {}
 var godot_version: String = ""
 var godot_commit: String = ""
+## Commits reported by official editor builds of this exact release when they
+## differ from the source commit the template was built from.
+var editor_commits := PackedStringArray()
 var emscripten_version: String = ""
 var javascript_path: String = ""
 var wasm_path: String = ""
@@ -289,8 +292,24 @@ func _validate(editor_version: String, editor_commit: String) -> void:
 	if godot_commit.length() != 40:
 		error = "Template manifest requires the full 40-character Godot commit"
 		return
+	# Official release binaries can report a commit that is not the public tag
+	# commit. Accept such an editor only when the template lists that exact
+	# commit, recorded by reading the official build during certification.
+	var editor_commits_value: Variant = godot.get("editorCommits", [])
+	if not editor_commits_value is Array:
+		error = "Template editorCommits must be an array"
+		return
+	for value in editor_commits_value:
+		var listed := normalize_commit(str(value))
+		if listed.length() != 40:
+			error = "Template editorCommits requires full 40-character commits"
+			return
+		editor_commits.append(listed)
 	var expected_commit := normalize_commit(editor_commit)
-	if not commits_match(godot_commit, expected_commit):
+	var commit_accepted := commits_match(godot_commit, expected_commit)
+	for listed in editor_commits:
+		commit_accepted = commit_accepted or commits_match(listed, expected_commit)
+	if not commit_accepted:
 		error = "Template Godot commit %s does not match editor %s" % [godot_commit, expected_commit]
 		return
 	commit_verified = true

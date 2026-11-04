@@ -9,6 +9,10 @@ set -euo pipefail
 # Optional environment variables:
 #   GODOT_MINIGAME_BUILD_DIR  Persistent compiler/source cache.
 #   TEMPLATE_REVISION         Bundle revision (default: 2).
+#   EDITOR_COMMITS            Space-separated commits reported by the official
+#                             editor builds of this tag when they differ from
+#                             the tag commit; read them with
+#                             scripts/official_editor_commit.sh.
 
 export TZ=UTC
 
@@ -135,36 +139,37 @@ fi
         -j"$(sysctl -n hw.ncpu 2>/dev/null || nproc 2>/dev/null || echo 4)"
 )
 
+# Take godot.js and godot.wasm from the web template archive Godot packages
+# itself. Since 4.6 the build also leaves the raw Emscripten module (.js),
+# the engine wrapper (.engine.js) and their combination (.wrapped.js) in bin/;
+# only the archive's godot.js is the file the Web exporter ships.
 shopt -s nullglob
-JS_CANDIDATES=("${SOURCE_DIR}"/bin/godot.web.template_release.wasm32*.js)
-WASM_CANDIDATES=("${SOURCE_DIR}"/bin/godot.web.template_release.wasm32*.wasm)
+ARCHIVE_CANDIDATES=("${SOURCE_DIR}"/bin/godot.web.template_release.wasm32*.zip)
 shopt -u nullglob
-if [ "${#JS_CANDIDATES[@]}" -ne 1 ] || [ "${#WASM_CANDIDATES[@]}" -ne 1 ]; then
-    echo "Expected exactly one JavaScript artifact and one WASM artifact." >&2
-    printf 'JavaScript candidates (%s):\n' "${#JS_CANDIDATES[@]}" >&2
-    printf '  %s\n' "${JS_CANDIDATES[@]:-<none>}" >&2
-    printf 'WASM candidates (%s):\n' "${#WASM_CANDIDATES[@]}" >&2
-    printf '  %s\n' "${WASM_CANDIDATES[@]:-<none>}" >&2
+if [ "${#ARCHIVE_CANDIDATES[@]}" -ne 1 ]; then
+    echo "Expected exactly one packaged web template archive." >&2
+    printf '  %s\n' "${ARCHIVE_CANDIDATES[@]:-<none>}" >&2
     echo "Remove stale build outputs or use a clean GODOT_MINIGAME_BUILD_DIR." >&2
     exit 1
 fi
-JS_FILE="${JS_CANDIDATES[0]}"
-WASM_FILE="${WASM_CANDIDATES[0]}"
-if [ ! -s "$JS_FILE" ] || [ ! -s "$WASM_FILE" ]; then
-    echo "Godot build did not produce non-empty JavaScript and WASM artifacts" >&2
-    exit 1
-fi
-if [ "${JS_FILE%.js}" != "${WASM_FILE%.wasm}" ]; then
-    echo "JavaScript and WASM artifact stems do not match:" >&2
-    echo "  $JS_FILE" >&2
-    echo "  $WASM_FILE" >&2
-    exit 1
-fi
+TEMPLATE_ARCHIVE="${ARCHIVE_CANDIDATES[0]}"
+for member in godot.js godot.wasm; do
+    if ! unzip -l "$TEMPLATE_ARCHIVE" "$member" >/dev/null 2>&1; then
+        echo "Packaged web template is missing ${member}: $TEMPLATE_ARCHIVE" >&2
+        exit 1
+    fi
+done
 
 PACKAGE_DIR="$(mktemp -d "${BUILD_ROOT}/template-package.XXXXXX")"
-cp "$JS_FILE" "${PACKAGE_DIR}/godot.js"
+unzip -p "$TEMPLATE_ARCHIVE" godot.js > "${PACKAGE_DIR}/godot.js"
+unzip -p "$TEMPLATE_ARCHIVE" godot.wasm > "${PACKAGE_DIR}/godot.wasm"
+if [ ! -s "${PACKAGE_DIR}/godot.js" ] || [ ! -s "${PACKAGE_DIR}/godot.wasm" ]; then
+    echo "Packaged web template contains empty engine files" >&2
+    exit 1
+fi
 cp "${SOURCE_DIR}/COPYRIGHT.txt" "${PACKAGE_DIR}/GODOT_COPYRIGHT.txt"
-brotli --quality=11 --force --output="${PACKAGE_DIR}/godot.wasm.br" "$WASM_FILE"
+brotli --quality=11 --force --output="${PACKAGE_DIR}/godot.wasm.br" "${PACKAGE_DIR}/godot.wasm"
+rm -f "${PACKAGE_DIR}/godot.wasm"
 printf '%s\n' "$CANONICAL_VERSION" > "${PACKAGE_DIR}/version.txt"
 
 sha256_file() {
@@ -192,6 +197,17 @@ write_sha256() {
 JS_SHA="$(sha256_file "${PACKAGE_DIR}/godot.js")"
 WASM_SHA="$(sha256_file "${PACKAGE_DIR}/godot.wasm.br")"
 
+EDITOR_COMMITS_JSON="[]"
+for editor_commit in ${EDITOR_COMMITS:-}; do
+    if ! [[ "$editor_commit" =~ ^[0-9a-f]{40}$ ]]; then
+        echo "EDITOR_COMMITS entries must be full lowercase commits: $editor_commit" >&2
+        exit 1
+    fi
+    if [ "$editor_commit" != "$GODOT_COMMIT" ]; then
+        EDITOR_COMMITS_JSON="$(jq -c --arg commit "$editor_commit" '. + [$commit] | unique' <<<"$EDITOR_COMMITS_JSON")"
+    fi
+done
+
 jq -n \
     --arg version "$CANONICAL_VERSION" \
     --arg commit "$GODOT_COMMIT" \
@@ -201,9 +217,11 @@ jq -n \
     --argjson schema "$TEMPLATE_SCHEMA" \
     --argjson revision "$TEMPLATE_REVISION" \
     --argjson bridge_abi "$BRIDGE_ABI" \
+    --argjson editor_commits "$EDITOR_COMMITS_JSON" \
     '{
       schema: $schema,
-      godot: {version: $version, commit: $commit},
+      godot: ({version: $version, commit: $commit}
+        + (if ($editor_commits | length) > 0 then {editorCommits: $editor_commits} else {} end)),
       emscriptenVersion: $emscripten,
       profile: "2d_full",
       target: "release",
@@ -241,3 +259,4 @@ write_sha256 "$BUNDLE_PATH"
 
 echo "Validated template bundle: $BUNDLE_PATH"
 echo "Godot source commit: $GODOT_COMMIT"
+echo "Accepted editor commits: $(jq -r '.godot.editorCommits // [] | join(" ")' "${PACKAGE_DIR}/template.json")"

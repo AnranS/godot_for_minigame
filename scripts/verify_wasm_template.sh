@@ -67,6 +67,8 @@ jq -e \
       (.schema == $expected_schema) and
       (.godot.version | type == "string" and test("^[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9A-Za-z]+$")) and
       (.godot.commit | type == "string" and test("^[0-9a-fA-F]{40}$")) and
+      (.godot.editorCommits == null or (.godot.editorCommits | type == "array"
+        and all(.[]; type == "string" and test("^[0-9a-f]{40}$")))) and
       (.emscriptenVersion | type == "string" and test("^[0-9]+\\.[0-9]+\\.[0-9]+([.-][0-9A-Za-z][0-9A-Za-z.-]*)?$")) and
       (.revision | type == "number" and . > 0 and (. % 1 == 0)) and
       (.bridgeAbi == $expected_bridge_abi) and
@@ -107,6 +109,12 @@ for artifact in godot.js godot.wasm.br; do
 done
 
 node --check "${PACKAGE_DIR}/godot.js"
+# The exporter ships the Engine wrapper combined with the Emscripten module.
+# The raw module alone passes the syntax check but cannot start the engine.
+if ! grep -qF "Engine.prototype['copyToFS'] = Engine.prototype.copyToFS;" "${PACKAGE_DIR}/godot.js"; then
+    echo "godot.js does not contain the Godot Engine wrapper" >&2
+    exit 1
+fi
 brotli --decompress --force --output="${TEMP_DIR}/godot.wasm" "${PACKAGE_DIR}/godot.wasm.br"
 if [ "$(xxd -p -l 4 "${TEMP_DIR}/godot.wasm")" != "0061736d" ]; then
     echo "Decompressed artifact is not a WebAssembly module" >&2

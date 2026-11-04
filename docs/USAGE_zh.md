@@ -1653,11 +1653,27 @@ Native 导出会禁用 JavaScript eval。TikTok 请通过
 1. 安装并激活精确的 emsdk 版本（缓存默认位于 `build_wasm/emsdk`，也可用 `GODOT_MINIGAME_BUILD_DIR` 指定）。
 2. 克隆精确 Godot tag；缓存源码只要 tag 不符或存在本地改动，脚本就拒绝继续。
 3. 临时强制 Emscripten longjmp 模式，并用 `wasm_simd=no`、`threads=no`、禁用动态链接及 WebRTC/XR 模块等参数编译 Web release 模板；退出时自动恢复源码补丁。
-4. 使用共享校验器检查 JavaScript 语法、Brotli/WASM 结构、禁用特性、来源身份与哈希。
-5. 产物位于 `build_wasm/output/{tag}/emsdk-{version}/2d_full/release/abi-{abi}/r{revision}/godot_minigame_template_{tag}_emsdk-{version}_2d-full_release_abi-{abi}_r{revision}.zip`。
-6. 回到编辑器，点 Dock 里的 **导入模板** 选择该 ZIP。
+4. 从 Godot 自己打包的 Web 模板压缩包中取出 `godot.js` 与 `godot.wasm`（4.6 起 `bin/` 里还有原始 Emscripten 模块等多个 JS 文件，它们不能直接使用）。
+5. 使用共享校验器检查 JavaScript 语法、Engine 包装层、Brotli/WASM 结构、禁用特性、来源身份与哈希。
+6. 产物位于 `build_wasm/output/{tag}/emsdk-{version}/2d_full/release/abi-{abi}/r{revision}/godot_minigame_template_{tag}_emsdk-{version}_2d-full_release_abi-{abi}_r{revision}.zip`。
+7. 回到编辑器，点 Dock 里的 **导入模板** 选择该 ZIP。
 
 > Apple Silicon 约 5 分钟；Intel / Linux 约 8-15 分钟。
+
+### 官方编辑器的提交号
+
+官方发行的编辑器不一定从公开 tag 的提交构建，例如 `4.6.3-stable` 的 tag 提交是
+`35e80b3a`，官方编辑器报告的是 `7d41c59c`。插件要求模板提交与编辑器报告的提交一致，
+因此给官方编辑器构建模板时，要把它报告的提交写进 `template.json`：
+
+```bash
+EDITOR_COMMITS="$(./scripts/official_editor_commit.sh 4.6.3-stable)" \
+  ./scripts/build_wasm_template.sh 4.6.3-stable
+```
+
+`official_editor_commit.sh` 会下载该 tag 的官方编辑器，按发行版的
+`SHA512-SUMS.txt` 校验后运行并读取提交号。与 tag 提交相同时不需要写入。GitHub Actions
+构建会自动完成这一步；不在列表里的编辑器提交仍会被拒绝。
 
 ### 通过 GitHub Actions 构建
 

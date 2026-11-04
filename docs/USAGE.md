@@ -1685,11 +1685,29 @@ Steps the script performs:
 1. Installs and activates the exact emsdk release (cache: `build_wasm/emsdk`, or the directory selected with `GODOT_MINIGAME_BUILD_DIR`).
 2. Clones the exact Godot tag and refuses a dirty or mismatched cached source tree.
 3. Temporarily enforces Emscripten longjmp mode, then builds the Web release template with `wasm_simd=no`, `threads=no`, dynamic linking disabled, and the WebRTC/XR modules disabled. The source patch is restored on exit.
-4. Validates JavaScript syntax, Brotli/WASM structure, disabled features, provenance, and hashes with the shared verifier.
-5. Produces `build_wasm/output/{tag}/emsdk-{version}/2d_full/release/abi-{abi}/r{revision}/godot_minigame_template_{tag}_emsdk-{version}_2d-full_release_abi-{abi}_r{revision}.zip`.
-6. Back in the editor, click **Import Template** in the dock and pick that ZIP.
+4. Takes `godot.js` and `godot.wasm` from the web template archive Godot packages itself. Since 4.6 `bin/` also holds the raw Emscripten module and other JS files that cannot be shipped directly.
+5. Validates JavaScript syntax, the Engine wrapper, Brotli/WASM structure, disabled features, provenance, and hashes with the shared verifier.
+6. Produces `build_wasm/output/{tag}/emsdk-{version}/2d_full/release/abi-{abi}/r{revision}/godot_minigame_template_{tag}_emsdk-{version}_2d-full_release_abi-{abi}_r{revision}.zip`.
+7. Back in the editor, click **Import Template** in the dock and pick that ZIP.
 
 > Apple Silicon: ~5 min. Intel / Linux: ~8–15 min.
+
+### Official editor commits
+
+Official release editors are not always built from the public tag commit. For
+example, `4.6.3-stable` is tagged `35e80b3a`, while its official editors report
+`7d41c59c`. The plugin requires the template commit to match what the editor
+reports, so record that commit when building a template for official editors:
+
+```bash
+EDITOR_COMMITS="$(./scripts/official_editor_commit.sh 4.6.3-stable)" \
+  ./scripts/build_wasm_template.sh 4.6.3-stable
+```
+
+`official_editor_commit.sh` downloads the official editor of the tag, verifies it
+against the release `SHA512-SUMS.txt`, runs it, and prints the commit it reports.
+Skip it when that commit equals the tag commit. The GitHub Actions build does this
+automatically; editor commits outside the list are still rejected.
 
 ### GitHub Actions
 

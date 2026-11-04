@@ -81,6 +81,8 @@ backup；插件会报告路径并停止发布，由操作者先归档、比对�
 - schema version;
 - exact four-part Godot version such as `4.6.1.stable`;
 - full 40-character Godot source commit;
+- optional `godot.editorCommits`: full commits reported by the official editor
+  builds of the same release when they differ from the source commit;
 - exact Emscripten toolchain version;
 - profile (`2d_full`) and target (`release`);
 - positive template revision;
@@ -92,10 +94,25 @@ Missing manifests, partial bundles, shortened versions, mismatched commits, and
 the standard Godot Web template fail closed. The exporter never generates a
 manifest from untrusted files.
 
+Official release binaries are not always built from the public tag commit:
+`4.6.3-stable` is tagged `35e80b3a`, while its official editors report
+`7d41c59c`. An editor is accepted when its commit equals the source commit or
+is listed in `editorCommits`. Certification fills that list by downloading the
+official editor of the tag, verifying it against the release `SHA512-SUMS.txt`,
+and reading `Engine.get_version_info().hash` (`scripts/official_editor_commit.sh`);
+it is never typed by hand. Older exporters ignore the field and still reject
+the official editor, so the change fails closed.
+
 `template.json` 是强制契约，锁定 schema、四段式精确 Godot 版本、40 位源码提交、
 精确 Emscripten 工具链、profile、target、正整数 revision、Bridge ABI、WASM 特性，以及两个引擎文件的
 SHA-256。缺 manifest、缺文件、缩写版本、提交不匹配和官方标准 Web 模板都会直接
 失败；导出器不会再替来源不明的文件自动生成 manifest。
+
+官方发行的编辑器不一定从公开 tag 的提交构建：`4.6.3-stable` 的 tag 提交是
+`35e80b3a`，官方编辑器报告的却是 `7d41c59c`。编辑器提交等于源码提交，或列在可选的
+`godot.editorCommits` 中时才会被接受。认证时由 `scripts/official_editor_commit.sh`
+下载该 tag 的官方编辑器、按发行版 `SHA512-SUMS.txt` 校验后读取它报告的提交，不手工
+填写。旧版导出器会忽略该字段，仍然拒绝，属于失败关闭。
 
 ## Multi-version store / 多版本模板库
 

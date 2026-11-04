@@ -83,6 +83,23 @@ jobs:
           test -z "$(git status --porcelain --untracked-files=all)"
           echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
+      - name: Read official editor commit
+        id: editor
+        env:
+          SOURCE_COMMIT: ${{ steps.source.outputs.commit }}
+        run: |
+          set -euo pipefail
+          # Official binaries can be built from a commit other than the tag;
+          # record what they report so the exporter can accept those editors.
+          editor_commit=$(scripts/official_editor_commit.sh "$GODOT_TAG")
+          if [ "$editor_commit" = "$SOURCE_COMMIT" ]; then
+            editor_commits='[]'
+          else
+            editor_commits=$(jq -cn --arg commit "$editor_commit" '[$commit]')
+            echo "Official ${GODOT_TAG} editors report ${editor_commit}; tag commit is ${SOURCE_COMMIT}." >> "$GITHUB_STEP_SUMMARY"
+          fi
+          echo "commits=$editor_commits" >> "$GITHUB_OUTPUT"
+
       - name: Set up Emscripten
         uses: mymindstorm/setup-emsdk@v16
         with:
@@ -135,35 +152,32 @@ jobs:
             module_openxr_enabled=no \
             -j"$(nproc)"
 
-      - name: Locate unique build artifacts
+      - name: Extract packaged web template
         id: artifacts
         run: |
           set -euo pipefail
+          # Godot 4.6 leaves .js, .engine.js and .wrapped.js in bin/. Only the
+          # godot.js inside the packaged web template is what the exporter ships.
           shopt -s nullglob
-          js_candidates=(godot-src/bin/godot.web.template_release.wasm32*.js)
-          wasm_candidates=(godot-src/bin/godot.web.template_release.wasm32*.wasm)
+          archives=(godot-src/bin/godot.web.template_release.wasm32*.zip)
           shopt -u nullglob
-          if [ "${#js_candidates[@]}" -ne 1 ] || [ "${#wasm_candidates[@]}" -ne 1 ]; then
-            echo "Expected exactly one JavaScript artifact and one WASM artifact" >&2
-            printf 'JavaScript candidates (%s): %s\n' "${#js_candidates[@]}" "${js_candidates[*]:-<none>}" >&2
-            printf 'WASM candidates (%s): %s\n' "${#wasm_candidates[@]}" "${wasm_candidates[*]:-<none>}" >&2
+          if [ "${#archives[@]}" -ne 1 ]; then
+            printf 'Expected exactly one packaged web template archive (%s): %s\n' "${#archives[@]}" "${archives[*]:-<none>}" >&2
             exit 1
           fi
-          js_file="${js_candidates[0]}"
-          wasm_file="${wasm_candidates[0]}"
-          test -s "$js_file"
-          test -s "$wasm_file"
-          if [ "${js_file%.js}" != "${wasm_file%.wasm}" ]; then
-            echo "JavaScript and WASM artifact stems do not match" >&2
-            exit 1
-          fi
-          echo "js=$js_file" >> "$GITHUB_OUTPUT"
-          echo "wasm=$wasm_file" >> "$GITHUB_OUTPUT"
+          mkdir -p engine-artifacts
+          unzip -p "${archives[0]}" godot.js > engine-artifacts/godot.js
+          unzip -p "${archives[0]}" godot.wasm > engine-artifacts/godot.wasm
+          test -s engine-artifacts/godot.js
+          test -s engine-artifacts/godot.wasm
+          echo "js=engine-artifacts/godot.js" >> "$GITHUB_OUTPUT"
+          echo "wasm=engine-artifacts/godot.wasm" >> "$GITHUB_OUTPUT"
 
       - name: Assemble versioned template bundle
         id: bundle
         env:
           GODOT_COMMIT: ${{ steps.source.outputs.commit }}
+          EDITOR_COMMITS: ${{ steps.editor.outputs.commits }}
           BRIDGE_ABI: ${{ steps.contract.outputs.bridge_abi }}
           TEMPLATE_SCHEMA: ${{ steps.contract.outputs.template_schema }}
         run: |
@@ -185,9 +199,11 @@ jobs:
             --argjson schema "$TEMPLATE_SCHEMA" \
             --argjson revision "$TEMPLATE_REVISION" \
             --argjson bridge_abi "$BRIDGE_ABI" \
+            --argjson editor_commits "$EDITOR_COMMITS" \
             '{
               schema: $schema,
-              godot: {version: $version, commit: $commit},
+              godot: ({version: $version, commit: $commit}
+                + (if ($editor_commits | length) > 0 then {editorCommits: $editor_commits} else {} end)),
               emscriptenVersion: $emscripten,
               profile: "2d_full",
               target: "release",
