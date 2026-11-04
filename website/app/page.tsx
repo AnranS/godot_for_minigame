@@ -1,73 +1,113 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
+import { apiCounts } from "./api-counts.generated";
 import { releaseData } from "./site-data.generated";
 import { sitePath } from "./site-path";
 
 type Language = "zh" | "en";
 
 const REPO = "https://github.com/AnranS/godot_for_minigame";
+const RELEASE = `${REPO}/releases/latest`;
 const VERSION = releaseData.pluginVersion;
 const BRIDGE_ABI = releaseData.bridgeAbi;
-const CERTIFIED = releaseData.bundled;
-const GODOT_VERSION = CERTIFIED.godotVersion;
-const GODOT_COMMIT_SHORT = CERTIFIED.godotCommit.slice(0, 7);
-const EMSCRIPTEN_VERSION = CERTIFIED.emscriptenVersion;
-const TEMPLATE_REVISION = CERTIFIED.templateRevision;
-const RELEASE = `${REPO}/releases/latest`;
+const EMSCRIPTEN_VERSION = releaseData.bundled.emscriptenVersion;
 const PACKAGE_FILENAME = "godot_mini_game_vX.Y.Z.zip";
+const METHODS = apiCounts.methods;
+const SIGNALS = apiCounts.signals;
+
+const shortVersion = (version: string) => version.replace(/\.stable$/, "");
+
+// support-matrix.json lists certified editors oldest first; show newest first.
+const CERTIFIED = [...releaseData.certified].reverse().map((row) => ({
+  version: shortVersion(row.godotVersion),
+  commit: row.godotCommit.slice(0, 9),
+  bundled: row.template.source === "bundled",
+  releaseUrl: "releaseTag" in row.template ? `${REPO}/releases/tag/${row.template.releaseTag}` : RELEASE,
+}));
+const LATEST = CERTIFIED[0].version;
+const VERSION_LIST = releaseData.certified.map((row) => shortVersion(row.godotVersion)).join(" · ");
+const BUNDLED_VERSION = shortVersion(releaseData.bundled.godotVersion);
+
+const platformIcons = [
+  ["/wechat.svg", "WeChat"],
+  ["/douyin.svg", "Douyin"],
+  ["/tiktok.svg", "TikTok"],
+] as const;
 
 const copy = {
   zh: {
-    nav: ["产品特性", "导出流程", "SDK 能力", "API 参考", "快速开始", "接入指引"],
+    nav: ["核心优势", "版本支持", "SDK 能力", "API 参考", "快速开始", "接入指引"],
     language: "EN",
     menu: "打开导航",
-    badge: `开源 · MIT License · v${VERSION}`,
-    eyebrow: "Godot 4.x 小游戏导出插件",
+    badgeTag: "新",
+    badge: `已支持 Godot ${LATEST}`,
+    eyebrow: "Godot 4.x 小游戏导出插件 · 开源",
     heroA: "把 Godot 游戏，",
-    heroB: "发布到微信、抖音与 TikTok",
+    heroB: "发布到微信、|抖音与 TikTok",
     heroBody:
-      "内置小游戏兼容的 WASM 引擎、平台适配层与能力桥接，支持微信、抖音与 TikTok。",
-    download: "下载最新版",
-    docs: "查看中文文档",
-    github: "GitHub",
+      "在 Godot 编辑器里**一键导出**小游戏工程。引擎、适配层与 SDK 全部内置，**不用装 Node.js、Emscripten，也不用下载 Web 导出模板**。",
+    download: `下载 v${VERSION}`,
+    quickStart: "快速开始教程",
     supports: "已支持",
-    visualProject: "项目",
-    visualExport: "小游戏导出",
-    visualPlatform: "目标平台",
-    visualAppId: "平台标识",
-    visualOrientation: "屏幕方向",
-    visualOutput: "输出目录",
-    visualButton: "导出小游戏",
-    visualDone: "导出完成",
-    visualReady: "可直接在开发者工具中打开",
-    metrics: [
-      ["3", "小游戏平台"],
-      ["20+", "类原生 API"],
-      ["≈ 6 MB", "Brotli 引擎"],
-      ["MIT", "开源许可"],
+    shotsCaption: "真实截图：Godot 编辑器中的小游戏导出面板，以及导出结果在微信开发者工具模拟器中运行。",
+    shotEditorAlt: "Godot 编辑器右侧的小游戏导出面板，已选择微信小游戏并显示兼容模板就绪",
+    shotPhoneAlt: "导出的 Godot 示例项目在微信开发者工具模拟器中运行",
+    shotDone: "导出完成",
+    shotDoneDetail: "已在微信开发者工具中运行",
+    highlights: [
+      ["0", "额外依赖", "不装 Node.js、Emscripten、Brotli，也不下载 Web 导出模板"],
+      ["3", "小游戏平台", "微信、抖音与 TikTok，同一个 Godot 项目导出"],
+      [String(METHODS), "SDK 方法", `另有 ${SIGNALS} 个信号，调用前先检测宿主能力`],
+      [String(CERTIFIED.length), "Godot 版本", `${VERSION_LIST}，引擎模板与编辑器精确匹配`],
     ],
-    sectionFeatures: "为小游戏交付而生",
-    sectionFeaturesBody:
-      "把复杂的引擎编译、运行时适配与平台配置，收进一个清晰的 Godot Dock。",
-    features: [
-      ["01", "开箱即用", "内置小游戏兼容引擎模板，无需从头配置 Emscripten。"],
-      ["02", "一键导出", "自动生成资源包、引擎文件、JS 适配层与平台配置。"],
-      ["03", "宿主兼容引擎", "移除小游戏 WebAssembly 不支持的 SIMD、异常 Tag 与线程特性。"],
-      ["04", "三平台交付", "同一套 Godot 项目输出微信、抖音与 TikTok 工程。"],
-      ["05", "原生能力桥接", "同名能力先检测再调用；支付等平台特有能力走显式映射。"],
-      ["06", "可验证工程链路", "中英文指南、模板构建、自动发布与三平台导出冒烟测试一应俱全。"],
+    featuresKicker: "核心优势",
+    featuresTitle: "小游戏导出里最麻烦的部分，|插件已经做好",
+    featuresBody: "编译引擎、适配宿主、生成平台配置，这些容易出错又和游戏本身无关的工作，都收进了一个 Godot 面板。",
+    exportTitle: "一键导出",
+    exportBody: "选平台、填 AppID，点一次导出。插件生成资源包、引擎、JS 适配层和平台配置，输出目录直接用开发者工具打开。",
+    exportPoints: [
+      "不用装 Node.js、Emscripten 或 Brotli",
+      "不用下载 Godot 官方 Web 导出模板",
+      "按平台生成 game.json：抖音用 **subPackages**，微信与 TikTok 用 **subpackages**",
     ],
-    flowKicker: "从项目到真机",
-    flowTitle: "四步完成一次交付",
-    flowBody: "插件接管重复而脆弱的构建细节，你只需要专注游戏本身。",
+    exportShotAlt: "导出完成后的小游戏导出面板，日志显示导出成功",
+    engineTitle: "真机能跑的引擎",
+    engineBody:
+      "官方 Web 模板依赖 SIMD、WASM 异常和多线程，小游戏真机的 WebAssembly 不支持这些特性，通常在编译阶段就会失败。内置引擎把它们全部关闭，并在导出时注入宿主兼容补丁。",
+    enginePoints: ["wasm_simd=no", "threads=no", "无 WASM 异常", "Brotli ≈ 6 MB"],
+    sdkCardTitle: "一套 SDK，三个宿主",
+    sdkCardBody: "MiniGameSDK 自动注册为 Autoload。同名能力先检测宿主再调用，在编辑器里调用也不会报错。",
+    sdkUnits: ["个方法", "个信号"],
+    safeTitle: "放心重复导出",
+    safeBody: "先在暂存目录生成并校验全部文件，只替换插件管理的路径，输出目录里你自己的文件原样保留。",
+    safeFiles: [
+      ["engine/", "替换", false],
+      ["game.js", "替换", false],
+      ["my-notes.md", "保留", true],
+    ],
+    versionsKicker: "版本支持",
+    versionsTitle: "按 Godot 版本|精确匹配引擎",
+    versionsBody:
+      "每份引擎模板只对应一个 Godot 版本。版本号、源码提交或工具链任意一项对不上，导出会在预检阶段停下，避免引擎和编辑器不一致导致的运行时错误。",
+    versionsNote: `所有模板都使用 Emscripten ${EMSCRIPTEN_VERSION}、release 构建，单线程、不含 SIMD，Bridge ABI ${BRIDGE_ABI}。非内置版本在导出面板点“导入引擎模板…”即可。`,
+    versionsCustom: "其它版本：编译自定义模板",
+    versionsGuide: "引擎版本说明",
+    versionLatest: "最新",
+    versionBundled: "随插件内置",
+    versionRelease: "下载模板",
+    versionTested: "三平台导出测试",
+    flowKicker: "从项目到开发者工具",
+    flowTitle: "四步完成第一次导出",
+    flowBody: "不需要额外的编译环境。第一次接入，建议跟着快速开始教程走一遍。",
     steps: [
-      ["01", "安装插件", "把 Release 中的 addons/godot_mini_game 放入项目。"],
-      ["02", "启用并配置", "启用插件，添加一个 Godot Web 导出预设。"],
-      ["03", "选择目标平台", "在 Dock 中填写平台标识、方向与输出目录。"],
-      ["04", "打开开发者工具", "点击导出，再用对应平台的开发与调试工具打开。"],
+      ["01", "下载插件", "从 Release 的 Assets 下载插件压缩包，不要下载 GitHub 自动生成的源码包。", PACKAGE_FILENAME],
+      ["02", "解压并启用", "解压到项目根目录，在“项目设置 → 插件”中启用 Godot Mini Game Export。", "res://addons/godot_mini_game/"],
+      ["03", "添加 Web 预设", "在“项目 → 导出”中添加一个 Web 预设，名称随意，不需要下载官方导出模板。", "项目 → 导出 → Web"],
+      ["04", "导出并运行", "在小游戏导出面板选择平台，填写 AppID 和输出目录，导出后用开发者工具打开。", "MiniGameExport → 导出小游戏"],
     ],
-    architectureTitle: "一套 Godot 工程，分流到三端运行时",
+    flowGuide: "带截图的快速开始",
+    architectureTitle: "一套 Godot 工程，|分流到三端运行时",
     architectureBody:
       "导出器把游戏内容、认证引擎与共享适配层装配成平台工程，再交给微信、抖音和 TikTok 运行时。",
     architectureCaption:
@@ -76,7 +116,7 @@ const copy = {
     architectureExporter: ["Godot Mini Game Exporter", "一次导出事务，完成资源打包、引擎选择与平台装配。"],
     architectureModules: [
       ["PACK", "游戏资源包", "把场景、脚本与资源打包为 Godot 资源包。", "engine/godot.zip"],
-      ["ENGINE", "认证引擎模板", `锁定 Godot ${GODOT_VERSION}、Emscripten ${EMSCRIPTEN_VERSION} 与校验和。`, "godot.wasm.br"],
+      ["ENGINE", "认证引擎模板", `按编辑器版本精确匹配，锁定 Emscripten ${EMSCRIPTEN_VERSION} 与校验和。`, "godot.wasm.br"],
       ["BRIDGE", "共享浏览器适配与平台桥", "浏览器兼容层统一输入、网络、音频和 MiniGameSDK 能力。", "adapter.js + PlatformRuntime"],
     ],
     architectureRuntimeTitle: "平台运行时",
@@ -86,94 +126,101 @@ const copy = {
       ["Douyin", "抖音小游戏", "/douyin.svg"],
       ["TikTok", "TikTok Mini Game", "/tiktok.svg"],
     ],
-    techKicker: "真实设备优先",
-    techTitle: "不是“模拟器能跑”，而是真机可用",
-    techBody:
-      `官方 Web 模板包含部分小游戏运行时不支持的 WASM 特性。项目内置 Godot ${GODOT_VERSION} 引擎并自动注入宿主兼容补丁。`,
-    techPoints: [
-      ["wasm_simd=no", "避开真机 SIMD 编译错误"],
-      ["threads=no", "适配小游戏线程限制"],
-      ["Brotli", "引擎压缩后约 6 MB"],
-      ["Subpackages", "抖音用 subPackages；微信与 TikTok 用 subpackages"],
-    ],
-    templateNote: `v${VERSION} 认证 Godot ${GODOT_VERSION} · commit ${GODOT_COMMIT_SHORT}… · Emscripten ${EMSCRIPTEN_VERSION} · Bridge ABI ${BRIDGE_ABI} · r${TEMPLATE_REVISION}；发布前仍需完成目标平台真机验证。`,
     sdkKicker: "MiniGameSDK",
-    sdkTitle: "小游戏原生能力，用 GDScript 调用",
-    sdkBody:
-      "插件自动注册 MiniGameSDK Autoload。API 页展示完整 Bridge 接口面，不代表三个宿主全部兼容；运行时按能力门控。",
+    sdkTitle: "小游戏原生能力，|用 GDScript 调用",
+    sdkBody: `插件自动注册 MiniGameSDK Autoload，提供 **${METHODS} 个方法、${SIGNALS} 个信号**。同名能力先检测宿主再调用，支付等平台特有能力按平台映射。`,
+    sdkNote: "API 页列出的是完整桥接接口，不代表每个宿主都支持全部方法。",
     apiGroups: ["登录鉴权", "广告支付", "本地与云存储", "媒体与录屏", "网络与 WebSocket", "传感器", "分享与订阅", "文件系统"],
     codeLabel: "GDScript · 激励视频广告",
     copyCode: "复制代码",
     copied: "已复制",
     apiReference: "查看完整 API 参考",
-    startKicker: "现在开始",
-    startTitle: "让下一次发布少一点折腾",
-    startBody: "下载插件、启用 Dock，几分钟内得到可被开发者工具直接打开的小游戏工程。",
-    startRelease: "前往 Releases",
-    startGuide: "按步骤快速开始",
     faqTitle: "常见问题",
     faqs: [
-      ["支持哪些 Godot 版本？", `当前内置模板与自动化流程认证 Godot ${GODOT_VERSION}。其它编辑器构建必须导入版本、提交、工具链与 ABI 完全匹配的模板包。`],
+      ["支持哪些 Godot 版本？", `目前认证 ${VERSION_LIST}。${BUNDLED_VERSION} 的模板随插件内置；其它版本从 Release 下载对应模板，在导出面板点“导入引擎模板…”。不在列表里的版本，可以按使用文档编译一份完全匹配的模板。`],
       ["需要自己安装 Emscripten 吗？", "日常使用不需要。Release 已带预编译引擎；只有构建自定义 Godot 版本模板时才需要完整编译环境。"],
       ["为什么不能直接使用 Godot 官方 Web 模板？", "小游戏真机的 WXWebAssembly 对 SIMD、异常处理 Tag 与线程支持有限，官方模板可能在真机编译阶段失败。"],
       ["导出后还需要做什么？", "用对应平台工具完成应用标识、域名、隐私、审核与真机验证配置。"],
       ["支持分包吗？", "支持主包与引擎分包拆分：主包只放启动代码，引擎与游戏资源放在 engine 分包并在启动时自动加载，SDK 也提供 load_subpackage() 与 pre_download_subpackage()。目前每次导出只生成一个资源包，暂不支持把游戏资源拆成多个自定义分包。"],
       ["微信开发者工具停在 33% 怎么办？", "v0.3.0 之前的插件版本，适配层会覆盖开发者工具加载分包所用的全局对象，引擎分包因此一直没有回调；升级到 v0.3.0 或更新版本后重新导出即可。如果报 loadSubpackage:fail module not found，通常是项目以游客模式运行，请换成当前账号有开发权限的 AppID。"],
     ],
-    finalTitle: "你的 Godot 游戏，下一站是小游戏。",
+    finalTitle: "你的 Godot 游戏，|下一站是小游戏。",
     finalBody: "开源、透明、面向真实设备。现在就完成第一次导出。",
     footer: "为使用 Godot 的小游戏开发者打造。",
     copyright: "Godot Mini Game · MIT License",
+    notAffiliated: "非 Godot 官方关联项目",
   },
   en: {
-    nav: ["Features", "Workflow", "SDK", "API Reference", "Quick Start", "Guide"],
+    nav: ["Highlights", "Versions", "SDK", "API Reference", "Quick Start", "Guide"],
     language: "中文",
     menu: "Open navigation",
-    badge: `Open source · MIT License · v${VERSION}`,
-    eyebrow: "Mini-game exporter for Godot 4.x",
+    badgeTag: "New",
+    badge: `Godot ${LATEST} supported`,
+    eyebrow: "Open-source mini-game exporter for Godot 4.x",
     heroA: "Ship your Godot game",
     heroB: "to WeChat, Douyin & TikTok",
     heroBody:
-      "A mini-game-compatible WASM engine, platform adapters, and capability bridge for WeChat, Douyin, and TikTok.",
-    download: "Download latest",
-    docs: "Read English docs",
-    github: "GitHub",
+      "Export a mini-game project **in one click** from the Godot editor. The engine, adapters, and SDK are bundled, so there is **no Node.js, Emscripten, or Web export template to install**.",
+    download: `Download v${VERSION}`,
+    quickStart: "Quick start guide",
     supports: "Supports",
-    visualProject: "Project",
-    visualExport: "Mini Game Export",
-    visualPlatform: "Target platform",
-    visualAppId: "Platform ID",
-    visualOrientation: "Orientation",
-    visualOutput: "Output folder",
-    visualButton: "Export mini game",
-    visualDone: "Export complete",
-    visualReady: "Ready to open in platform DevTools",
-    metrics: [
-      ["3", "mini-game platforms"],
-      ["20+", "native API groups"],
-      ["≈ 6 MB", "Brotli engine"],
-      ["MIT", "open-source license"],
+    shotsCaption: "Real screenshots: the Mini Game Export dock in the Godot editor, and the exported game running in the WeChat DevTools simulator.",
+    shotEditorAlt: "The Mini Game Export dock in the Godot editor with WeChat selected and the compatible template ready",
+    shotPhoneAlt: "The exported Godot demo running in the WeChat DevTools simulator",
+    shotDone: "Export complete",
+    shotDoneDetail: "Running in WeChat DevTools",
+    highlights: [
+      ["0", "extra tools", "No Node.js, Emscripten, Brotli, or Web export templates to install"],
+      ["3", "platforms", "WeChat, Douyin, and TikTok from one Godot project"],
+      [String(METHODS), "SDK methods", `Plus ${SIGNALS} signals, each checked against the host before it runs`],
+      [String(CERTIFIED.length), "Godot versions", `${VERSION_LIST}, each with an exactly matched engine`],
     ],
-    sectionFeatures: "Built for mini-game delivery",
-    sectionFeaturesBody:
-      "Engine compilation, runtime adaptation, and platform configuration fit inside one approachable Godot Dock.",
-    features: [
-      ["01", "Zero configuration", "A compatible engine template is bundled. No Emscripten setup for everyday use."],
-      ["02", "One-click export", "Generate the pack, engine, JavaScript adapters, and platform configuration together."],
-      ["03", "Host-compatible engine", "Avoid WASM SIMD, exception-tag, and threading features unsupported by mini-game hosts."],
-      ["04", "Three platforms", "Export one Godot project to WeChat, Douyin, and TikTok projects."],
-      ["05", "Native API bridge", "Gate same-name capabilities and explicitly map payments and other host-specific flows."],
-      ["06", "Verifiable toolchain", "Bilingual docs, template builds, automated releases, and three-platform export smoke tests."],
+    featuresKicker: "Highlights",
+    featuresTitle: "The hard parts of a mini‑game export, already done",
+    featuresBody: "Building the engine, adapting to each host, and generating platform configuration are error-prone and unrelated to your game. They now live in one Godot dock.",
+    exportTitle: "One-click export",
+    exportBody: "Pick a platform, enter the App ID, and export. The plugin writes the pack, engine, JavaScript adapters, and platform configuration into a folder the DevTools open directly.",
+    exportPoints: [
+      "No Node.js, Emscripten, or Brotli to install",
+      "No Godot Web export templates to download",
+      "Per-platform game.json: Douyin uses **subPackages**; WeChat and TikTok use **subpackages**",
     ],
-    flowKicker: "Project to device",
-    flowTitle: "A complete delivery in four steps",
-    flowBody: "The plugin owns the repetitive build details, so you can stay focused on the game.",
+    exportShotAlt: "The Mini Game Export dock after an export, with the log reporting success",
+    engineTitle: "An engine that runs on devices",
+    engineBody:
+      "Standard Web templates rely on SIMD, WASM exceptions, and threads. Mini-game WebAssembly on real devices supports none of them, so those builds usually fail to compile. The bundled engine turns them all off and receives host compatibility patches at export time.",
+    enginePoints: ["wasm_simd=no", "threads=no", "no WASM exceptions", "Brotli ≈ 6 MB"],
+    sdkCardTitle: "One SDK, three hosts",
+    sdkCardBody: "MiniGameSDK is registered as an Autoload. Shared names are checked against the host before they run, and calls stay safe inside the editor.",
+    sdkUnits: ["methods", "signals"],
+    safeTitle: "Safe re-exports",
+    safeBody: "Every file is built and validated in a staging folder first. Only paths the plugin owns are replaced; your own files in the output folder are kept.",
+    safeFiles: [
+      ["engine/", "replaced", false],
+      ["game.js", "replaced", false],
+      ["my-notes.md", "kept", true],
+    ],
+    versionsKicker: "Versions",
+    versionsTitle: "Engine templates matched to your exact Godot version",
+    versionsBody:
+      "Each engine template belongs to exactly one Godot version. If the version, source commit, or toolchain differs, the export stops at preflight instead of failing at runtime.",
+    versionsNote: `Every template uses Emscripten ${EMSCRIPTEN_VERSION} and a release build: single-threaded, no SIMD, Bridge ABI ${BRIDGE_ABI}. For versions that are not bundled, click “Import engine template…” in the dock.`,
+    versionsCustom: "Other versions: build a custom template",
+    versionsGuide: "Engine version notes",
+    versionLatest: "Latest",
+    versionBundled: "Bundled",
+    versionRelease: "Get template",
+    versionTested: "3-platform export tests",
+    flowKicker: "Project to DevTools",
+    flowTitle: "Your first export in four steps",
+    flowBody: "No build environment needed. For a first run, follow the quick start guide; every step has a screenshot.",
     steps: [
-      ["01", "Install", "Drop addons/godot_mini_game from the latest Release into your project."],
-      ["02", "Enable & configure", "Enable the plugin and add a Godot Web export preset."],
-      ["03", "Choose a platform", "Set the platform ID, orientation, and output folder in the Dock."],
-      ["04", "Open DevTools", "Export once, then open the result with the matching platform development tools."],
+      ["01", "Download", "Get the plugin archive from the Release assets, not GitHub's source archive.", PACKAGE_FILENAME],
+      ["02", "Extract & enable", "Extract it into the project root and enable Godot Mini Game Export under Project Settings → Plugins.", "res://addons/godot_mini_game/"],
+      ["03", "Add a Web preset", "Add a Web preset in Project → Export with any name. No official export templates needed.", "Project → Export → Web"],
+      ["04", "Export & run", "Choose a platform in the dock, enter the App ID and output folder, export, then open it in DevTools.", "MiniGameExport → Export"],
     ],
+    flowGuide: "Quick start with screenshots",
     architectureTitle: "One Godot project, routed to three runtimes",
     architectureBody:
       "The exporter assembles game content, a certified engine, and a shared adapter into projects for WeChat, Douyin, and TikTok.",
@@ -183,7 +230,7 @@ const copy = {
     architectureExporter: ["Godot Mini Game Exporter", "One export transaction packages resources, selects the engine, and assembles the platform project."],
     architectureModules: [
       ["PACK", "Game resource pack", "Package scenes, scripts, and assets into the Godot resource pack.", "engine/godot.zip"],
-      ["ENGINE", "Certified engine templates", `Pin Godot ${GODOT_VERSION}, Emscripten ${EMSCRIPTEN_VERSION}, and artifact checksums.`, "godot.wasm.br"],
+      ["ENGINE", "Certified engine templates", `Matched to the exact editor version, with Emscripten ${EMSCRIPTEN_VERSION} and checksums pinned.`, "godot.wasm.br"],
       ["BRIDGE", "Shared browser adapter and platform bridge", "Unify input, networking, audio, and MiniGameSDK capabilities.", "adapter.js + PlatformRuntime"],
     ],
     architectureRuntimeTitle: "Platform runtimes",
@@ -193,34 +240,18 @@ const copy = {
       ["Douyin", "Douyin Mini Game", "/douyin.svg"],
       ["TikTok", "TikTok Mini Game", "/tiktok.svg"],
     ],
-    techKicker: "Real devices first",
-    techTitle: "Beyond “it works in the simulator”",
-    techBody:
-      `Standard Web templates can include WASM features unavailable in mini-game runtimes. The bundled Godot ${GODOT_VERSION} engine receives host compatibility patches automatically.`,
-    techPoints: [
-      ["wasm_simd=no", "Avoid device-side SIMD compile errors"],
-      ["threads=no", "Respect mini-game thread limits"],
-      ["Brotli", "Compress the engine to about 6 MB"],
-      ["Subpackages", "Douyin uses subPackages; WeChat and TikTok use subpackages"],
-    ],
-    templateNote: `v${VERSION} certifies Godot ${GODOT_VERSION} · commit ${GODOT_COMMIT_SHORT}… · Emscripten ${EMSCRIPTEN_VERSION} · Bridge ABI ${BRIDGE_ABI} · r${TEMPLATE_REVISION}; complete a real-device gate on the target platform before release.`,
     sdkKicker: "MiniGameSDK",
     sdkTitle: "Native mini-game APIs, from GDScript",
-    sdkBody:
-      "MiniGameSDK is registered as an Autoload. The API page lists the full bridge surface, not blanket three-host compatibility; runtime calls are capability-gated.",
+    sdkBody: `MiniGameSDK is registered as an Autoload with **${METHODS} methods and ${SIGNALS} signals**. Shared names are capability-checked, and payments and other host-specific features use explicit per-platform mappings.`,
+    sdkNote: "The API page lists the whole bridge; it is not a promise that every method works on every host.",
     apiGroups: ["Authentication", "Ads & payments", "Local & cloud storage", "Media & recording", "Network & WebSocket", "Sensors", "Share & subscribe", "File system"],
     codeLabel: "GDScript · Rewarded video",
     copyCode: "Copy code",
     copied: "Copied",
     apiReference: "Open the full API reference",
-    startKicker: "Get started",
-    startTitle: "Spend less time wrestling with exports",
-    startBody: "Download, enable the Dock, and produce a DevTools-ready mini-game project in minutes.",
-    startRelease: "Open Releases",
-    startGuide: "Step-by-step quick start",
     faqTitle: "Frequently asked questions",
     faqs: [
-      ["Which Godot versions are supported?", `The bundled template and automated workflow certify Godot ${GODOT_VERSION}. Other editor builds must import a pack with an exact version, commit, toolchain, and ABI match.`],
+      ["Which Godot versions are supported?", `${VERSION_LIST} are certified. The ${BUNDLED_VERSION} template ships with the plugin; for the others, download the matching template from its release and click “Import engine template…” in the dock. For any other version, build an exactly matching template with the usage guide.`],
       ["Do I need to install Emscripten?", "Not for normal use. Releases include a prebuilt engine. A compiler toolchain is only required when building a custom Godot template."],
       ["Why not use the standard Godot Web template?", "WXWebAssembly on real devices has limited support for SIMD, exception tags, and threads, so a standard template can fail during compilation."],
       ["What happens after export?", "Complete the platform ID, domain, privacy, review, and real-device validation settings in the matching tool."],
@@ -231,6 +262,7 @@ const copy = {
     finalBody: "Open source, transparent, and built for real devices. Make your first export today.",
     footer: "Built for mini-game developers who use Godot.",
     copyright: "Godot Mini Game · MIT License",
+    notAffiliated: "Not affiliated with the Godot Foundation",
   },
 } as const;
 
@@ -250,6 +282,24 @@ function asset(path: string) {
   return sitePath(path);
 }
 
+// Headings mark preferred line breaks with "|"; each phrase stays on one line
+// when it fits, so CJK titles do not split in the middle of a word.
+function Phrases({ text }: { text: string }) {
+  if (!text.includes("|")) return <>{text}</>;
+  return <>{text.split("|").map((part, index) => <span className="phrase" key={index}>{part}</span>)}</>;
+}
+
+// Renders **bold** segments of a copy string as <strong>.
+function Rich({ text }: { text: string }) {
+  return (
+    <>
+      {text.split("**").map((part, index) =>
+        index % 2 ? <strong key={index}>{part}</strong> : <Fragment key={index}>{part}</Fragment>,
+      )}
+    </>
+  );
+}
+
 export default function Home() {
   const [language, setLanguage] = useState<Language>("zh");
   const [copied, setCopied] = useState(false);
@@ -261,6 +311,10 @@ export default function Home() {
   }, [language]);
 
   useEffect(() => {
+    // Content is visible in the static HTML. Only once this runs are sections
+    // below the fold hidden for their scroll-in transition; anything already
+    // on screen is marked visible first so it never flickers.
+    const nodes = Array.from(document.querySelectorAll(".reveal"));
     const observer = new IntersectionObserver(
       (entries) => {
         entries.forEach((entry) => {
@@ -272,8 +326,11 @@ export default function Home() {
       },
       { threshold: 0.14 },
     );
-
-    document.querySelectorAll(".reveal").forEach((node) => observer.observe(node));
+    nodes.forEach((node) => {
+      if (node.getBoundingClientRect().top < window.innerHeight) node.classList.add("is-visible");
+      else observer.observe(node);
+    });
+    document.documentElement.classList.add("reveal-ready");
     return () => observer.disconnect();
   }, [language]);
 
@@ -284,6 +341,10 @@ export default function Home() {
   }
 
   const docsLink = language === "zh" ? `${REPO}/blob/main/docs/USAGE_zh.md` : `${REPO}/blob/main/docs/USAGE.md`;
+  const customTemplateLink = language === "zh"
+    ? `${docsLink}#12-编译自定义引擎模板`
+    : `${docsLink}#12-building-a-custom-engine-template`;
+  const closeMenu = () => setMenuOpen(false);
 
   return (
     <main>
@@ -306,17 +367,17 @@ export default function Home() {
           </button>
 
           <nav className={menuOpen ? "nav-links is-open" : "nav-links"} aria-label="Primary navigation">
-            <a href="#features" onClick={() => setMenuOpen(false)}>{t.nav[0]}</a>
-            <a href="#workflow" onClick={() => setMenuOpen(false)}>{t.nav[1]}</a>
-            <a href="#sdk" onClick={() => setMenuOpen(false)}>{t.nav[2]}</a>
-            <a href={sitePath("/api/")} onClick={() => setMenuOpen(false)}>{t.nav[3]}</a>
-            <a href={sitePath("/quick-start/")} onClick={() => setMenuOpen(false)}>{t.nav[4]}</a>
-            <a href={sitePath("/guide/")} onClick={() => setMenuOpen(false)}>{t.nav[5]}</a>
+            <a href="#features" onClick={closeMenu}>{t.nav[0]}</a>
+            <a href="#versions" onClick={closeMenu}>{t.nav[1]}</a>
+            <a href="#sdk" onClick={closeMenu}>{t.nav[2]}</a>
+            <a href={sitePath("/api/")} onClick={closeMenu}>{t.nav[3]}</a>
+            <a href={sitePath("/quick-start/")} onClick={closeMenu}>{t.nav[4]}</a>
+            <a href={sitePath("/guide/")} onClick={closeMenu}>{t.nav[5]}</a>
           </nav>
 
           <div className="nav-actions">
             <button className="language-switch" type="button" onClick={() => setLanguage(language === "zh" ? "en" : "zh")}>{t.language}</button>
-            <a className="github-button" href={REPO} target="_blank" rel="noreferrer">{t.github}<span>↗</span></a>
+            <a className="github-button" href={REPO} target="_blank" rel="noreferrer">GitHub<span>↗</span></a>
           </div>
         </div>
       </header>
@@ -327,16 +388,16 @@ export default function Home() {
         <div className="hero-glow hero-glow-green" aria-hidden="true" />
         <div className="container hero-layout">
           <div className="hero-copy">
-            <div className="status-pill"><span />{t.badge}</div>
+            <a className="status-pill" href="#versions"><b>{t.badgeTag}</b>{t.badge}<i aria-hidden="true">→</i></a>
             <p className="eyebrow">{t.eyebrow}</p>
             <h1>
               <span>{t.heroA}</span>
-              <em>{t.heroB}</em>
+              <em><Phrases text={t.heroB} /></em>
             </h1>
-            <p className="hero-body">{t.heroBody}</p>
+            <p className="hero-body"><Rich text={t.heroBody} /></p>
             <div className="hero-actions">
               <a className="button button-primary" href={RELEASE} target="_blank" rel="noreferrer">{t.download}<span>↓</span></a>
-              <a className="button button-secondary" href={docsLink} target="_blank" rel="noreferrer">{t.docs}<span>↗</span></a>
+              <a className="button button-secondary" href={sitePath("/quick-start/")}>{t.quickStart}<span>→</span></a>
             </div>
             <div className="platform-line">
               <span>{t.supports}</span>
@@ -346,118 +407,144 @@ export default function Home() {
             </div>
           </div>
 
-          <div className="product-visual" aria-label="Godot Mini Game export workflow preview">
-            <div className="visual-halo" />
-            <div className="window-frame">
-              <div className="window-bar">
-                <div className="traffic-lights"><span /><span /><span /></div>
-                <span className="window-title">Godot Engine - game_project</span>
-                <span className="window-version">{GODOT_VERSION}</span>
-              </div>
-              <div className="window-content">
-                <aside className="project-rail">
-                  <p>{t.visualProject}</p>
-                  <div className="tree-row active"><span>◆</span> game_project</div>
-                  <div className="tree-row indent"><span>▾</span> addons</div>
-                  <div className="tree-row indent-2"><span>⌁</span> godot_mini_game</div>
-                  <div className="tree-row indent"><span>▦</span> scenes</div>
-                  <div className="tree-row indent"><span>⌘</span> scripts</div>
-                  <div className="project-canvas">
-                    <div className="canvas-orbit" />
-                    <img src={asset("/godot.svg")} alt="Godot" />
-                  </div>
-                </aside>
-
-                <section className="export-dock">
-                  <div className="dock-heading">
-                    <span className="dock-icon">↗</span>
-                    <div><strong>{t.visualExport}</strong><small>Godot Mini Game Export</small></div>
-                  </div>
-                  <label><span>{t.visualPlatform}</span><div className="fake-select"><span className="mini-logo"><img src={asset("/wechat.svg")} alt="" /></span>WeChat <b>⌄</b></div></label>
-                  <label><span>{t.visualAppId}</span><div className="fake-input">wx••••••••••••••</div></label>
-                  <div className="dock-two-col">
-                    <label><span>{t.visualOrientation}</span><div className="fake-input">Portrait</div></label>
-                    <label><span>Web Preset</span><div className="fake-input">MiniGame</div></label>
-                  </div>
-                  <label><span>{t.visualOutput}</span><div className="fake-input fake-path">~/build/minigame <b>•••</b></div></label>
-                  <button type="button" tabIndex={-1} className="fake-export">{t.visualButton}<span>→</span></button>
-                  <div className="progress-list">
-                    <span className="done">✓</span><span>.pck</span>
-                    <span className="done">✓</span><span>WASM</span>
-                    <span className="done">✓</span><span>Adapter</span>
-                    <span className="done">✓</span><span>Config</span>
-                  </div>
-                </section>
-
-                <aside className="output-preview">
-                  <div className="output-status"><span>✓</span><div><strong>{t.visualDone}</strong><small>{t.visualReady}</small></div></div>
-                  <div className="phone-card">
-                    <div className="phone-notch" />
-                    <div className="phone-scene">
-                      <div className="scene-cloud one" />
-                      <div className="scene-cloud two" />
-                      <div className="scene-land land-back" />
-                      <div className="scene-land land-front" />
-                      <div className="scene-player">◆</div>
-                    </div>
-                    <div className="phone-progress"><span /></div>
-                    <small>Loading game.pck</small>
-                  </div>
-                  <div className="output-platforms">
-                    <span><img src={asset("/wechat.svg")} alt="WeChat" /></span>
-                    <i>+</i>
-                    <span><img src={asset("/douyin.svg")} alt="Douyin" /></span>
-                    <i>+</i>
-                    <span><img src={asset("/tiktok.svg")} alt="TikTok" /></span>
-                  </div>
-                </aside>
-              </div>
+          <figure className="hero-shots">
+            <div className="shot-editor">
+              <img src={asset("/screenshots/godot-editor-dock.webp")} alt={t.shotEditorAlt} width={1600} height={812} />
             </div>
-          </div>
+            <div className="shot-phone">
+              <img src={asset("/screenshots/wechat-simulator.webp")} alt={t.shotPhoneAlt} width={478} height={1023} />
+            </div>
+            <div className="shot-status" aria-hidden="true">
+              <span>✓</span>
+              <div><strong>{t.shotDone}</strong><small>{t.shotDoneDetail}</small></div>
+            </div>
+            <figcaption className="sr-only">{t.shotsCaption}</figcaption>
+          </figure>
         </div>
-        <div className="container metric-strip">
-          {t.metrics.map(([value, label]) => <div key={label}><strong>{value}</strong><span>{label}</span></div>)}
+
+        <div className="container highlight-strip">
+          {t.highlights.map(([value, unit, detail]) => (
+            <div key={unit}>
+              <strong>{value}<small>{unit}</small></strong>
+              <p>{detail}</p>
+            </div>
+          ))}
         </div>
       </section>
 
       <section className="section features-section" id="features">
         <div className="container">
-          <div className="section-heading reveal">
-            <p className="section-kicker">Godot Mini Game</p>
-            <h2>{t.sectionFeatures}</h2>
-            <p>{t.sectionFeaturesBody}</p>
+          <div className="split-heading reveal">
+            <div><p className="section-kicker">{t.featuresKicker}</p><h2><Phrases text={t.featuresTitle} /></h2></div>
+            <p>{t.featuresBody}</p>
           </div>
-          <div className="feature-grid">
-            {t.features.map(([number, title, body], index) => (
-              <article className={`feature-card reveal feature-${index + 1}`} key={title}>
-                <div className="feature-top"><span>{number}</span><i>{index === 0 ? "READY" : index === 1 ? "EXPORT" : index === 2 ? "WASM" : index === 3 ? "3×" : index === 4 ? "SDK" : "CI"}</i></div>
-                <h3>{title}</h3>
-                <p>{body}</p>
-                <div className="feature-decoration" aria-hidden="true">
-                  <span /><span /><span />
+
+          <div className="bento">
+            <article className="bento-card bento-export reveal">
+              <span className="bento-no">01</span>
+              <h3>{t.exportTitle}</h3>
+              <p>{t.exportBody}</p>
+              <ul className="check-list">
+                {t.exportPoints.map((point) => <li key={point}><span><Rich text={point} /></span></li>)}
+              </ul>
+              <div className="export-shot">
+                <img src={asset("/screenshots/godot-dock-exported.webp")} alt={t.exportShotAlt} width={600} height={1472} loading="lazy" />
+              </div>
+            </article>
+
+            <article className="bento-card bento-engine reveal">
+              <span className="bento-no">02</span>
+              <h3>{t.engineTitle}</h3>
+              <p>{t.engineBody}</p>
+              <ul className="spec-list">
+                {t.enginePoints.map((point) => <li key={point}><b aria-hidden="true">✓</b>{point}</li>)}
+              </ul>
+            </article>
+
+            <article className="bento-card bento-sdk reveal">
+              <span className="bento-no">03</span>
+              <h3>{t.sdkCardTitle}</h3>
+              <div className="sdk-figures">
+                <div><strong>{METHODS}</strong><span>{t.sdkUnits[0]}</span></div>
+                <div><strong>{SIGNALS}</strong><span>{t.sdkUnits[1]}</span></div>
+              </div>
+              <p>{t.sdkCardBody}</p>
+            </article>
+
+            <article className="bento-card bento-safe reveal">
+              <span className="bento-no">04</span>
+              <h3>{t.safeTitle}</h3>
+              <p>{t.safeBody}</p>
+              <ul className="file-list">
+                {t.safeFiles.map(([name, state, kept]) => (
+                  <li key={name} className={kept ? "is-kept" : undefined}><code>{name}</code><span>{state}</span></li>
+                ))}
+              </ul>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section className="section versions-section" id="versions">
+        <div className="container versions-layout">
+          <div className="versions-copy reveal">
+            <p className="section-kicker">{t.versionsKicker}</p>
+            <h2><Phrases text={t.versionsTitle} /></h2>
+            <p>{t.versionsBody}</p>
+            <div className="template-note"><span>i</span>{t.versionsNote}</div>
+            <div className="versions-links">
+              <a className="sdk-api-link" href={customTemplateLink} target="_blank" rel="noreferrer">{t.versionsCustom}<span>↗</span></a>
+              <a className="sdk-api-link" href={sitePath("/guide/#engine")}>{t.versionsGuide}<span>→</span></a>
+            </div>
+          </div>
+
+          <ul className="version-list reveal">
+            {CERTIFIED.map((row, index) => (
+              <li key={row.version} className={index === 0 ? "is-latest" : undefined}>
+                <div>
+                  <div className="version-name">
+                    <strong>{row.version}</strong>
+                    <small>stable</small>
+                    {index === 0 ? <em>{t.versionLatest}</em> : null}
+                  </div>
+                  <div className="version-meta">
+                    <code>commit {row.commit}</code>
+                    <span className="version-platforms">
+                      {platformIcons.map(([icon, name]) => <img key={name} src={asset(icon)} alt={name} />)}
+                      {t.versionTested}
+                    </span>
+                  </div>
                 </div>
-              </article>
+                {row.bundled
+                  ? <span className="version-source is-bundled">{t.versionBundled}</span>
+                  : <a className="version-source" href={row.releaseUrl} target="_blank" rel="noreferrer">{t.versionRelease}<span>↗</span></a>}
+              </li>
             ))}
-          </div>
+          </ul>
         </div>
       </section>
 
       <section className="section workflow-section" id="workflow">
         <div className="container">
-          <div className="split-heading reveal">
-            <div><p className="section-kicker">{t.flowKicker}</p><h2>{t.flowTitle}</h2></div>
+          <div className="section-heading reveal">
+            <p className="section-kicker">{t.flowKicker}</p>
+            <h2>{t.flowTitle}</h2>
             <p>{t.flowBody}</p>
           </div>
           <div className="steps-grid">
-            {t.steps.map(([number, title, body], index) => (
-              <article className="step-card reveal" key={title}>
+            {t.steps.map(([number, title, body, code]) => (
+              <article className="step-card reveal" key={number}>
                 <div className="step-number">{number}</div>
                 <div className="step-connector"><span /></div>
                 <h3>{title}</h3>
                 <p>{body}</p>
-                <span className="step-tag">{index === 0 ? "RELEASE" : index === 1 ? "GODOT" : index === 2 ? "DOCK" : "DEVTOOLS"}</span>
+                <code>{code}</code>
               </article>
             ))}
+          </div>
+          <div className="workflow-actions reveal">
+            <a className="button button-primary" href={sitePath("/quick-start/")}>{t.flowGuide}<span>→</span></a>
+            <a className="button button-secondary" href={RELEASE} target="_blank" rel="noreferrer">{t.download}<span>↓</span></a>
           </div>
         </div>
       </section>
@@ -465,7 +552,7 @@ export default function Home() {
       <section className="section architecture-section" id="architecture" aria-labelledby="architecture-title">
         <div className="container">
           <header className="architecture-heading reveal">
-            <h2 id="architecture-title">{t.architectureTitle}</h2>
+            <h2 id="architecture-title"><Phrases text={t.architectureTitle} /></h2>
             <p>{t.architectureBody}</p>
           </header>
 
@@ -531,26 +618,6 @@ export default function Home() {
         </div>
       </section>
 
-      <section className="section tech-section">
-        <div className="container tech-layout">
-          <div className="tech-copy reveal">
-            <p className="section-kicker">{t.techKicker}</p>
-            <h2>{t.techTitle}</h2>
-            <p>{t.techBody}</p>
-            <div className="template-note"><span>i</span>{t.templateNote}</div>
-          </div>
-          <div className="tech-console reveal">
-            <div className="console-bar"><span /><span /><span /><b>engine.template</b></div>
-            <div className="tech-list">
-              {t.techPoints.map(([name, detail], index) => (
-                <div key={name}><span className="tech-index">0{index + 1}</span><code>{name}</code><p>{detail}</p><i>✓</i></div>
-              ))}
-            </div>
-            <div className="engine-meter"><span>godot.wasm.br</span><div><i /></div><b>≈ 6 MB</b></div>
-          </div>
-        </div>
-      </section>
-
       <section className="section sdk-section" id="sdk">
         <div className="container sdk-layout">
           <div className="code-window reveal">
@@ -560,35 +627,13 @@ export default function Home() {
           </div>
           <div className="sdk-copy reveal">
             <p className="section-kicker">{t.sdkKicker}</p>
-            <h2>{t.sdkTitle}</h2>
-            <p>{t.sdkBody}</p>
+            <h2><Phrases text={t.sdkTitle} /></h2>
+            <p><Rich text={t.sdkBody} /></p>
+            <p className="sdk-note">{t.sdkNote}</p>
             <div className="api-cloud">
               {t.apiGroups.map((group, index) => <span key={group}><i>{["AUTH", "ADS", "DATA", "MEDIA", "NET", "SENSOR", "SHARE", "FS"][index]}</i>{group}</span>)}
             </div>
             <a className="sdk-api-link" href={sitePath("/api/")}>{t.apiReference}<span>→</span></a>
-          </div>
-        </div>
-      </section>
-
-      <section className="section start-section" id="start">
-        <div className="container start-layout">
-          <div className="start-copy reveal">
-            <p className="section-kicker">{t.startKicker}</p>
-            <h2>{t.startTitle}</h2>
-            <p>{t.startBody}</p>
-            <div className="hero-actions">
-              <a className="button button-primary" href={RELEASE} target="_blank" rel="noreferrer">{t.startRelease}<span>↗</span></a>
-              <a className="button button-secondary" href={sitePath("/quick-start/")}>{t.startGuide}<span>→</span></a>
-            </div>
-          </div>
-          <div className="install-card reveal">
-            <div className="install-bar"><span>INSTALLATION</span><b>v{VERSION}</b></div>
-            <ol>
-              <li><span>1</span><div><strong>Download</strong><code>{PACKAGE_FILENAME}</code></div></li>
-              <li><span>2</span><div><strong>Extract to project</strong><code>res://addons/godot_mini_game/</code></div></li>
-              <li><span>3</span><div><strong>Enable plugin</strong><code>Project Settings → Plugins</code></div></li>
-              <li><span>4</span><div><strong>Export</strong><code>Mini Game Export → Export</code></div></li>
-            </ol>
           </div>
         </div>
       </section>
@@ -611,11 +656,11 @@ export default function Home() {
         <div className="final-grid" aria-hidden="true" />
         <div className="container final-content reveal">
           <div className="final-logos"><span><img src={asset("/godot.svg")} alt="Godot" /></span><i>→</i><span><img src={asset("/wechat.svg")} alt="WeChat" /></span><span><img src={asset("/douyin.svg")} alt="Douyin" /></span><span><img src={asset("/tiktok.svg")} alt="TikTok" /></span></div>
-          <h2>{t.finalTitle}</h2>
+          <h2><Phrases text={t.finalTitle} /></h2>
           <p>{t.finalBody}</p>
           <div className="hero-actions">
             <a className="button button-light" href={RELEASE} target="_blank" rel="noreferrer">{t.download}<span>↓</span></a>
-            <a className="button button-dark-outline" href={REPO} target="_blank" rel="noreferrer">{t.github}<span>↗</span></a>
+            <a className="button button-dark-outline" href={REPO} target="_blank" rel="noreferrer">GitHub<span>↗</span></a>
           </div>
         </div>
       </section>
@@ -625,7 +670,7 @@ export default function Home() {
           <div><a className="brand" href="#top"><span className="brand-mark"><img src={asset("/godot.svg")} alt="" /></span><span>Godot <b>Mini Game</b></span></a><p>{t.footer}</p></div>
           <nav aria-label="Footer navigation"><a href={sitePath("/quick-start/")}>{t.nav[4]}</a><a href={sitePath("/guide/")}>{t.nav[5]}</a><a href={sitePath("/api/")}>API</a><a href={REPO} target="_blank" rel="noreferrer">GitHub</a><a href={RELEASE} target="_blank" rel="noreferrer">Releases</a><a href={docsLink} target="_blank" rel="noreferrer">Docs</a><a href={`${REPO}/issues`} target="_blank" rel="noreferrer">Issues</a></nav>
         </div>
-        <div className="container footer-bottom"><span>© 2026 {t.copyright}</span><span>{language === "zh" ? "非 Godot 官方关联项目" : "Not affiliated with the Godot Foundation"}</span></div>
+        <div className="container footer-bottom"><span>© 2026 {t.copyright}</span><span>{t.notAffiliated}</span></div>
       </footer>
     </main>
   );
