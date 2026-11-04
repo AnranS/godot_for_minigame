@@ -66,6 +66,36 @@ test("exports the complete searchable API reference", async () => {
   assert.ok(Buffer.byteLength(html) < 2_000_000, "API HTML should not duplicate entries across categories");
 });
 
+test("exports the quick start with real screenshots", async () => {
+  const html = await readFile(new URL("../dist/client/quick-start/index.html", import.meta.url), "utf8");
+
+  assert.match(html, /快速开始/);
+  assert.match(html, /godot_mini_game_v0\.3\.0\.zip/);
+  for (const id of ["prepare", "install", "enable", "preset", "dock", "export", "run", "sdk", "troubleshoot"]) {
+    assert.match(html, new RegExp(`id="${id}"`), `quick start section ${id}`);
+  }
+  for (const shot of ["godot-plugins", "godot-export-preset", "godot-editor-dock", "godot-dock-exported", "wechat-simulator", "wechat-console"]) {
+    assert.match(html, new RegExp(`screenshots/${shot}\\.webp`), `screenshot ${shot}`);
+  }
+  assert.match(html, /ttmg init/);
+  assert.match(html, /加载完成，游戏已启动/);
+  assert.match(html, /4\.6\.1\.stable/);
+});
+
+test("exports the integration guide with the compatibility overview", async () => {
+  const html = await readFile(new URL("../dist/client/guide/index.html", import.meta.url), "utf8");
+
+  assert.match(html, /接入指引/);
+  for (const id of ["overview", "prepare", "engine", "compatibility", "capabilities", "testing", "release"]) {
+    assert.match(html, new RegExp(`id="${id}"`), `guide section ${id}`);
+  }
+  for (const row of ["WebGL 2\\.0", "GDExtension", "多线程", "user:// 存档", "WebRTC", "屏幕像素比"]) {
+    assert.match(html, new RegExp(row), `compatibility row ${row}`);
+  }
+  assert.match(html, /14d19694e0c88a3f9e82d899a0400f27a24c176e/);
+  assert.match(html, /43\.4\.0/);
+});
+
 test("keeps required deployment and brand assets", async () => {
   await Promise.all([
     access(new URL(".openai/hosting.json", root)),
@@ -74,5 +104,7 @@ test("keeps required deployment and brand assets", async () => {
     access(new URL("public/douyin.svg", root)),
     access(new URL("public/tiktok.svg", root)),
     access(new URL("public/og.png", root)),
+    access(new URL("public/screenshots/wechat-simulator.webp", root)),
+    access(new URL("public/screenshots/godot-editor-dock.webp", root)),
   ]);
 });

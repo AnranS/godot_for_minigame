@@ -424,6 +424,8 @@ export default function ApiReference() {
             <strong>Godot <b>Mini Game</b></strong>
           </a>
           <nav aria-label="API 页面导航">
+            <a href={sitePath("/quick-start/")}>快速开始</a>
+            <a href={sitePath("/guide/")}>接入指引</a>
             <a href="#overview">快速使用</a>
             <a href="#reference">API 索引</a>
             <a href={GUIDE} target="_blank" rel="noreferrer">指南 ↗</a>

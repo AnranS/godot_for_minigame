@@ -301,7 +301,7 @@ Native 编译/调试入口是 `ttmg dev`；CI 另通过其依赖的 `ttmg-pack.c
 | `WXWebAssembly.compile CompileError` | 用了官方 Web 模板（带 SIMD / 异常 Tag） | 换用内置/导入的兼容模板 |
 | `GameGlobal.canvas is not defined` | `game.js` 没被当作入口执行 | 确认 `game.json` 里的入口 (`game.js`) 没被改名 |
 | `loadSubpackage fail` | 分包目录缺失 | 检查 `engine/` 和 `subpacks/` 都有 `game.js` 占位 |
-| 微信开发者工具停在 33%，日志停在 `await loadSubpackage('engine')...`，没有成功或失败回调 | 插件 v0.3.0 及更早版本的适配层在开发者工具里覆盖了全局 `alert` 和 `parent`，开发者工具的分包加载完成通知被吞掉 | 更新到包含该修复的插件版本后重新导出 |
+| 微信开发者工具停在 33%，日志停在 `await loadSubpackage('engine')...`，没有成功或失败回调 | 插件 v0.2.1 及更早版本的适配层在开发者工具里覆盖了全局 `alert` 和 `parent`，开发者工具的分包加载完成通知被吞掉 | 升级到 v0.3.0 或更新版本后重新导出 |
 | 微信开发者工具里 `loadSubpackage:fail module not found`，模拟器存储目录是 `touristappid`，工具日志有 `41002, appid missing` | 项目在游客模式下运行：当前登录账号没有这个 AppID 的开发权限 | 换成有开发权限的 AppID，或在公众平台把账号加为该小游戏的开发者 |
 | 白屏，日志看到 `GL.createContext failed` | canvas 被二次 getContext | 基础库升级到 3.2+，或重启开发者工具 |
 | 缺少 `TTMinis.game` 或 `TTWebAssembly` | 使用了 HTML 预览、选错目标或客户端过旧 | 改用 Native `ttmg dev`，并升级到 TikTok 43.4.0+ |

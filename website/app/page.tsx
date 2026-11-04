@@ -19,7 +19,7 @@ const PACKAGE_FILENAME = "godot_mini_game_vX.Y.Z.zip";
 
 const copy = {
   zh: {
-    nav: ["产品特性", "导出流程", "SDK 能力", "API 参考", "快速开始"],
+    nav: ["产品特性", "导出流程", "SDK 能力", "API 参考", "快速开始", "接入指引"],
     language: "EN",
     menu: "打开导航",
     badge: `开源 · MIT License · v${VERSION}`,
@@ -110,7 +110,7 @@ const copy = {
     startTitle: "让下一次发布少一点折腾",
     startBody: "下载插件、启用 Dock，几分钟内得到可被开发者工具直接打开的小游戏工程。",
     startRelease: "前往 Releases",
-    startGuide: "阅读完整指南",
+    startGuide: "按步骤快速开始",
     faqTitle: "常见问题",
     faqs: [
       ["支持哪些 Godot 版本？", `当前内置模板与自动化流程认证 Godot ${GODOT_VERSION}。其它编辑器构建必须导入版本、提交、工具链与 ABI 完全匹配的模板包。`],
@@ -118,7 +118,7 @@ const copy = {
       ["为什么不能直接使用 Godot 官方 Web 模板？", "小游戏真机的 WXWebAssembly 对 SIMD、异常处理 Tag 与线程支持有限，官方模板可能在真机编译阶段失败。"],
       ["导出后还需要做什么？", "用对应平台工具完成应用标识、域名、隐私、审核与真机验证配置。"],
       ["支持分包吗？", "支持主包与引擎分包拆分：主包只放启动代码，引擎与游戏资源放在 engine 分包并在启动时自动加载，SDK 也提供 load_subpackage() 与 pre_download_subpackage()。目前每次导出只生成一个资源包，暂不支持把游戏资源拆成多个自定义分包。"],
-      ["微信开发者工具停在 33% 怎么办？", "插件 v0.3.0 及更早版本的适配层会覆盖开发者工具加载分包所用的全局对象，引擎分包因此一直没有回调；更新插件后重新导出即可。如果报 loadSubpackage:fail module not found，通常是项目以游客模式运行，请换成当前账号有开发权限的 AppID。"],
+      ["微信开发者工具停在 33% 怎么办？", "v0.3.0 之前的插件版本，适配层会覆盖开发者工具加载分包所用的全局对象，引擎分包因此一直没有回调；升级到 v0.3.0 或更新版本后重新导出即可。如果报 loadSubpackage:fail module not found，通常是项目以游客模式运行，请换成当前账号有开发权限的 AppID。"],
     ],
     finalTitle: "你的 Godot 游戏，下一站是小游戏。",
     finalBody: "开源、透明、面向真实设备。现在就完成第一次导出。",
@@ -126,7 +126,7 @@ const copy = {
     copyright: "Godot Mini Game · MIT License",
   },
   en: {
-    nav: ["Features", "Workflow", "SDK", "API Reference", "Quick Start"],
+    nav: ["Features", "Workflow", "SDK", "API Reference", "Quick Start", "Guide"],
     language: "中文",
     menu: "Open navigation",
     badge: `Open source · MIT License · v${VERSION}`,
@@ -217,7 +217,7 @@ const copy = {
     startTitle: "Spend less time wrestling with exports",
     startBody: "Download, enable the Dock, and produce a DevTools-ready mini-game project in minutes.",
     startRelease: "Open Releases",
-    startGuide: "Read the full guide",
+    startGuide: "Step-by-step quick start",
     faqTitle: "Frequently asked questions",
     faqs: [
       ["Which Godot versions are supported?", `The bundled template and automated workflow certify Godot ${GODOT_VERSION}. Other editor builds must import a pack with an exact version, commit, toolchain, and ABI match.`],
@@ -225,7 +225,7 @@ const copy = {
       ["Why not use the standard Godot Web template?", "WXWebAssembly on real devices has limited support for SIMD, exception tags, and threads, so a standard template can fail during compilation."],
       ["What happens after export?", "Complete the platform ID, domain, privacy, review, and real-device validation settings in the matching tool."],
       ["Are subpackages supported?", "The main package and engine are split: the main package holds only the bootstrap, while the engine and game resources live in the engine subpackage and load automatically at startup. The SDK also exposes load_subpackage() and pre_download_subpackage(). Each export still produces a single resource pack, so splitting game resources across custom subpackages is not supported yet."],
-      ["Why does WeChat DevTools stop at 33%?", "In plugin v0.3.0 and earlier, the adapter replaced globals that DevTools uses to load subpackages, so the engine subpackage never reported completion. Update the plugin and export again. If you see loadSubpackage:fail module not found instead, the project is usually running in tourist mode; use an AppID your account can develop."],
+      ["Why does WeChat DevTools stop at 33%?", "Plugin versions before v0.3.0 replaced globals that DevTools uses to load subpackages, so the engine subpackage never reported completion. Upgrade to v0.3.0 or later and export again. If you see loadSubpackage:fail module not found instead, the project is usually running in tourist mode; use an AppID your account can develop."],
     ],
     finalTitle: "Your Godot game belongs on mini-game platforms.",
     finalBody: "Open source, transparent, and built for real devices. Make your first export today.",
@@ -310,7 +310,8 @@ export default function Home() {
             <a href="#workflow" onClick={() => setMenuOpen(false)}>{t.nav[1]}</a>
             <a href="#sdk" onClick={() => setMenuOpen(false)}>{t.nav[2]}</a>
             <a href={sitePath("/api/")} onClick={() => setMenuOpen(false)}>{t.nav[3]}</a>
-            <a href="#start" onClick={() => setMenuOpen(false)}>{t.nav[4]}</a>
+            <a href={sitePath("/quick-start/")} onClick={() => setMenuOpen(false)}>{t.nav[4]}</a>
+            <a href={sitePath("/guide/")} onClick={() => setMenuOpen(false)}>{t.nav[5]}</a>
           </nav>
 
           <div className="nav-actions">
@@ -577,7 +578,7 @@ export default function Home() {
             <p>{t.startBody}</p>
             <div className="hero-actions">
               <a className="button button-primary" href={RELEASE} target="_blank" rel="noreferrer">{t.startRelease}<span>↗</span></a>
-              <a className="button button-secondary" href={docsLink} target="_blank" rel="noreferrer">{t.startGuide}<span>→</span></a>
+              <a className="button button-secondary" href={sitePath("/quick-start/")}>{t.startGuide}<span>→</span></a>
             </div>
           </div>
           <div className="install-card reveal">
@@ -622,7 +623,7 @@ export default function Home() {
       <footer>
         <div className="container footer-main">
           <div><a className="brand" href="#top"><span className="brand-mark"><img src={asset("/godot.svg")} alt="" /></span><span>Godot <b>Mini Game</b></span></a><p>{t.footer}</p></div>
-          <nav aria-label="Footer navigation"><a href={sitePath("/api/")}>API</a><a href={REPO} target="_blank" rel="noreferrer">GitHub</a><a href={RELEASE} target="_blank" rel="noreferrer">Releases</a><a href={docsLink} target="_blank" rel="noreferrer">Docs</a><a href={`${REPO}/issues`} target="_blank" rel="noreferrer">Issues</a></nav>
+          <nav aria-label="Footer navigation"><a href={sitePath("/quick-start/")}>{t.nav[4]}</a><a href={sitePath("/guide/")}>{t.nav[5]}</a><a href={sitePath("/api/")}>API</a><a href={REPO} target="_blank" rel="noreferrer">GitHub</a><a href={RELEASE} target="_blank" rel="noreferrer">Releases</a><a href={docsLink} target="_blank" rel="noreferrer">Docs</a><a href={`${REPO}/issues`} target="_blank" rel="noreferrer">Issues</a></nav>
         </div>
         <div className="container footer-bottom"><span>© 2026 {t.copyright}</span><span>{language === "zh" ? "非 Godot 官方关联项目" : "Not affiliated with the Godot Foundation"}</span></div>
       </footer>
