@@ -8,7 +8,7 @@
 <h1 align="center">Godot Mini Game</h1>
 
 <p align="center">
-  <strong>Export Godot games to WeChat, Douyin, and TikTok Mini Games — from inside the editor.</strong>
+  <strong>Export Godot games to WeChat, Douyin, and TikTok Mini Games in one click, from inside the editor.</strong>
 </p>
 
 <p align="center">
@@ -19,27 +19,81 @@
 </p>
 
 <p align="center">
-  <strong><a href="https://github.com/AnranS/godot_for_minigame/releases/latest">Download</a></strong> ·
+  <strong><a href="https://github.com/AnranS/godot_for_minigame/releases/latest">Download v0.3.0</a></strong> ·
   <a href="https://anrans.github.io/godot_for_minigame/quick-start/">Quick start</a> ·
   <a href="https://anrans.github.io/godot_for_minigame/guide/">Integration guide</a> ·
   <a href="https://anrans.github.io/godot_for_minigame/api/">API reference</a> ·
   <a href="README_zh.md">简体中文</a>
 </p>
 
+<table>
+  <tr>
+    <td align="center" width="25%"><h3>0 extra tools</h3><sub>No Node.js, Emscripten, Brotli, or Godot Web export templates to install</sub></td>
+    <td align="center" width="25%"><h3>3 platforms</h3><sub>WeChat, Douyin, and TikTok from the same Godot project</sub></td>
+    <td align="center" width="25%"><h3>225 SDK methods</h3><sub>Plus 84 signals, each checked against the host before it runs</sub></td>
+    <td align="center" width="25%"><h3>3 Godot versions</h3><sub>4.6.1 · 4.6.3 · 4.7.2, each with an exactly matched engine</sub></td>
+  </tr>
+</table>
+
 <p align="center">
   <img src="website/public/screenshots/godot-editor-dock.webp" width="560" alt="The Mini Game Export dock in the Godot editor with WeChat selected" />
   <img src="website/public/screenshots/wechat-simulator.webp" width="176" alt="The exported Godot demo running in the WeChat DevTools simulator" />
 </p>
-<p align="center"><sub>Export from the Mini Game Export dock (left), then run the result in the platform DevTools (right).</sub></p>
+<p align="center"><sub>Export from the Mini Game Export dock (left), then run the result in the platform DevTools (right). Real screenshots.</sub></p>
 
-## Features
+## Highlights
 
-- **One-click export.** Pick a platform in the Mini Game Export dock and export. No Node.js, Emscripten, Brotli, or Godot Web export templates to install.
-- **An engine built for mini games.** A single-threaded WebGL 2 build of Godot, pinned to the exact editor version it was validated with.
-- **One SDK for three hosts.** `MiniGameSDK` offers 225 methods and 84 signals over `wx`, `tt`, and `TTMinis.game`, and checks what each host supports before calling it.
-- **Safe re-exports.** Files are built and validated in a staging directory first; only paths the plugin owns are replaced, and your other files are kept.
+<table>
+  <tr>
+    <td width="50%" valign="top">
+      <h3>One-click export</h3>
+      <p>Pick a platform in the Mini Game Export dock, enter the App ID, and export. The plugin writes the
+      resource pack, engine, JavaScript adapters, and <code>game.json</code> into a folder the platform
+      DevTools open directly.</p>
+    </td>
+    <td width="50%" valign="top">
+      <h3>An engine that runs on devices</h3>
+      <p>Standard Web templates rely on SIMD, WASM exceptions, and threads, which mini-game WebAssembly on
+      real devices does not support. The bundled single-threaded WebGL 2 engine leaves them out and is
+      patched for each host at export time.</p>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <h3>One SDK for three hosts</h3>
+      <p><code>MiniGameSDK</code> offers 225 methods and 84 signals over <code>wx</code>, <code>tt</code>,
+      and <code>TTMinis.game</code>. It checks what each host supports before calling it and stays safe
+      to call while you develop in the editor.</p>
+    </td>
+    <td width="50%" valign="top">
+      <h3>Safe re-exports</h3>
+      <p>Every file is built and validated in a staging folder first. Only paths the plugin owns are
+      replaced, so your other files in the output folder are kept.</p>
+    </td>
+  </tr>
+</table>
 
-## Platforms and versions
+## Supported Godot versions
+
+Each engine template matches exactly one Godot editor. If the version, commit, or toolchain differs,
+the export stops at preflight instead of failing at runtime.
+
+| Godot editor | Source commit | Engine template |
+|---|---|---|
+| **`4.7.2.stable`** (latest) | `ed1daf0bf001` | [Template release](https://github.com/AnranS/godot_for_minigame/releases/tag/template-4.7.2-stable-emsdk-4.0.3-2d-full-release-abi-1-r1), import it from the dock |
+| `4.6.3.stable` (official editor) | `35e80b3a8822` | [Template release](https://github.com/AnranS/godot_for_minigame/releases/tag/template-4.6.3-stable-emsdk-4.0.3-2d-full-release-abi-1-r1), import it from the dock |
+| `4.6.1.stable` | `14d19694e0c8` | Bundled with the plugin |
+
+CI exports every certified version to all three platforms. Plugin `v0.3.0` ·
+Emscripten `4.0.3` · build `2d_full` · `release` · revision `1` · Bridge ABI `1` ·
+template schema `1` · output schema `1`. [`support-matrix.json`](support-matrix.json) is the source
+of truth for these values in releases, CI, and the website.
+
+> [!TIP]
+> Using another Godot version? Build a template for that exact version; see
+> [custom templates](docs/USAGE.md#12-building-a-custom-engine-template).
+
+## Platforms
 
 | Platform | Runtime API | `game.json` subpackage field | Status |
 |---|---|---|---|
@@ -47,22 +101,8 @@
 | Douyin Mini Game | `tt` | `subPackages` | ✅ Supported |
 | TikTok Mini Game Native | `TTMinis.game` | `subpackages` | 🧪 Beta — TikTok 43.4.0+; every release needs a `ttmg` compile and a real-device run |
 
-| Godot editor | Engine template |
-|---|---|
-| `4.6.1.stable` · commit `14d19694e0c8` | Bundled with the plugin |
-| `4.6.3.stable` (official editor) | [Template release](https://github.com/AnranS/godot_for_minigame/releases/tag/template-4.6.3-stable-emsdk-4.0.3-2d-full-release-abi-1-r1) — import it from the dock |
-| `4.7.2.stable` | [Template release](https://github.com/AnranS/godot_for_minigame/releases/tag/template-4.7.2-stable-emsdk-4.0.3-2d-full-release-abi-1-r1) — import it from the dock |
-
-Plugin `v0.3.0` · Emscripten `4.0.3` · build `2d_full` · `release` · revision `1` ·
-Bridge ABI `1` · template schema `1` · output schema `1`.
-[`support-matrix.json`](support-matrix.json) is the source of truth for these
-values in releases, CI, and the website.
-
-> [!NOTE]
-> Other Godot versions need a template built for that exact version; see
-> [custom templates](docs/USAGE.md#12-building-a-custom-engine-template).
-> Automated checks do not replace testing in the platform DevTools and on
-> real devices.
+> [!IMPORTANT]
+> Automated checks do not replace testing in the platform DevTools and on real devices.
 
 ## Quick start
 
