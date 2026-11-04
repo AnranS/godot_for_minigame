@@ -182,6 +182,38 @@ func _init() -> void:
 		"the TikTok eval restriction must not silently change other platforms",
 	)
 
+	# Godot 4.7 release templates build without Emscripten assertions, so the
+	# instantiateWasm path has no try/catch. Rewrite the certified engine into
+	# that shape and require the exporter to forward rejections there too.
+	var assertion_free_engine := _root.path_join("assertion-free-engine.js")
+	var assertion_free := _read(engine_source).replace(
+		"return new Promise((resolve,reject)=>{try{Module[\"instantiateWasm\"](info,(mod,inst)=>{receiveInstance(mod,inst);resolve(mod.exports)})}catch(e){err(`Module.instantiateWasm callback failed with error: ${e}`);reject(e)}})}",
+		"return new Promise((resolve,reject)=>{Module[\"instantiateWasm\"](info,(mod,inst)=>{receiveInstance(mod,inst);resolve(mod.exports)})})}",
+	)
+	_assert_true(
+		not assertion_free.contains("Module.instantiateWasm callback failed"),
+		"fixture must use the assertion-free instantiateWasm shape",
+	)
+	_write(assertion_free_engine, assertion_free)
+	_assert_true(
+		exporter._patch_godot_js(assertion_free_engine, "wechat") == OK,
+		"assertion-free engines should patch",
+	)
+	_assert_true(
+		_read(assertion_free_engine).contains(
+			"var instantiateOperation=Module[\"instantiateWasm\"](info,(mod,inst)=>{receiveInstance(mod,inst);resolve(mod.exports)});if(instantiateOperation&&typeof instantiateOperation.then===\"function\")instantiateOperation.catch(reject)})}"),
+		"assertion-free engines must forward instantiate rejections",
+	)
+	var assertion_free_syntax: Array = []
+	_assert_true(
+		OS.execute("node", ["--check", assertion_free_engine], assertion_free_syntax, true) == 0,
+		"patched assertion-free engine must remain valid JavaScript",
+	)
+	_assert_true(
+		exporter._patch_godot_js(assertion_free_engine, "wechat") == OK,
+		"assertion-free patching must be idempotent",
+	)
+
 	var unknown_engine := _root.path_join("unknown-engine.js")
 	_write(unknown_engine, "var Engine = {};\n")
 	_assert_true(

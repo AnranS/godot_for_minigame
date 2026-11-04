@@ -1692,10 +1692,32 @@ func _patch_godot_js(path: String, platform: String = "wechat") -> Error:
 		+ "}catch(e){err(`Module.instantiateWasm callback failed with error: ${e}`);"
 		+ "reject(e)}})}"
 	)
+	# Godot 4.7 release templates build without Emscripten assertions, which
+	# drops the try/catch. A throw in the Promise executor still rejects, so
+	# only the asynchronous rejection needs to be forwarded.
+	var _emscripten_instantiate_plain_old := (
+		"if(Module[\"instantiateWasm\"]){return new Promise((resolve,reject)=>{"
+		+ "Module[\"instantiateWasm\"](info,(mod,inst)=>{receiveInstance(mod,inst);"
+		+ "resolve(mod.exports)})})}"
+	)
+	var _emscripten_instantiate_plain_new := (
+		"if(Module[\"instantiateWasm\"]){return new Promise((resolve,reject)=>{"
+		+ "var instantiateOperation=Module[\"instantiateWasm\"](info,(mod,inst)=>{"
+		+ "receiveInstance(mod,inst);resolve(mod.exports)});if(instantiateOperation&&"
+		+ "typeof instantiateOperation.then===\"function\")instantiateOperation.catch(reject)"
+		+ "})}"
+	)
 	if content.find(_emscripten_instantiate_old) != -1:
 		content = content.replace(_emscripten_instantiate_old, _emscripten_instantiate_new)
 		modified = true
-	elif content.find(_emscripten_instantiate_new) == -1:
+	elif content.find(_emscripten_instantiate_plain_old) != -1:
+		content = content.replace(
+			_emscripten_instantiate_plain_old, _emscripten_instantiate_plain_new)
+		modified = true
+	elif (
+		content.find(_emscripten_instantiate_new) == -1
+		and content.find(_emscripten_instantiate_plain_new) == -1
+	):
 		_log("  [color=red]godot.js 缺少 Emscripten instantiate rejection 补丁锚点[/color]")
 		return ERR_FILE_CORRUPT
 
