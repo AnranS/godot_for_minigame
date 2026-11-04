@@ -14,7 +14,7 @@
 <p align="center">
   <a href="https://github.com/AnranS/godot_for_minigame/releases/latest"><img alt="最新版本" src="https://img.shields.io/github/v/release/AnranS/godot_for_minigame?display_name=tag&style=flat-square" /></a>
   <a href="https://github.com/AnranS/godot_for_minigame/actions/workflows/smoke-test-export.yml"><img alt="导出测试" src="https://img.shields.io/github/actions/workflow/status/AnranS/godot_for_minigame/smoke-test-export.yml?branch=main&label=export%20tests&style=flat-square" /></a>
-  <img alt="Godot 4.6.1 与 4.6.3" src="https://img.shields.io/badge/Godot-4.6.1%20%7C%204.6.3-478CBF?logo=godot-engine&logoColor=white&style=flat-square" />
+  <img alt="Godot 4.6.1、4.6.3 与 4.7.2" src="https://img.shields.io/badge/Godot-4.6.1%20%7C%204.6.3%20%7C%204.7.2-478CBF?logo=godot-engine&logoColor=white&style=flat-square" />
   <a href="LICENSE"><img alt="MIT 许可证" src="https://img.shields.io/github/license/AnranS/godot_for_minigame?style=flat-square" /></a>
 </p>
 
@@ -51,6 +51,7 @@
 |---|---|
 | `4.6.1.stable` · commit `14d19694e0c8` | 随插件内置 |
 | `4.6.3.stable`（官方编辑器） | [模板 Release](https://github.com/AnranS/godot_for_minigame/releases/tag/template-4.6.3-stable-emsdk-4.0.3-2d-full-release-abi-1-r1)，在导出面板中导入 |
+| `4.7.2.stable` | [模板 Release](https://github.com/AnranS/godot_for_minigame/releases/tag/template-4.7.2-stable-emsdk-4.0.3-2d-full-release-abi-1-r1)，在导出面板中导入 |
 
 插件 `v0.3.0` · Emscripten `4.0.3` · 构建 `2d_full` · `release` · revision `1` ·
 Bridge ABI `1` · template schema `1` · output schema `1`。

@@ -86,6 +86,25 @@
         "douyin": "automated",
         "tiktok": "automated"
       }
+    },
+    {
+      "godotVersion": "4.7.2.stable",
+      "godotTag": "4.7.2-stable",
+      "godotCommit": "ed1daf0bf001b61586d9930840f2f1394092c079",
+      "emscriptenVersion": "4.0.3",
+      "profile": "2d_full",
+      "target": "release",
+      "templateRevision": 1,
+      "template": {
+        "source": "release",
+        "releaseTag": "template-4.7.2-stable-emsdk-4.0.3-2d-full-release-abi-1-r1",
+        "asset": "godot_minigame_template_4.7.2-stable_emsdk-4.0.3_2d-full_release_abi-1_r1.zip"
+      },
+      "platforms": {
+        "wechat": "automated",
+        "douyin": "automated",
+        "tiktok": "automated"
+      }
     }
   ]
 }

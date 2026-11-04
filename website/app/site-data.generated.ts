@@ -80,6 +80,47 @@ export const releaseData = {
         "douyin": "automated",
         "tiktok": "automated"
       }
+    },
+    {
+      "godotVersion": "4.6.3.stable",
+      "godotTag": "4.6.3-stable",
+      "godotCommit": "35e80b3a8822a9df9be390814b62f44c0a9c69e8",
+      "godotEditorCommits": [
+        "7d41c59c457bd5a245092b4e7eb2d833e3b3f8c3"
+      ],
+      "emscriptenVersion": "4.0.3",
+      "profile": "2d_full",
+      "target": "release",
+      "templateRevision": 1,
+      "template": {
+        "source": "release",
+        "releaseTag": "template-4.6.3-stable-emsdk-4.0.3-2d-full-release-abi-1-r1",
+        "asset": "godot_minigame_template_4.6.3-stable_emsdk-4.0.3_2d-full_release_abi-1_r1.zip"
+      },
+      "platforms": {
+        "wechat": "automated",
+        "douyin": "automated",
+        "tiktok": "automated"
+      }
+    },
+    {
+      "godotVersion": "4.7.2.stable",
+      "godotTag": "4.7.2-stable",
+      "godotCommit": "ed1daf0bf001b61586d9930840f2f1394092c079",
+      "emscriptenVersion": "4.0.3",
+      "profile": "2d_full",
+      "target": "release",
+      "templateRevision": 1,
+      "template": {
+        "source": "release",
+        "releaseTag": "template-4.7.2-stable-emsdk-4.0.3-2d-full-release-abi-1-r1",
+        "asset": "godot_minigame_template_4.7.2-stable_emsdk-4.0.3_2d-full_release_abi-1_r1.zip"
+      },
+      "platforms": {
+        "wechat": "automated",
+        "douyin": "automated",
+        "tiktok": "automated"
+      }
     }
   ]
 } as const;

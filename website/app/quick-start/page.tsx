@@ -1,7 +1,7 @@
 import { apiMethods, apiSignals } from "../api/api-data.generated";
 import { releaseData } from "../site-data.generated";
 import { sitePath } from "../site-path";
-import { Callout, Code, DocsShell, GUIDE_ZH, RELEASE, Section, Shot, VERSION, styles } from "../docs-shell";
+import { Callout, Code, DocsShell, GUIDE_ZH, RELEASE, Section, Shot, VERSION, certifiedTemplates, styles } from "../docs-shell";
 
 const { bundled } = releaseData;
 const tiktok = releaseData.platformContracts.tiktok;
@@ -80,7 +80,7 @@ export default function QuickStartPage() {
       current="quick-start"
       title="快速开始：把 Godot 游戏跑进小游戏开发者工具"
       lead="从下载插件到在开发者工具里看到游戏画面，按顺序走一遍大约 10 分钟。微信、抖音和 TikTok 只有最后的运行步骤不同。本页截图都来自插件的真实导出和微信开发者工具运行结果。"
-      meta={[`插件 v${VERSION}`, `Godot ${bundled.godotVersion}`, "微信 · 抖音 · TikTok"]}
+      meta={[`插件 v${VERSION}`, `Godot ${certifiedTemplates.map((template) => template.version.replace(".stable", "")).join(" / ")}`, "微信 · 抖音 · TikTok"]}
       toc={toc}
     >
       <Section id="prepare" title="开始前准备">
@@ -90,8 +90,16 @@ export default function QuickStartPage() {
             <tbody>
               <tr>
                 <td>Godot 编辑器</td>
-                <td><code>{bundled.godotVersion}</code> 标准版</td>
-                <td>内置引擎只匹配这个精确版本（提交 <code>{bundled.godotCommit.slice(0, 12)}</code>）。其它版本需要先导入版本完全一致的引擎模板包，见<a href={sitePath("/guide/#engine")}>接入指引</a>。不支持 .NET（C#）版本。</td>
+                <td>已认证的精确版本，标准版</td>
+                <td>
+                  {certifiedTemplates.map((template, index) => (
+                    <span key={template.version}>
+                      {index > 0 ? "、" : ""}<code>{template.version}</code>
+                      {template.bundled ? "（内置）" : <>（<a href={template.releaseUrl} target="_blank" rel="noreferrer">模板 Release</a>）</>}
+                    </span>
+                  ))}
+                  。使用非内置版本时，先下载对应的模板 ZIP，在导出面板点“导入引擎模板…”。其它版本需要构建版本完全一致的模板，见<a href={sitePath("/guide/#engine")}>接入指引</a>。不支持 .NET（C#）版本。
+                </td>
               </tr>
               <tr>
                 <td>渲染器</td>
@@ -179,7 +187,7 @@ export default function QuickStartPage() {
               <tr><td>屏幕方向</td><td>竖屏或横屏，写入 <code>game.json</code> 的 <code>deviceOrientation</code>。不会读取项目设置里的方向，两边请保持一致。</td></tr>
               <tr><td>Web 导出预设</td><td>上一步创建的 Web 预设。</td></tr>
               <tr><td>输出目录</td><td>第一次请选一个<strong>新的空目录</strong>，并且必须在 Godot 项目之外。之后可以一直导出到同一个目录，插件只替换它自己管理的文件。</td></tr>
-              <tr><td>引擎模板</td><td>显示绿色的“兼容模板就绪”才能导出。显示不匹配时，说明编辑器版本和模板不一致。</td></tr>
+              <tr><td>引擎模板</td><td>显示绿色的“兼容模板就绪”才能导出。使用非内置的已认证版本时，先点“导入引擎模板…”导入对应的模板 ZIP。显示不匹配时，说明编辑器版本和模板不一致。</td></tr>
               <tr><td>资源导出超时</td><td>导出游戏资源包的时间上限，默认 600 秒。资源很多的项目可以调大。</td></tr>
             </tbody>
           </table>

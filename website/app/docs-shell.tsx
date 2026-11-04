@@ -9,6 +9,15 @@ export const VERSION = releaseData.pluginVersion;
 export const GUIDE_ZH = `${REPO}/blob/main/docs/USAGE_zh.md`;
 export { styles };
 
+// Every certified editor from support-matrix.json, with where its engine
+// template comes from: bundled with the plugin or a template release.
+export const certifiedTemplates = releaseData.certified.map((row) => ({
+  version: row.godotVersion,
+  commit: row.godotCommit,
+  bundled: row.template.source === "bundled",
+  releaseUrl: "releaseTag" in row.template ? `${REPO}/releases/tag/${row.template.releaseTag}` : RELEASE,
+}));
+
 type DocsPage = "quick-start" | "guide";
 
 const pages: { id: DocsPage; href: string; label: string }[] = [

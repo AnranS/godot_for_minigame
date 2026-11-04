@@ -1,6 +1,6 @@
 import { releaseData } from "../site-data.generated";
 import { sitePath } from "../site-path";
-import { Callout, DocsShell, GUIDE_ZH, REPO, Section, VERSION, styles } from "../docs-shell";
+import { Callout, DocsShell, GUIDE_ZH, REPO, Section, VERSION, certifiedTemplates, styles } from "../docs-shell";
 
 const { bundled, platformContracts } = releaseData;
 const tiktok = platformContracts.tiktok;
@@ -119,19 +119,22 @@ export default function GuidePage() {
         </div>
 
         <h3 id="engine">引擎版本</h3>
-        <p>插件内置的小游戏引擎只与一个精确的 Godot 版本匹配。版本号、源码提交和工具链任意一项不一致，导出都会在预检阶段被拒绝，避免引擎和编辑器不匹配导致的运行时错误。</p>
+        <p>每份小游戏引擎模板只与一个精确的 Godot 版本匹配。版本号、源码提交和工具链任意一项不一致，导出都会在预检阶段被拒绝，避免引擎和编辑器不匹配导致的运行时错误。目前已认证的编辑器版本：</p>
         <div className={styles.tableWrap}>
           <table>
-            <thead><tr><th>项目</th><th>内置引擎</th></tr></thead>
+            <thead><tr><th>Godot 编辑器</th><th>源码提交</th><th>引擎模板</th></tr></thead>
             <tbody>
-              <tr><td>Godot 版本</td><td><code>{bundled.godotVersion}</code>（标准版）</td></tr>
-              <tr><td>源码提交</td><td><code>{bundled.godotCommit}</code></td></tr>
-              <tr><td>Emscripten</td><td><code>{bundled.emscriptenVersion}</code></td></tr>
-              <tr><td>构建</td><td><code>{bundled.target}</code>，单线程，不含 SIMD、WASM 异常和动态链接</td></tr>
-              <tr><td>Bridge ABI</td><td><code>{releaseData.bridgeAbi}</code></td></tr>
+              {certifiedTemplates.map((template) => (
+                <tr key={template.version}>
+                  <td><code>{template.version}</code></td>
+                  <td><code>{template.commit}</code></td>
+                  <td>{template.bundled ? "随插件内置" : <><a href={template.releaseUrl} target="_blank" rel="noreferrer">模板 Release</a>，在导出面板导入</>}</td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>
+        <p>所有已认证模板都使用 Emscripten <code>{bundled.emscriptenVersion}</code>、<code>{bundled.target}</code> 构建，单线程，不含 SIMD、WASM 异常和动态链接，Bridge ABI 为 <code>{releaseData.bridgeAbi}</code>。官方编辑器报告的提交号与 tag 不同时（例如 4.6.3），模板会记录官方编辑器的提交号，导出时一并接受。</p>
         <p>需要使用其它 Godot 版本时，按<a href={`${GUIDE_ZH}#12-编译自定义引擎模板`} target="_blank" rel="noreferrer">使用文档的“编译自定义引擎模板”</a>构建一份完全匹配的模板包，再在导出面板里点击“导入引擎模板…”。不同版本的模板可以并存，导出时按编辑器版本自动选择。</p>
         <Callout title="不能用 Godot 官方 Web 导出模板" warn>
           <p>官方 Web 模板会用到 SIMD、WASM 异常等特性，小游戏真机的 WebAssembly 实现不支持，通常会在编译阶段失败。插件不会回退到官方模板。</p>
