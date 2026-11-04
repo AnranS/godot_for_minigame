@@ -221,7 +221,7 @@ Dock 顶部的 **引擎模板** 栏显示当前查找结果。插件按以下顺
 │   └── demo-tone.wav      # 运行时音频探测资源
 ├── engine/                # 引擎子包
 │   ├── godot.wasm.br      # Brotli 压缩的 WASM
-│   ├── godot.zip          # 由 .pck 重命名而来的资源包
+│   ├── godot.zip          # 游戏资源包（扩展名为 .zip 时 Godot 导出 ZIP 格式）
 │   └── game.js            # 占位（子包必须有 game.js）
 ├── subpacks/              # 预留的额外子包目录
 │   └── game.js            # 占位
@@ -1551,7 +1551,7 @@ MiniGameSDK.call_api("getStorageSync", {"_args": ["level"]})
 | 分包 | 路径 | 内容 |
 |------|------|------|
 | **主包** | `/` | `game.js` 入口、polyfill、loader、图片、js worker |
-| `engine` | `engine/` | `godot.wasm.br` + `godot.zip`（资源 `.pck`） |
+| `engine` | `engine/` | `godot.wasm.br` + `godot.zip`（游戏资源包，ZIP 格式） |
 | `subpacks` | `subpacks/` | 预留，默认空 |
 
 导出器把引擎和所选 Godot 资源放入 `engine`，CI 会按已配置的微信主包限制检查

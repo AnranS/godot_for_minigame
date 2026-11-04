@@ -44,7 +44,7 @@ const outputTree = `wechat/
 ├── images/ · audio/              # 加载页图片、示例音频
 ├── engine/                       # engine 分包
 │   ├── godot.wasm.br             # 小游戏兼容的 Godot 引擎
-│   └── godot.zip                 # 你的游戏资源包（.pck）
+│   └── godot.zip                 # 你的游戏资源包（ZIP 格式）
 ├── subpacks/                     # 预留分包
 └── .godot-mini-game-export.json  # 插件的产物清单，请勿删除`;
 
@@ -157,7 +157,7 @@ export default function QuickStartPage() {
           caption="保持 Thread Support（线程支持）和 Extensions Support（扩展支持）关闭：小游戏引擎是单线程构建，也不支持 GDExtension。"
         />
         <Callout title="导出对话框里的红字可以忽略" warn>
-          <p>这里会提示 “No export template found”。插件只用这个预设导出游戏资源包（.pck），引擎来自插件自带的模板，所以不需要下载官方 Web 模板。预设的 Resources 标签决定哪些资源进包，插件会原样使用，不会改写它。</p>
+          <p>这里会提示 “No export template found”。插件只用这个预设导出游戏资源包（engine/godot.zip），引擎来自插件自带的模板，所以不需要下载官方 Web 模板。预设的 Resources 标签决定哪些资源进包，插件会原样使用，不会改写它。</p>
         </Callout>
       </Section>
 
@@ -180,7 +180,7 @@ export default function QuickStartPage() {
               <tr><td>Web 导出预设</td><td>上一步创建的 Web 预设。</td></tr>
               <tr><td>输出目录</td><td>第一次请选一个<strong>新的空目录</strong>，并且必须在 Godot 项目之外。之后可以一直导出到同一个目录，插件只替换它自己管理的文件。</td></tr>
               <tr><td>引擎模板</td><td>显示绿色的“兼容模板就绪”才能导出。显示不匹配时，说明编辑器版本和模板不一致。</td></tr>
-              <tr><td>资源导出超时</td><td>导出 .pck 的时间上限，默认 600 秒。资源很多的项目可以调大。</td></tr>
+              <tr><td>资源导出超时</td><td>导出游戏资源包的时间上限，默认 600 秒。资源很多的项目可以调大。</td></tr>
             </tbody>
           </table>
         </div>

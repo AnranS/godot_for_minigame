@@ -235,7 +235,7 @@ If a file has already been patched, the patch is skipped.
 │   └── demo-tone.wav      # runtime audio probe asset
 ├── engine/                # engine subpackage
 │   ├── godot.wasm.br      # Brotli-compressed WASM
-│   ├── godot.zip          # renamed .pck
+│   ├── godot.zip          # game resources (Godot exports a ZIP pack for .zip)
 │   └── game.js            # placeholder (subpackages need a game.js)
 ├── subpacks/              # reserved empty subpackage
 │   └── game.js            # placeholder
@@ -1573,7 +1573,7 @@ For example, `MiniGameSDK.call_api("customAsyncApi", {"key": "value"}, "async")`
 | Subpackage | Path | Contents |
 |------------|------|----------|
 | **main** | `/` | `game.js`, polyfills, loader, images, js worker |
-| `engine` | `engine/` | `godot.wasm.br` + `godot.zip` (the `.pck`) |
+| `engine` | `engine/` | `godot.wasm.br` + `godot.zip` (game resources, ZIP format) |
 | `subpacks` | `subpacks/` | Reserved, empty by default |
 
 The exporter keeps the engine and the selected Godot resources in `engine`, and
