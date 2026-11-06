@@ -213,3 +213,14 @@ Maintainers follow the immutable [release process](docs/RELEASING.md).
 [MIT](LICENSE). The bundled Godot engine keeps its upstream notices; see
 [`GODOT_COPYRIGHT.txt`](addons/godot_mini_game/GODOT_COPYRIGHT.txt) and
 [`THIRD_PARTY_NOTICES.md`](addons/godot_mini_game/THIRD_PARTY_NOTICES.md).
+
+## Star History
+
+<p align="center">
+  <a href="https://www.star-history.com/#AnranS/godot_for_minigame&Date">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=anrans/godot_for_minigame&type=Date&theme=dark" />
+      <img src="https://api.star-history.com/svg?repos=anrans/godot_for_minigame&type=Date" width="640" alt="Star history of AnranS/godot_for_minigame" />
+    </picture>
+  </a>
+</p>

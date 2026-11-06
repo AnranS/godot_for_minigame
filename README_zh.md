@@ -188,3 +188,14 @@ API 页面列出的是完整的桥接接口，不代表每个宿主都支持全�
 [MIT](LICENSE)。内置 Godot 引擎保留上游版权声明，详见
 [`GODOT_COPYRIGHT.txt`](addons/godot_mini_game/GODOT_COPYRIGHT.txt) 和
 [`THIRD_PARTY_NOTICES.md`](addons/godot_mini_game/THIRD_PARTY_NOTICES.md)。
+
+## Star 历史
+
+<p align="center">
+  <a href="https://www.star-history.com/#AnranS/godot_for_minigame&Date">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=anrans/godot_for_minigame&type=Date&theme=dark" />
+      <img src="https://api.star-history.com/svg?repos=anrans/godot_for_minigame&type=Date" width="640" alt="AnranS/godot_for_minigame 的 Star 增长曲线" />
+    </picture>
+  </a>
+</p>

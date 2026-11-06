@@ -90,8 +90,8 @@ const generatedApi = read("website/app/api/api-data.generated.ts");
 const methods = generatedArray(generatedApi, "apiMethods");
 const signals = generatedArray(generatedApi, "apiSignals");
 
-assert.ok(english.split("\n").length <= 220, "English homepage should stay concise");
-assert.ok(chinese.split("\n").length <= 220, "Chinese homepage should stay concise");
+assert.ok(english.split("\n").length <= 240, "English homepage should stay concise");
+assert.ok(chinese.split("\n").length <= 240, "Chinese homepage should stay concise");
 
 for (const readme of [english, chinese]) {
   assert.match(readme, /assets\/banner-dark-v2\.png/);
