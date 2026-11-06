@@ -1,41 +1,41 @@
 WEBVTT
 
 1
-00:00:00.600 --> 00:00:05.778
-Ship your Godot game to WeChat, Douyin, and TikTok mini games, in one click.
+00:00:00.600 --> 00:00:05.923
+Got a Godot game? Ship it to WeChat, Douyin, and TikTok mini games, in one click.
 
 2
-00:00:06.800 --> 00:00:11.592
+00:00:06.700 --> 00:00:11.214
 Until now, that meant custom engine builds, broken templates, and glue code.
 
 3
-00:00:11.800 --> 00:00:13.840
-Now, one panel does it all.
+00:00:11.700 --> 00:00:13.239
+Now, it's just one panel.
 
 4
-00:00:14.300 --> 00:00:18.013
-Pick a platform, enter your App ID, click Export.
+00:00:14.300 --> 00:00:17.468
+Pick a platform, enter your App ID, and hit Export.
 
 5
-00:00:18.200 --> 00:00:25.287
-You get the game pack, a mini-game engine, adapters, and platform config. No Node.js, no Emscripten.
+00:00:18.200 --> 00:00:25.586
+You get the game pack, a mini-game engine, the adapters, and the platform config. No Node.js. No Emscripten.
 
 6
-00:00:26.300 --> 00:00:34.862
-Open the folder in the platform's DevTools. The engine is built for mini games: single-threaded, no SIMD, no WebAssembly exceptions.
+00:00:26.300 --> 00:00:35.031
+Open the folder in the platform's DevTools, and it just runs. The engine is built for mini games, so it holds up on real phones, too.
 
 7
-00:00:35.500 --> 00:00:43.255
-Then call mini-game features straight from GDScript: two hundred and twenty-five methods and eighty-four signals, across all three hosts.
+00:00:35.500 --> 00:00:44.225
+Then call mini-game features right from GDScript: two hundred and twenty-five methods, and eighty-four signals, across all three platforms.
 
 8
-00:00:45.500 --> 00:00:52.707
-Every template matches your exact Godot version, and certified templates download, verify, and install in one click.
+00:00:45.500 --> 00:00:53.615
+Every engine template matches your exact Godot version. Certified ones download, verify, and install in a single click.
 
 9
-00:00:55.900 --> 00:01:00.134
+00:00:55.900 --> 00:00:59.893
 Zero extra tools. Three platforms. One Godot project.
 
 10
-00:01:02.500 --> 00:01:06.120
-Godot Mini Game is free and open source. Find it on GitHub.
+00:01:02.500 --> 00:01:08.844
+Godot Mini Game is free and open source. Check it out on GitHub, and if it helps you, give it a star.

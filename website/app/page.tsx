@@ -466,7 +466,10 @@ export default function Home() {
               aria-label={t.videoLabel}
             >
               <source src={asset(`/video/promo-${language}.mp4`)} type="video/mp4" />
-              {language === "en" ? <track kind="captions" src={asset("/video/promo-en.vtt")} srcLang="en" label="English" default /> : null}
+              {/* English captions start on; the Chinese cut already shows its text on screen. */}
+              {language === "en"
+                ? <track kind="captions" src={asset("/video/promo-en.vtt")} srcLang="en" label="English" default />
+                : <track kind="captions" src={asset("/video/promo-zh.vtt")} srcLang="zh" label="中文" />}
             </video>
           </div>
           <p className="video-links reveal">
