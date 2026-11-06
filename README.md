@@ -80,8 +80,8 @@ the export stops at preflight instead of failing at runtime.
 
 | Godot editor | Source commit | Engine template |
 |---|---|---|
-| **`4.7.2.stable`** (latest) | `ed1daf0bf001` | [Template release](https://github.com/AnranS/godot_for_minigame/releases/tag/template-4.7.2-stable-emsdk-4.0.3-2d-full-release-abi-1-r1), import it from the dock |
-| `4.6.3.stable` (official editor) | `35e80b3a8822` | [Template release](https://github.com/AnranS/godot_for_minigame/releases/tag/template-4.6.3-stable-emsdk-4.0.3-2d-full-release-abi-1-r1), import it from the dock |
+| **`4.7.2.stable`** (latest) | `ed1daf0bf001` | One-click download in the dock ([release](https://github.com/AnranS/godot_for_minigame/releases/tag/template-4.7.2-stable-emsdk-4.0.3-2d-full-release-abi-1-r1)) |
+| `4.6.3.stable` (official editor) | `35e80b3a8822` | One-click download in the dock ([release](https://github.com/AnranS/godot_for_minigame/releases/tag/template-4.6.3-stable-emsdk-4.0.3-2d-full-release-abi-1-r1)) |
 | `4.6.1.stable` | `14d19694e0c8` | Bundled with the plugin |
 
 CI exports every certified version to all three platforms. Plugin `v0.3.1` ·
@@ -160,6 +160,7 @@ other host-specific features use explicit per-platform mappings.
 ## Known limitations
 
 - The engine is single-threaded: no `Thread`, GDExtension, C#, or WebRTC.
+- Mini-game hosts have no system fonts: set and subset a [CJK font](docs/USAGE.md#cjk-fonts) if the game shows Chinese, Japanese, or Korean text.
 - WeChat and Douyin currently render at 1× logical pixels, so high-DPI screens look slightly soft.
 - Each export produces one resource pack; splitting game resources into custom subpackages is not supported yet.
 - TikTok beta restores `user://` at startup but does not write it back, and fails closed for storage enumeration, battery reads, and public file-system writes. Use `storage_set()` / `storage_get()` for saves; see the [usage guide](docs/USAGE.md#file-system).

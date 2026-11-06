@@ -61,6 +61,11 @@ scroll_active = false
 
 [node name="TemplateRow" type="HBoxContainer" parent="."]
 
+[node name="DownloadBtn" type="Button" parent="TemplateRow"]
+visible = false
+size_flags_horizontal = 3
+text = "下载匹配模板"
+
 [node name="ImportBtn" type="Button" parent="TemplateRow"]
 size_flags_horizontal = 3
 text = "导入引擎模板..."
@@ -71,7 +76,7 @@ text = "刷新"
 [node name="TemplateHint" type="Label" parent="."]
 autowrap_mode = 2
 theme_override_font_sizes/font_size = 11
-text = "需要与当前编辑器精确匹配的小游戏模板。可从本项目 Releases 下载，或自行编译。"
+text = "需要与当前编辑器精确匹配的小游戏模板。已认证的版本可一键下载；其它版本可从本项目 Releases 下载，或自行编译。"
 
 [node name="Sep3" type="HSeparator" parent="."]
 

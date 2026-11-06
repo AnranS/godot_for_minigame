@@ -95,7 +95,8 @@ export const releaseData = {
       "template": {
         "source": "release",
         "releaseTag": "template-4.6.3-stable-emsdk-4.0.3-2d-full-release-abi-1-r1",
-        "asset": "godot_minigame_template_4.6.3-stable_emsdk-4.0.3_2d-full_release_abi-1_r1.zip"
+        "asset": "godot_minigame_template_4.6.3-stable_emsdk-4.0.3_2d-full_release_abi-1_r1.zip",
+        "sha256": "5f205b709e40ba8e16ab6131f30b434d7843d1a73921f5630b48bca72490e5a9"
       },
       "platforms": {
         "wechat": "automated",
@@ -114,7 +115,8 @@ export const releaseData = {
       "template": {
         "source": "release",
         "releaseTag": "template-4.7.2-stable-emsdk-4.0.3-2d-full-release-abi-1-r1",
-        "asset": "godot_minigame_template_4.7.2-stable_emsdk-4.0.3_2d-full_release_abi-1_r1.zip"
+        "asset": "godot_minigame_template_4.7.2-stable_emsdk-4.0.3_2d-full_release_abi-1_r1.zip",
+        "sha256": "69fb88de6512e2ad1ae805a91405f7b80151f0c9760d519d8a2e4c91741523fb"
       },
       "platforms": {
         "wechat": "automated",

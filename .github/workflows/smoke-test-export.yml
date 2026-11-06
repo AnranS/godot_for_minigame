@@ -41,7 +41,8 @@ jobs:
               (
                 .template.source == "release" and
                 (.template.releaseTag | type == "string" and length > 0) and
-                (.template.asset | type == "string" and test("^[0-9A-Za-z._-]+\\.zip$"))
+                (.template.asset | type == "string" and test("^[0-9A-Za-z._-]+\\.zip$")) and
+                (.template.sha256 | type == "string" and test("^[0-9a-f]{64}$"))
               )
             )
           ' support-matrix.json >/dev/null
@@ -69,7 +70,8 @@ jobs:
                     devtoolVersion: ($matrix.platformContracts[.key].devtoolVersion // ""),
                     templateSource: $target.template.source,
                     templateReleaseTag: ($target.template.releaseTag // ""),
-                    templateAsset: ($target.template.asset // "")
+                    templateAsset: ($target.template.asset // ""),
+                    templateSha256: ($target.template.sha256 // "")
                   }
               ]
             }
@@ -173,11 +175,14 @@ jobs:
         env:
           TEMPLATE_RELEASE_TAG: ${{ matrix.templateReleaseTag }}
           TEMPLATE_ASSET: ${{ matrix.templateAsset }}
+          TEMPLATE_SHA256: ${{ matrix.templateSha256 }}
         run: |
           set -euo pipefail
           curl -fsSL \
             -o /tmp/godot-minigame-template.zip \
             "https://github.com/${GITHUB_REPOSITORY}/releases/download/${TEMPLATE_RELEASE_TAG}/${TEMPLATE_ASSET}"
+          # The plugin's one-click download trusts this pin, so CI checks it too.
+          echo "${TEMPLATE_SHA256}  /tmp/godot-minigame-template.zip" | sha256sum -c -
           cat > /tmp/import_template.gd <<'EOF'
           extends SceneTree
           func _init() -> void:

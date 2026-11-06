@@ -26,7 +26,7 @@
 
 | 工具 | 版本 | 用途 |
 |------|------|------|
-| Godot | 4.6.1 已认证；其他版本必须精确匹配模板 | 引擎本体 |
+| Godot | 4.6.1（内置模板）、4.6.3、4.7.2 已认证；其他版本必须精确匹配模板 | 引擎本体 |
 | 微信开发者工具 | latest stable | 调试/上传微信小游戏 |
 | 抖音开发者工具 | latest stable | 调试/上传抖音小游戏 |
 | TikTok 客户端 | 43.4.0+ | Native `TTWebAssembly` 运行时 |
@@ -174,6 +174,19 @@ Dock 顶部的 **引擎模板** 栏显示当前查找结果。插件按以下顺
 [架构与多版本策略](ARCHITECTURE.md)。
 精确版本模板库先选最高 revision；revision 相同则选数值上更新的 Emscripten 身份，
 最后用稳定路径打破平局。
+
+### 下载已认证模板
+
+编辑器版本已认证、但本机还没有对应模板时（例如 4.6.3、4.7.2），Dock 会显示
+**下载 X 模板** 按钮。点击后插件会：
+
+1. 从本项目对应的模板 Release 下载 ZIP
+2. 用插件内置的 SHA-256 校验值核对下载文件，不一致就删除并报错
+3. 按下面“导入新版引擎模板”的同一套检查导入到模板库
+
+内置清单是 `addons/godot_mini_game/core/certified_templates.json`，由
+`support-matrix.json` 生成，只收录版本号和源码提交都与编辑器一致的模板。无法访问 GitHub
+时，日志会给出 Release 页面链接，手动下载 ZIP 后点 **导入模板** 即可。
 
 ### 导入新版引擎模板
 
@@ -1570,6 +1583,28 @@ v0.3 只生成一个 `.pck`，暂未提供受管的多包输入。请使用所�
 - `images/logo.png` 来自 `addons/godot_mini_game/templates/common/images/logo.png`；要自定义请在导出前替换该源文件。
 - `images/background.png` 当前由 exporter 生成。正式自定义需要增加源模板选项；直接修改受管输出会让下一次预检按设计失败。
 
+### 中文字体
+
+小游戏环境没有系统字体。Godot 内置的后备字体（Open Sans）只包含拉丁字母，中文、全角标点、
+★ 之类的符号和 emoji 都会显示成方块。编辑器里看起来正常，是因为桌面系统提供了后备字体。
+
+如果游戏里有这些文字：
+
+1. 准备一个允许随游戏分发的字体，例如思源黑体 / Noto Sans SC（SIL OFL 许可）。
+2. 先裁剪子集再放进项目。完整的中文字体通常有十几 MB，会整个进入 `engine` 分包，拖慢首次
+   加载。可以用 fonttools 只保留游戏里用到的字（`used_chars.txt` 从文案、翻译表里收集）：
+
+```bash
+pip install fonttools brotli
+pyftsubset NotoSansSC-Regular.otf --text-file=used_chars.txt \
+  --output-file=NotoSansSC-subset.woff2 --flavor=woff2
+```
+
+3. 在 **项目设置 → GUI → 主题 → 自定义字体** 指定这个字体，或在自定义主题里设置默认字体。
+
+导出时，如果项目既没有自定义字体、也没有带默认字体的自定义主题，导出日志会给出提示。只在个别
+控件上单独设置字体的项目可以忽略这条提示。
+
 ---
 
 ## 10. 本地存储与云端同步
@@ -1634,8 +1669,9 @@ Native 导出会禁用 JavaScript eval。TikTok 请通过
 ## 12. 编译自定义引擎模板
 
 仓库内 `scripts/build_wasm_template.sh` 可以从一个精确 Godot 4.x tag 编译小游戏
-兼容模板。新版本必须写入 `support-matrix.json` 并通过生成的平台冒烟矩阵；TikTok
-还要通过必需的 `ttmg` 与真机发布门禁。
+兼容模板。新版本必须写入 `support-matrix.json`（Release 模板要写入 ZIP 的 `sha256`，再运行
+`node scripts/sync_certified_templates.mjs` 更新 Dock 的下载清单）并通过生成的平台冒烟矩阵；
+TikTok 还要通过必需的 `ttmg` 与真机发布门禁。
 
 ```bash
 # 默认 Godot 4.6.1-stable + Emscripten 4.0.3
@@ -1688,8 +1724,13 @@ EDITOR_COMMITS="$(./scripts/official_editor_commit.sh 4.6.3-stable)" \
 A: 查看 Dock 上方的 **引擎模板** 状态：
 - 内置缺失：检查 `addons/godot_mini_game/engine/` 是否有 `godot.js` 和 `godot.wasm.br`
 - 自定义没找到：除了两个文件，还必须有匹配的 `template.json`
-- 模板库为空：点 **导入模板** 导一份
+- 模板库为空：已认证的版本点 **下载 X 模板**，其它版本点 **导入模板** 导一份
 - 版本或提交不匹配：为当前精确编辑器构建导入对应模板
+
+### Q: 中文或符号显示成方块
+
+A: 项目没有设置能显示这些文字的字体，小游戏环境里也没有系统字体可以兜底。按
+[中文字体](#中文字体) 配置并裁剪字体即可。
 
 ### Q: 导出能跑但真机提示 `CompileError: OOM / magic Tag section`
 

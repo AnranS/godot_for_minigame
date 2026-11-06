@@ -2,6 +2,7 @@
 extends VBoxContainer
 
 const Exporter = preload("res://addons/godot_mini_game/exporter.gd")
+const TemplateDownload = preload("res://addons/godot_mini_game/core/template_download.gd")
 
 const PLATFORM_OPTIONS := [
 	["微信小游戏", "wechat"],
@@ -30,11 +31,15 @@ const ORIENTATION_OPTIONS := [
 @onready var status_label: RichTextLabel = $StatusLabel
 @onready var folder_dialog: FileDialog = $FolderDialog
 @onready var template_status: RichTextLabel = $TemplateStatus
+@onready var download_btn: Button = $TemplateRow/DownloadBtn
 @onready var import_btn: Button = $TemplateRow/ImportBtn
 @onready var refresh_btn: Button = $TemplateRow/RefreshBtn
 @onready var template_file_dialog: FileDialog = $TemplateFileDialog
 
 var _active_exporter: RefCounted
+var _active_download: RefCounted
+## The certified template this editor can download, or {} when there is none.
+var _download_entry: Dictionary = {}
 
 
 func _ready() -> void:
@@ -55,7 +60,9 @@ func _ready() -> void:
 	export_btn.pressed.connect(_on_export)
 	cancel_export_btn.pressed.connect(_on_cancel_export)
 	folder_dialog.dir_selected.connect(_on_dir_selected)
+	download_btn.pressed.connect(_on_download_template)
 	import_btn.pressed.connect(_on_import_template)
+	status_label.meta_clicked.connect(func(meta: Variant) -> void: OS.shell_open(str(meta)))
 	# The "Refresh" button refreshes BOTH the template status and the export
 	# preset list, because users frequently create their Web preset *after*
 	# enabling the plugin and would otherwise be stuck staring at "(未找到导出预设)"
@@ -131,6 +138,7 @@ func _refresh_template_status() -> void:
 	else:
 		version_note = "编辑器 %s" % ver_key
 	template_status.clear()
+	_download_entry = {}
 	match status.source:
 		"addon":
 			template_status.append_text("[color=green]✓ 兼容模板就绪[/color] (自定义, %s)" % version_note)
@@ -142,6 +150,75 @@ func _refresh_template_status() -> void:
 			template_status.append_text("[color=green]✓ 兼容模板就绪[/color] (旧模板库, %s)" % version_note)
 		_:
 			template_status.append_text("[color=red]✗ 未找到精确匹配的引擎模板[/color] (Godot %s)" % ver_key)
+			_download_entry = TemplateDownload.find_for_editor(
+				TemplateDownload.load_catalog(),
+				str(status.get("editor_version", "")),
+				str(status.get("editor_commit", "")),
+			)
+			if _download_entry.is_empty():
+				template_status.append_text("\n当前编辑器没有已认证的模板，可按使用文档编译。")
+			else:
+				template_status.append_text(
+					"\n已认证此版本，点击「下载匹配模板」自动下载、校验并导入。")
+	download_btn.visible = not _download_entry.is_empty()
+	if download_btn.visible and not _active_download:
+		download_btn.text = "下载 %s 模板" % _short_version(str(_download_entry.godotVersion))
+
+
+func _on_download_template() -> void:
+	if _download_entry.is_empty() or _active_download:
+		return
+	var entry := _download_entry
+	var destination := TemplateDownload.download_path(entry)
+	var downloader := TemplateDownload.new()
+	_active_download = downloader
+	_set_template_busy(true)
+	_log("[color=cyan]正在下载 Godot %s 引擎模板 ...[/color]" % _short_version(str(entry.godotVersion)))
+	var ticker := Timer.new()
+	ticker.wait_time = 0.5
+	ticker.timeout.connect(_show_download_progress.bind(downloader))
+	add_child(ticker)
+	ticker.start()
+
+	var err: Error = await downloader.download(self, entry, destination)
+	ticker.queue_free()
+	if err == OK:
+		_log("SHA-256 校验通过，正在导入 ...")
+		var exporter := Exporter.new()
+		exporter.log_callback = _log
+		err = exporter.import_template_zip(destination)
+		DirAccess.remove_absolute(destination)
+		if err == OK:
+			_log("[color=green][b]模板下载并导入成功！[/b][/color]")
+			_show_toast("模板已就绪", "Godot %s 的引擎模板已下载、校验并导入。" % _short_version(str(entry.godotVersion)))
+		else:
+			_log("[color=red]模板导入失败[/color]")
+	else:
+		_log("[color=red]模板下载失败：%s[/color]" % downloader.last_error)
+		var release_url := TemplateDownload.release_url(entry)
+		_log("可以手动下载后点「导入引擎模板...」：[url=%s]%s[/url]" % [release_url, release_url])
+	_active_download = null
+	_set_template_busy(false)
+	_refresh_template_status()
+
+
+func _show_download_progress(downloader: RefCounted) -> void:
+	var received: Vector2i = downloader.progress()
+	if received.y > 0:
+		download_btn.text = "下载中 %d%%" % int(100.0 * received.x / received.y)
+	else:
+		download_btn.text = "下载中 %.1f MB" % (received.x / 1048576.0)
+
+
+func _set_template_busy(busy: bool) -> void:
+	download_btn.disabled = busy
+	import_btn.disabled = busy
+	refresh_btn.disabled = busy
+	export_btn.disabled = busy
+
+
+static func _short_version(version: String) -> String:
+	return version.trim_suffix(".stable")
 
 
 func _on_import_template() -> void:
@@ -235,6 +312,7 @@ func _on_cancel_export() -> void:
 
 func _set_export_busy(busy: bool) -> void:
 	export_btn.disabled = busy
+	download_btn.disabled = busy
 	import_btn.disabled = busy
 	refresh_btn.disabled = busy
 	cancel_export_btn.visible = busy

@@ -72,8 +72,8 @@
 
 | Godot 编辑器 | 源码提交 | 引擎模板 |
 |---|---|---|
-| **`4.7.2.stable`**（最新） | `ed1daf0bf001` | [模板 Release](https://github.com/AnranS/godot_for_minigame/releases/tag/template-4.7.2-stable-emsdk-4.0.3-2d-full-release-abi-1-r1)，在导出面板中导入 |
-| `4.6.3.stable`（官方编辑器） | `35e80b3a8822` | [模板 Release](https://github.com/AnranS/godot_for_minigame/releases/tag/template-4.6.3-stable-emsdk-4.0.3-2d-full-release-abi-1-r1)，在导出面板中导入 |
+| **`4.7.2.stable`**（最新） | `ed1daf0bf001` | 导出面板一键下载（[模板 Release](https://github.com/AnranS/godot_for_minigame/releases/tag/template-4.7.2-stable-emsdk-4.0.3-2d-full-release-abi-1-r1)） |
+| `4.6.3.stable`（官方编辑器） | `35e80b3a8822` | 导出面板一键下载（[模板 Release](https://github.com/AnranS/godot_for_minigame/releases/tag/template-4.6.3-stable-emsdk-4.0.3-2d-full-release-abi-1-r1)） |
 | `4.6.1.stable` | `14d19694e0c8` | 随插件内置 |
 
 CI 会把每个已认证版本导出到全部三个平台。插件 `v0.3.1` · Emscripten `4.0.3` · 构建 `2d_full` ·
@@ -141,6 +141,7 @@ API 页面列出的是完整的桥接接口，不代表每个宿主都支持全�
 ## 已知限制
 
 - 引擎是单线程构建：不支持 `Thread`、GDExtension、C# 和 WebRTC。
+- 小游戏环境没有系统字体：游戏里有中文时，请设置并裁剪[中文字体](docs/USAGE_zh.md#中文字体)。
 - 微信和抖音目前按 1 倍逻辑像素渲染，高分屏上会略显模糊。
 - 每次导出只生成一个资源包，暂不支持把游戏资源拆成多个自定义分包。
 - TikTok beta 启动时恢复 `user://`，但不会写回；存储枚举、电池读取与公开文件系统写入会失败关闭。存档请用 `storage_set()` / `storage_get()`，详见[使用指南](docs/USAGE_zh.md#文件系统)。

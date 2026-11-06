@@ -98,7 +98,7 @@ export default function QuickStartPage() {
                       {template.bundled ? "（内置）" : <>（<a href={template.releaseUrl} target="_blank" rel="noreferrer">模板 Release</a>）</>}
                     </span>
                   ))}
-                  。使用非内置版本时，先下载对应的模板 ZIP，在导出面板点“导入引擎模板…”。其它版本需要构建版本完全一致的模板，见<a href={sitePath("/guide/#engine")}>接入指引</a>。不支持 .NET（C#）版本。
+                  。使用非内置的已认证版本时，导出面板会出现“下载模板”按钮，点一下即可下载、校验并导入。其它版本需要构建版本完全一致的模板，见<a href={sitePath("/guide/#engine")}>接入指引</a>。不支持 .NET（C#）版本。
                 </td>
               </tr>
               <tr>
@@ -187,7 +187,7 @@ export default function QuickStartPage() {
               <tr><td>屏幕方向</td><td>竖屏或横屏，写入 <code>game.json</code> 的 <code>deviceOrientation</code>。不会读取项目设置里的方向，两边请保持一致。</td></tr>
               <tr><td>Web 导出预设</td><td>上一步创建的 Web 预设。</td></tr>
               <tr><td>输出目录</td><td>第一次请选一个<strong>新的空目录</strong>，并且必须在 Godot 项目之外。之后可以一直导出到同一个目录，插件只替换它自己管理的文件。</td></tr>
-              <tr><td>引擎模板</td><td>显示绿色的“兼容模板就绪”才能导出。使用非内置的已认证版本时，先点“导入引擎模板…”导入对应的模板 ZIP。显示不匹配时，说明编辑器版本和模板不一致。</td></tr>
+              <tr><td>引擎模板</td><td>显示绿色的“兼容模板就绪”才能导出。使用非内置的已认证版本时，点“下载 X 模板”自动下载并导入；无法访问 GitHub 时，再从模板 Release 手动下载 ZIP，点“导入引擎模板…”。显示不匹配时，说明编辑器版本和模板不一致。</td></tr>
               <tr><td>资源导出超时</td><td>导出游戏资源包的时间上限，默认 600 秒。资源很多的项目可以调大。</td></tr>
             </tbody>
           </table>
@@ -289,7 +289,8 @@ export default function QuickStartPage() {
           <table>
             <thead><tr><th>现象</th><th>原因</th><th>处理</th></tr></thead>
             <tbody>
-              <tr><td>面板提示没有匹配的引擎模板</td><td>编辑器不是 {bundled.godotVersion}</td><td>换用 {bundled.godotVersion}，或导入版本完全一致的模板包。</td></tr>
+              <tr><td>面板提示没有匹配的引擎模板</td><td>编辑器版本没有安装对应模板</td><td>已认证版本点“下载 X 模板”；其它版本换用已认证版本，或导入版本完全一致的模板包。</td></tr>
+              <tr><td>中文或符号显示成方块</td><td>项目没有设置包含这些字的字体，小游戏环境也没有系统字体</td><td>用 <a href={`${GUIDE_ZH}#中文字体`} target="_blank" rel="noreferrer">使用文档的“中文字体”</a>配置并裁剪字体。</td></tr>
               <tr><td>输出目录预检失败</td><td>目录在 Godot 项目内，或是非空且不是插件导出过的目录</td><td>选一个项目外的新空目录。</td></tr>
               <tr><td>模拟器停在 33%</td><td>v0.3.0 之前的插件版本的适配层问题</td><td>升级到 v0.3.0 或更新版本后重新导出。</td></tr>
               <tr><td><code>module not found</code>，存储目录是 <code>touristappid</code></td><td>项目在游客模式下运行</td><td>换成当前账号有开发权限的 AppID。</td></tr>

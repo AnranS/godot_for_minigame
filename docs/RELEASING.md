@@ -25,6 +25,17 @@ npm run generate:data
 cd ..
 ```
 
+When a certified row uses a release template, pin the ZIP's SHA-256 in
+`template.sha256` (each template release publishes it as `<asset>.sha256`) and
+regenerate the catalog the dock downloads from:
+
+```bash
+node scripts/sync_certified_templates.mjs
+```
+
+`test/certified_templates.test.mjs` fails while the shipped catalog is stale,
+and CI checks every pinned hash when it installs a release template.
+
 `support-matrix.json` is authoritative for the project-validated Godot, Emscripten,
 profile, target, revision, ABI, and schema tuple. Do not publish a version when
 the bundled `addons/godot_mini_game/engine/template.json` disagrees with that

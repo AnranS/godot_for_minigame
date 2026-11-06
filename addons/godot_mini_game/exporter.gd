@@ -565,6 +565,7 @@ func _export_mini_game_impl(
 	err = _validate_template_sources(platform)
 	if err != OK:
 		return err
+	_warn_if_no_project_font()
 
 	var staging_dir := _make_sibling_temp_path(output_path, "export-staging")
 	err = DirAccess.make_dir_recursive_absolute(staging_dir)
@@ -653,6 +654,30 @@ func _export_mini_game_impl(
 
 	_log("[color=green]导出完成！→ %s[/color]" % output_path)
 	return OK
+
+
+## Mini-game hosts expose no system fonts, so a project that never sets its
+## own font renders with Godot's built-in fallback (Open Sans: Latin only).
+## Chinese, full-width punctuation, symbols such as ★, and emoji then show as
+## empty boxes. Fonts can also be set per Control, so this only warns.
+static func project_default_font_configured() -> bool:
+	if not str(ProjectSettings.get_setting("gui/theme/custom_font", "")).is_empty():
+		return true
+	var theme_path := str(ProjectSettings.get_setting("gui/theme/custom", ""))
+	if theme_path.is_empty() or not ResourceLoader.exists(theme_path):
+		return false
+	var theme := ResourceLoader.load(theme_path) as Theme
+	return theme != null and theme.default_font != null
+
+
+func _warn_if_no_project_font() -> void:
+	if project_default_font_configured():
+		return
+	_log(
+		"  [color=yellow]提示：项目没有设置默认字体。小游戏环境没有系统字体，Godot 内置字体只含拉丁字母，"
+		+ "中文、全角标点、★ 等符号和 emoji 会显示为方块。如果游戏里有这些文字，请在"
+		+ "「项目设置 → GUI → 主题 → 自定义字体」指定字体文件（建议先裁剪子集），详见使用文档“中文字体”一节。[/color]"
+	)
 
 
 func _validate_export_preset(preset_name: String) -> Error:

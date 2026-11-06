@@ -170,6 +170,7 @@ export default function GuidePage() {
           <li><strong>存档</strong>：微信和抖音上 <code>user://</code> 会自动持久化；TikTok 上只在启动时恢复。需要跨平台可靠保存的数据，用 <code>storage_set()</code>。第一次以小游戏运行时 <code>user://</code> 是空的，读取不到浏览器版本的旧存档。</li>
           <li><strong>网络</strong>：请求、WebSocket、上传和下载的合法域名要在平台后台分别配置，WebSocket 必须使用 <code>wss://</code>。</li>
           <li><strong>包体</strong>：主包只有启动代码，引擎和全部游戏资源在 <code>engine</code> 分包里。目前每次导出只生成一个资源包，暂不支持把游戏资源拆成多个自定义分包；请用导出预设的资源过滤和资源压缩控制包体。</li>
+          <li><strong>字体</strong>：小游戏环境没有系统字体，Godot 内置字体只含拉丁字母，中文、全角标点和 emoji 会显示成方块。请在项目设置里指定自定义字体，并先裁剪子集，见<a href={`${GUIDE_ZH}#中文字体`} target="_blank" rel="noreferrer">使用文档的“中文字体”</a>。</li>
           <li><strong>不可用的能力</strong>：多线程、GDExtension、C#、TCP/UDP、WebRTC、麦克风和远程调试器都不可用，需要的话请改用平台能力或其它实现。</li>
         </ul>
       </Section>
