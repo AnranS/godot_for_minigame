@@ -1,0 +1,41 @@
+WEBVTT
+
+1
+00:00:00.600 --> 00:00:05.778
+Ship your Godot game to WeChat, Douyin, and TikTok mini games, in one click.
+
+2
+00:00:06.800 --> 00:00:11.592
+Until now, that meant custom engine builds, broken templates, and glue code.
+
+3
+00:00:11.800 --> 00:00:13.840
+Now, one panel does it all.
+
+4
+00:00:14.300 --> 00:00:18.013
+Pick a platform, enter your App ID, click Export.
+
+5
+00:00:18.200 --> 00:00:25.287
+You get the game pack, a mini-game engine, adapters, and platform config. No Node.js, no Emscripten.
+
+6
+00:00:26.300 --> 00:00:34.862
+Open the folder in the platform's DevTools. The engine is built for mini games: single-threaded, no SIMD, no WebAssembly exceptions.
+
+7
+00:00:35.500 --> 00:00:43.255
+Then call mini-game features straight from GDScript: two hundred and twenty-five methods and eighty-four signals, across all three hosts.
+
+8
+00:00:45.500 --> 00:00:52.707
+Every template matches your exact Godot version, and certified templates download, verify, and install in one click.
+
+9
+00:00:55.900 --> 00:01:00.134
+Zero extra tools. Three platforms. One Godot project.
+
+10
+00:01:02.500 --> 00:01:06.120
+Godot Mini Game is free and open source. Find it on GitHub.

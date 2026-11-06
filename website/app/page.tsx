@@ -9,6 +9,7 @@ type Language = "zh" | "en";
 
 const REPO = "https://github.com/AnranS/godot_for_minigame";
 const RELEASE = `${REPO}/releases/latest`;
+const PROMO_RELEASE = `${REPO}/releases/tag/promo-video-1`;
 const VERSION = releaseData.pluginVersion;
 const BRIDGE_ABI = releaseData.bridgeAbi;
 const EMSCRIPTEN_VERSION = releaseData.bundled.emscriptenVersion;
@@ -49,6 +50,12 @@ const copy = {
       "在 Godot 编辑器里**一键导出**小游戏工程。引擎、适配层与 SDK 全部内置，**不用装 Node.js、Emscripten，也不用下载 Web 导出模板**。",
     download: `下载 v${VERSION}`,
     quickStart: "快速开始教程",
+    watchVideo: "观看 71 秒介绍视频",
+    videoKicker: "介绍视频",
+    videoTitle: "71 秒看懂 Godot Mini Game",
+    videoBody: "从一键导出、真机运行、MiniGameSDK 到多版本模板，一段视频讲清楚。",
+    videoLabel: "Godot Mini Game 介绍视频",
+    videoDownload: "下载 4K 与竖版视频",
     supports: "已支持",
     shotsCaption: "真实截图：Godot 编辑器中的小游戏导出面板，以及导出结果在微信开发者工具模拟器中运行。",
     shotEditorAlt: "Godot 编辑器右侧的小游戏导出面板，已选择微信小游戏并显示兼容模板就绪",
@@ -164,6 +171,12 @@ const copy = {
       "Export a mini-game project **in one click** from the Godot editor. The engine, adapters, and SDK are bundled, so there is **no Node.js, Emscripten, or Web export template to install**.",
     download: `Download v${VERSION}`,
     quickStart: "Quick start guide",
+    watchVideo: "Watch the 71-second intro",
+    videoKicker: "Intro video",
+    videoTitle: "Godot Mini Game in 71 seconds",
+    videoBody: "One-click export, real-device runs, MiniGameSDK, and version-matched templates in one short video.",
+    videoLabel: "Godot Mini Game intro video",
+    videoDownload: "Download 4K and vertical cuts",
     supports: "Supports",
     shotsCaption: "Real screenshots: the Mini Game Export dock in the Godot editor, and the exported game running in the WeChat DevTools simulator.",
     shotEditorAlt: "The Mini Game Export dock in the Godot editor with WeChat selected and the compatible template ready",
@@ -401,6 +414,7 @@ export default function Home() {
               <a className="button button-primary" href={RELEASE} target="_blank" rel="noreferrer">{t.download}<span>↓</span></a>
               <a className="button button-secondary" href={sitePath("/quick-start/")}>{t.quickStart}<span>→</span></a>
             </div>
+            <a className="hero-video-link" href="#video"><i aria-hidden="true" />{t.watchVideo}</a>
             <div className="platform-line">
               <span>{t.supports}</span>
               <span className="platform-chip"><img src={asset("/wechat.svg")} alt="" />WeChat</span>
@@ -431,6 +445,33 @@ export default function Home() {
               <p>{detail}</p>
             </div>
           ))}
+        </div>
+      </section>
+
+      <section className="section video-section" id="video">
+        <div className="container">
+          <div className="section-heading reveal">
+            <p className="section-kicker">{t.videoKicker}</p>
+            <h2>{t.videoTitle}</h2>
+            <p>{t.videoBody}</p>
+          </div>
+          <div className="video-frame reveal">
+            {/* Remount on language change so the matching cut and captions load. */}
+            <video
+              key={language}
+              controls
+              playsInline
+              preload="none"
+              poster={asset(`/video/promo-${language}-poster.webp`)}
+              aria-label={t.videoLabel}
+            >
+              <source src={asset(`/video/promo-${language}.mp4`)} type="video/mp4" />
+              {language === "en" ? <track kind="captions" src={asset("/video/promo-en.vtt")} srcLang="en" label="English" default /> : null}
+            </video>
+          </div>
+          <p className="video-links reveal">
+            <a href={PROMO_RELEASE} target="_blank" rel="noreferrer">{t.videoDownload}<span>↗</span></a>
+          </p>
         </div>
       </section>
 

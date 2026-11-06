@@ -20,6 +20,10 @@ test("exports a complete static homepage", async () => {
   assert.match(html, /og\.png/);
   assert.match(html, /douyin\.svg/);
   assert.match(html, /tiktok\.svg/);
+  assert.match(html, /id="video"/);
+  assert.match(html, /<video[^>]*preload="none"/);
+  assert.match(html, /video\/promo-zh\.mp4/);
+  assert.match(html, /promo-video-1/);
   assert.match(html, /id="architecture"/);
   assert.match(html, /<figure class="architecture-diagram/);
   assert.match(html, /<ol class="architecture-path"/);

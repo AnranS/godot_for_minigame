@@ -2017,6 +2017,86 @@ a.version-source:hover {
   outline-offset: 3px;
 }
 
+/* Homepage intro video. */
+
+.hero-video-link {
+  width: fit-content;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 18px;
+  color: #b9dcf6;
+  font-size: 14px;
+  font-weight: 650;
+  transition: color 180ms ease;
+}
+
+.hero-video-link i {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(100, 181, 246, 0.4);
+  border-radius: 50%;
+  background: rgba(71, 140, 191, 0.14);
+}
+
+.hero-video-link i::after {
+  content: "";
+  margin-left: 3px;
+  border-left: 9px solid #8fd0ff;
+  border-top: 6px solid transparent;
+  border-bottom: 6px solid transparent;
+}
+
+.hero-video-link:hover {
+  color: #fff;
+}
+
+.video-section {
+  position: relative;
+  padding-bottom: 110px;
+  border-top: 1px solid rgba(255, 255, 255, 0.055);
+  background:
+    radial-gradient(circle at 50% 0%, rgba(71, 140, 191, 0.12), transparent 40%),
+    #070a0f;
+}
+
+.video-frame {
+  max-width: 1040px;
+  margin: 0 auto;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-radius: 22px;
+  background: #000;
+  box-shadow: 0 50px 110px rgba(2, 7, 14, 0.6), inset 0 1px rgba(255, 255, 255, 0.06);
+}
+
+.video-frame video {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  display: block;
+  background: #000;
+}
+
+.video-links {
+  margin: 22px 0 0;
+  text-align: center;
+}
+
+.video-links a {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #9fd0f5;
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.video-links a:hover {
+  color: #fff;
+}
+
 @media (max-width: 1080px) {
   .hero-layout {
     grid-template-columns: minmax(0, 1fr);
