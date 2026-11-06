@@ -3,6 +3,8 @@ import { access, readFile } from "node:fs/promises";
 import test from "node:test";
 
 const root = new URL("../", import.meta.url);
+const { pluginVersion } = JSON.parse(await readFile(new URL("../../support-matrix.json", import.meta.url), "utf8"));
+const versionPattern = pluginVersion.replaceAll(".", "\\.");
 
 test("exports a complete static homepage", async () => {
   const html = await readFile(new URL("../dist/client/index.html", import.meta.url), "utf8");
@@ -36,7 +38,7 @@ test("exports a complete static homepage", async () => {
   assert.match(html, /抖音小游戏/);
   assert.match(html, /TikTok Mini Game/);
   assert.doesNotMatch(html, /architecture-stage-head|transaction publish|atomic publish|>CLI</);
-  assert.match(html, /v0\.3\.0/);
+  assert.match(html, new RegExp(`v${versionPattern}`));
   assert.match(html, /godot_mini_game_vX\.Y\.Z\.zip/);
   assert.doesNotMatch(html, /v0\.1\.1|v0\.2\.1|4\.3–4\.6/);
   assert.doesNotMatch(html, /codex-preview|Your site is taking shape/);
@@ -70,7 +72,7 @@ test("exports the quick start with real screenshots", async () => {
   const html = await readFile(new URL("../dist/client/quick-start/index.html", import.meta.url), "utf8");
 
   assert.match(html, /快速开始/);
-  assert.match(html, /godot_mini_game_v0\.3\.0\.zip/);
+  assert.match(html, new RegExp(`godot_mini_game_v${versionPattern}\\.zip`));
   for (const id of ["prepare", "install", "enable", "preset", "dock", "export", "run", "sdk", "troubleshoot"]) {
     assert.match(html, new RegExp(`id="${id}"`), `quick start section ${id}`);
   }

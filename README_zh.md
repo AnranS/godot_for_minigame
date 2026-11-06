@@ -19,7 +19,7 @@
 </p>
 
 <p align="center">
-  <strong><a href="https://github.com/AnranS/godot_for_minigame/releases/latest">下载 v0.3.0</a></strong> ·
+  <strong><a href="https://github.com/AnranS/godot_for_minigame/releases/latest">下载 v0.3.1</a></strong> ·
   <a href="https://anrans.github.io/godot_for_minigame/quick-start/">快速开始</a> ·
   <a href="https://anrans.github.io/godot_for_minigame/guide/">接入指引</a> ·
   <a href="https://anrans.github.io/godot_for_minigame/api/">API 文档</a> ·
@@ -76,7 +76,7 @@
 | `4.6.3.stable`（官方编辑器） | `35e80b3a8822` | [模板 Release](https://github.com/AnranS/godot_for_minigame/releases/tag/template-4.6.3-stable-emsdk-4.0.3-2d-full-release-abi-1-r1)，在导出面板中导入 |
 | `4.6.1.stable` | `14d19694e0c8` | 随插件内置 |
 
-CI 会把每个已认证版本导出到全部三个平台。插件 `v0.3.0` · Emscripten `4.0.3` · 构建 `2d_full` ·
+CI 会把每个已认证版本导出到全部三个平台。插件 `v0.3.1` · Emscripten `4.0.3` · 构建 `2d_full` ·
 `release` · revision `1` · Bridge ABI `1` · template schema `1` · output schema `1`。
 [`support-matrix.json`](support-matrix.json) 是 Release、CI 与官网中这些数值的唯一事实源。
 

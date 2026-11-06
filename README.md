@@ -19,7 +19,7 @@
 </p>
 
 <p align="center">
-  <strong><a href="https://github.com/AnranS/godot_for_minigame/releases/latest">Download v0.3.0</a></strong> ·
+  <strong><a href="https://github.com/AnranS/godot_for_minigame/releases/latest">Download v0.3.1</a></strong> ·
   <a href="https://anrans.github.io/godot_for_minigame/quick-start/">Quick start</a> ·
   <a href="https://anrans.github.io/godot_for_minigame/guide/">Integration guide</a> ·
   <a href="https://anrans.github.io/godot_for_minigame/api/">API reference</a> ·
@@ -84,7 +84,7 @@ the export stops at preflight instead of failing at runtime.
 | `4.6.3.stable` (official editor) | `35e80b3a8822` | [Template release](https://github.com/AnranS/godot_for_minigame/releases/tag/template-4.6.3-stable-emsdk-4.0.3-2d-full-release-abi-1-r1), import it from the dock |
 | `4.6.1.stable` | `14d19694e0c8` | Bundled with the plugin |
 
-CI exports every certified version to all three platforms. Plugin `v0.3.0` ·
+CI exports every certified version to all three platforms. Plugin `v0.3.1` ·
 Emscripten `4.0.3` · build `2d_full` · `release` · revision `1` · Bridge ABI `1` ·
 template schema `1` · output schema `1`. [`support-matrix.json`](support-matrix.json) is the source
 of truth for these values in releases, CI, and the website.
