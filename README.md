@@ -23,6 +23,7 @@
   <a href="https://anrans.github.io/godot_for_minigame/quick-start/">Quick start</a> ·
   <a href="https://anrans.github.io/godot_for_minigame/guide/">Integration guide</a> ·
   <a href="https://anrans.github.io/godot_for_minigame/api/">API reference</a> ·
+  <a href="https://github.com/AnranS/godot_for_minigame/releases/tag/promo-video-1">Intro video</a> ·
   <a href="README_zh.md">简体中文</a>
 </p>
 
@@ -40,6 +41,10 @@
   <img src="website/public/screenshots/wechat-simulator.webp" width="176" alt="The exported Godot demo running in the WeChat DevTools simulator" />
 </p>
 <p align="center"><sub>Export from the Mini Game Export dock (left), then run the result in the platform DevTools (right). Real screenshots.</sub></p>
+
+<p align="center">
+  <a href="https://github.com/AnranS/godot_for_minigame/releases/tag/promo-video-1"><img src="assets/promo-cover-en.jpg" width="560" alt="Watch the 71-second intro video (4K, English narration)" /></a>
+</p>
 
 ## Highlights
 

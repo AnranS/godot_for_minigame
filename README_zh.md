@@ -23,6 +23,7 @@
   <a href="https://anrans.github.io/godot_for_minigame/quick-start/">快速开始</a> ·
   <a href="https://anrans.github.io/godot_for_minigame/guide/">接入指引</a> ·
   <a href="https://anrans.github.io/godot_for_minigame/api/">API 文档</a> ·
+  <a href="https://github.com/AnranS/godot_for_minigame/releases/tag/promo-video-1">介绍视频</a> ·
   <a href="README.md">English</a>
 </p>
 
@@ -40,6 +41,10 @@
   <img src="website/public/screenshots/wechat-simulator.webp" width="176" alt="导出的 Godot 示例项目在微信开发者工具模拟器中运行" />
 </p>
 <p align="center"><sub>在小游戏导出面板中导出（左），再用平台开发者工具运行（右）。均为真实截图。</sub></p>
+
+<p align="center">
+  <a href="https://github.com/AnranS/godot_for_minigame/releases/tag/promo-video-1"><img src="assets/promo-cover-zh.jpg" width="560" alt="观看 71 秒介绍视频（4K）" /></a>
+</p>
 
 ## 核心优势
 
