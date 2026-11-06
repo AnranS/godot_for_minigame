@@ -145,6 +145,7 @@ API 页面列出的是完整的桥接接口，不代表每个宿主都支持全�
 - 微信和抖音目前按 1 倍逻辑像素渲染，高分屏上会略显模糊。
 - 每次导出只生成一个资源包，暂不支持把游戏资源拆成多个自定义分包。
 - TikTok beta 启动时恢复 `user://`，但不会写回；存储枚举、电池读取与公开文件系统写入会失败关闭。存档请用 `storage_set()` / `storage_get()`，详见[使用指南](docs/USAGE_zh.md#文件系统)。
+- TikTok beta 不启用 Godot 的音频混音器：`AudioStreamGenerator`、Stream 模式播放和总线效果在 TikTok 上没有声音，请通过 `MiniGameSDK` 的 InnerAudio 接口播放声音。
 
 完整的兼容性对照见[接入指引](https://anrans.github.io/godot_for_minigame/guide/)。
 

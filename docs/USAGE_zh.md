@@ -304,6 +304,10 @@ Client Key 只从 `~/.ttmgrc` 读取，不会从 `project.config.json.appid` 自
 Native 编译/调试入口是 `ttmg dev`；CI 另通过其依赖的 `ttmg-pack.checkPkgs` 做离线
 包预检。
 
+TikTok 的 WebAudio 没有 `createScriptProcessor()`，用其它节点模拟它会让 TikTok 客户端在真机上闪退，
+所以 TikTok 导出不启用 Godot 的音频混音器：`AudioStreamGenerator`、Stream 模式播放和总线效果没有
+声音。请通过 `MiniGameSDK` 的 InnerAudio 接口（`create_inner_audio_context()`、`inner_audio_play()` 等）播放声音。
+
 仓库已自动检查 TikTok 的导出、Manifest、WASM 和包结构，但 beta 不等于真机认证。
 每个 Release 候选仍必须通过 DevTool 构建与目标真机运行。
 

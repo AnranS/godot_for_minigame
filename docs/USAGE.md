@@ -320,6 +320,12 @@ In the pinned CLI, Native `ttmg build` is currently a placeholder and is not a
 validation gate. `ttmg dev` is the Native compile/debug entry; CI performs its
 separate offline package precheck through the bundled `ttmg-pack.checkPkgs`.
 
+TikTok's WebAudio has no `createScriptProcessor()`, and emulating it with other
+nodes crashed the TikTok client on a real device. TikTok exports therefore keep
+Godot's audio mixer off: `AudioStreamGenerator`, Stream-mode playback, and bus
+effects are silent. Play sounds through `MiniGameSDK`'s InnerAudio API
+(`create_inner_audio_context()`, `inner_audio_play()`, and friends) instead.
+
 The repository automates export, manifest, WASM, and package smoke checks for
 TikTok. Beta does not mean device-certified: a DevTool build and a real-device
 run are required before every release.

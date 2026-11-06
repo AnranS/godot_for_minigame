@@ -164,6 +164,7 @@ other host-specific features use explicit per-platform mappings.
 - WeChat and Douyin currently render at 1× logical pixels, so high-DPI screens look slightly soft.
 - Each export produces one resource pack; splitting game resources into custom subpackages is not supported yet.
 - TikTok beta restores `user://` at startup but does not write it back, and fails closed for storage enumeration, battery reads, and public file-system writes. Use `storage_set()` / `storage_get()` for saves; see the [usage guide](docs/USAGE.md#file-system).
+- TikTok beta keeps Godot's audio mixer off, so `AudioStreamGenerator`, Stream-mode playback, and bus effects are silent there; play sounds through `MiniGameSDK`'s InnerAudio API.
 
 The [integration guide](https://anrans.github.io/godot_for_minigame/guide/) has
 the full compatibility table.

@@ -151,12 +151,12 @@ func _init() -> void:
 		"var instantiateOperation=Module[\"instantiateWasm\"]",
 		"return operation;",
 		"godot_js_eval:_godot_js_disabled",
-		"function _godot_audio_has_worklet(){return 0}",
 	]:
 		_assert_true(patched.contains(marker), "patched engine missing: %s" % marker)
 	_assert_true(
-		not patched.contains("GodotAudio.ctx.audioWorklet?1:0"),
-		"the stubbed AudioWorklet must not be reported as an audio driver",
+		patched.contains("GodotAudio.ctx.audioWorklet?1:0")
+		and not patched.contains("function _godot_audio_has_worklet(){return 0}"),
+		"TikTok keeps the original audio driver check (ScriptProcessor crashed its client)",
 	)
 	var syntax_output: Array = []
 	var syntax_exit := OS.execute(
@@ -180,6 +180,11 @@ func _init() -> void:
 	_assert_true(
 		_read(wechat_engine).contains("eval("),
 		"the TikTok eval restriction must not silently change other platforms",
+	)
+	_assert_true(
+		_read(wechat_engine).contains("function _godot_audio_has_worklet(){return 0}")
+		and not _read(wechat_engine).contains("GodotAudio.ctx.audioWorklet?1:0"),
+		"WeChat must not report the stubbed AudioWorklet as an audio driver",
 	)
 
 	# Godot 4.7 release templates build without Emscripten assertions, so the

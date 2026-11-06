@@ -1638,9 +1638,18 @@ func _patch_godot_js(path: String, platform: String = "wechat") -> Error:
 	# pick the AudioWorklet driver, whose processor is a no-op stub, so the
 	# mixer never ran: AudioStreamGenerator, Stream playback and bus effects
 	# were silent. Report it unavailable so Godot uses the ScriptProcessor driver.
+	#
+	# TikTok Native keeps the original check: its WebAudio context has no
+	# createScriptProcessor(), and driving the mixer through emulated
+	# ScriptProcessor buffers crashed the TikTok client on a real device. Its
+	# mixer therefore stays on the stub, exactly as in v0.3.0.
 	var _has_worklet_old := "function _godot_audio_has_worklet(){return GodotAudio.ctx&&GodotAudio.ctx.audioWorklet?1:0}"
 	var _has_worklet_new := "function _godot_audio_has_worklet(){return 0}"
-	if content.find(_has_worklet_old) != -1:
+	if platform == "tiktok":
+		if content.find(_has_worklet_old) == -1:
+			_log("  [color=red]godot.js 缺少音频驱动选择补丁锚点[/color]")
+			return ERR_FILE_CORRUPT
+	elif content.find(_has_worklet_old) != -1:
 		content = content.replace(_has_worklet_old, _has_worklet_new)
 		modified = true
 	elif content.find(_has_worklet_new) == -1:

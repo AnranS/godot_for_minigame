@@ -397,64 +397,59 @@ async function testDevtoolsKeepsHostFrameAliasesAndSubpackageAlert() {
     "other browser globals are still installed");
 }
 
-async function testScriptProcessorIsEmulatedWhenHostWebAudioLacksIt() {
-  const scheduled = [];
-  // Host WebAudio without createScriptProcessor(); its clock only moves when the test says so.
+function fakeHostWebAudio(calls, withScriptProcessor) {
   const host = {
     sampleRate: 48000,
     state: "running",
     currentTime: 0,
     destination: { channelCount: 2, maxChannelCount: 2, connect() {} },
     listener: {},
-    createBuffer(channels, length, sampleRate) {
-      const data = Array.from({ length: channels }, () => new Float32Array(length));
-      return { numberOfChannels: channels, length, sampleRate, getChannelData: (channel) => data[channel] };
-    },
-    createBufferSource() {
-      const source = {
-        buffer: null,
-        connect(dest) { source.dest = dest; return dest; },
-        start(when) { scheduled.push({ when, buffer: source.buffer, dest: source.dest }); },
-      };
-      return source;
-    },
+    createBuffer(channels, length) { calls.push("createBuffer"); return { numberOfChannels: channels, length, getChannelData: () => new Float32Array(length) }; },
+    createBufferSource() { calls.push("createBufferSource"); return { connect: (dest) => dest, start() { calls.push("start"); } }; },
     resume() { return Promise.resolve(); },
   };
-  installMiniGameGlobals("wechat", { webAudio: host });
-  await loadAdapter();
+  if (withScriptProcessor) {
+    host.createScriptProcessor = (size, inputs, outputs) => {
+      calls.push(`createScriptProcessor:${size}:${inputs}:${outputs}`);
+      return { bufferSize: size, connect: (dest) => dest, disconnect() {}, onaudioprocess: null };
+    };
+  }
+  return host;
+}
 
+async function testScriptProcessorNeverTouchesHostAudioWithoutHostSupport() {
+  // TikTok Native's WebAudio has no createScriptProcessor(). Emulating it
+  // crashed the client on a real device, so the adapter must hand Godot an
+  // inert stub and create no host buffers or sources at all.
+  const calls = [];
+  installMiniGameGlobals("tiktok", { webAudio: fakeHostWebAudio(calls, false) });
+  await loadAdapter();
   const ctx = new globalThis.GameGlobal.__adapter.window.AudioContext();
   const node = ctx.createScriptProcessor(1024, 2, 2);
-  assert.equal(node.bufferSize, 1024, "the emulated node reports the requested buffer size to Godot");
-  let calls = 0;
-  node.onaudioprocess = (event) => {
-    calls++;
-    event.outputBuffer.getChannelData(0).fill(0.5);
-    event.outputBuffer.getChannelData(1).fill(-0.5);
-  };
+  let rendered = 0;
+  node.onaudioprocess = () => { rendered++; };
   node.connect(ctx.destination);
-  assert.equal(calls, 2, "two buffers are rendered ahead of a still clock");
-  assert.equal(scheduled.length, 2);
-  assert.ok(scheduled[1].when > scheduled[0].when, "buffers are queued back to back");
-  assert.equal(scheduled[0].buffer.getChannelData(0)[0], 0.5, "rendered samples reach the scheduled buffer");
-  assert.equal(scheduled[0].dest, host.destination, "buffers play on the host destination");
+  await new Promise((resolve) => setTimeout(resolve, 40));
+  assert.equal(node.bufferSize, 1024, "the stub still reports the requested buffer size");
+  assert.equal(rendered, 0, "the stub never runs the mixer callback");
+  assert.deepEqual(calls, [], "no host audio buffers or sources are created");
+}
 
-  host.currentTime = 1;
-  await new Promise((resolve) => setTimeout(resolve, 60));
-  assert.ok(calls > 2, "the timer keeps rendering as the host clock advances");
-  assert.ok(scheduled.at(-1).when >= 1, "a stalled queue restarts at the current time");
-
-  node.disconnect();
-  const rendered = calls;
-  host.currentTime = 5;
-  await new Promise((resolve) => setTimeout(resolve, 60));
-  assert.equal(calls, rendered, "disconnect stops rendering");
+async function testScriptProcessorUsesTheHostImplementation() {
+  const calls = [];
+  installMiniGameGlobals("wechat", { webAudio: fakeHostWebAudio(calls, true) });
+  await loadAdapter();
+  const ctx = new globalThis.GameGlobal.__adapter.window.AudioContext();
+  const node = ctx.createScriptProcessor(2048, 2, 2);
+  assert.equal(node.bufferSize, 2048);
+  assert.deepEqual(calls, ["createScriptProcessor:2048:2:2"], "the host's own ScriptProcessor drives the mixer");
 }
 
 await testLocalStorageEnumerationQuarantinesTikTokNative();
 await testLocalStorageEnumerationStillWorksOnWeChatAndDouyin();
 await testTiktokWebAssemblyShimCoversRuntimeRealms();
 await testDevtoolsKeepsHostFrameAliasesAndSubpackageAlert();
-await testScriptProcessorIsEmulatedWhenHostWebAudioLacksIt();
+await testScriptProcessorNeverTouchesHostAudioWithoutHostSupport();
+await testScriptProcessorUsesTheHostImplementation();
 
 console.log("adapter_layout.test.mjs: ok");
