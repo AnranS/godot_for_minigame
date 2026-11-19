@@ -1655,15 +1655,23 @@ it.
 
 ### Engine side
 
-Godot `user://` normally maps to IDBFS. Inside a mini-game host the loader bridges it:
+In mini-game exports, Godot's `user://` lives in the in-memory Emscripten file
+system under `/userfs`. The default project directory is
+`/userfs/godot/app_userdata/<project-name>`. The loader restores the host's
+`USER_DATA_PATH/userfs` tree before Godot starts, including nested save folders.
 
-- At startup `godotSdk.copyLocalToFS(p)` restores persistent paths from the selected `wx`, `tt`, or `TTMinis.game` provider into the Emscripten FS
-- On WeChat and Douyin, every 5s a `setInterval` calls `godotSdk.syncfs()` to push the FS back into host storage
-- On WeChat and Douyin, the selected provider's `onHide` event triggers an
-  immediate flush; the listener is removed when the loader is disposed
-- TikTok keeps startup restore read-only for now. Its persistent writeback is
-  disabled before any host write call because the same TikTok 46.0.0 Native
-  device crash also affects public file-system writes
+Create nested folders such as `user://saves` with
+`DirAccess.make_dir_recursive_absolute()` before saving. After `ResourceSaver.save()`
+or `ConfigFile.save()` returns `OK`, the file is available at the same `user://`
+path in the current session. A successful save confirms an in-memory write.
+
+- WeChat and Douyin attempt writeback every five seconds and start
+  an asynchronous flush on `onHide`. A save survives relaunch once writeback
+  completes. Force-quitting or restarting the DevTools preview immediately after
+  saving can lose pending writes. Check the host console for `[sync:interval]`
+  or `[sync:hide]` errors if a save is missing after relaunch.
+- TikTok restores existing files at startup. Host writeback is disabled because
+  file-system writes can crash TikTok Native 46.0.0.
 
 v0.3 does not expose a cross-platform manual flush API. Do not use
 `JavaScriptBridge.eval()` as a workaround: TikTok Native exports disable

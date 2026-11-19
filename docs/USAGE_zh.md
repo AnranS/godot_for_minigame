@@ -1619,13 +1619,19 @@ pyftsubset NotoSansSC-Regular.otf --text-file=used_chars.txt \
 
 ### 引擎侧存储
 
-Godot 的 `user://` 默认存到 IDBFS（IndexedDB），在小游戏环境下会被 loader 拦截：
+小游戏导出中，Godot 的 `user://` 位于 Emscripten 内存文件系统的 `/userfs` 下。
+默认项目目录为 `/userfs/godot/app_userdata/<项目名>`。Godot 启动前，loader 会从
+宿主的 `USER_DATA_PATH/userfs` 恢复文件及子目录。
 
-- 启动时 loader 调 `godotSdk.copyLocalToFS(p)`，从已选择的 `wx`、`tt` 或 `TTMinis.game` Provider 恢复持久化路径到 Emscripten FS
-- 微信和抖音每 5 秒通过 `setInterval` 调用一次 `godotSdk.syncfs()`，把 FS 写回宿主存储
-- 微信和抖音的 `onHide` 会立即触发一次 flush；loader 销毁时会解绑监听
-- TikTok 目前保留启动时的只读恢复；持久写回会在触及宿主写入前直接禁用，
-  因为同一台 TikTok 46.0.0 Native 真机也会在公开文件系统写入时崩溃
+保存前，请用 `DirAccess.make_dir_recursive_absolute()` 创建 `user://saves` 等子目录。
+`ResourceSaver.save()` 或 `ConfigFile.save()` 返回 `OK` 后，本次运行即可从同一
+`user://` 路径读取文件。保存成功表示文件已写入内存文件系统。
+
+- 微信和抖音每五秒尝试将更改写回宿主存储，`onHide` 也会触发异步写回。写回完成后，重新启动
+  才能恢复本次存档。保存后立即强制退出或重启开发者工具预览，可能丢失尚未写回的更改。
+  如果重启后找不到存档，请查看宿主控制台里的 `[sync:interval]` 或 `[sync:hide]` 错误。
+- TikTok 在启动时恢复已有文件。由于文件系统写入可能导致 TikTok Native 46.0.0
+  崩溃，宿主写回已禁用。
 
 v0.3 没有跨平台手动 flush API。不要用 `JavaScriptBridge.eval()` 绕过：TikTok
 Native 导出会禁用 JavaScript eval。TikTok 请通过

@@ -276,6 +276,10 @@ function _fsCall(fs, method, options) {
   });
 }
 
+function _isMissingHostPath(error) {
+  return /\bENOENT\b|no such file|(?:file|directory)(?: does)? not exist/i.test(error.message);
+}
+
 function _normalizeVirtualPath(path) {
   const value = String(path || "").replace(/\\/g, "/");
   if (!value.startsWith("/")) throw new Error(`Persistent path must be absolute: ${value}`);
@@ -4029,6 +4033,14 @@ class GodotSDK {
   }
 
   async syncPersistentFiles(roots, visitFiles) {
+    let missing = await this._syncPersistentSnapshot(roots, visitFiles);
+    // A save can rename a file after the walk and before its lazy read. Retry
+    // with fresh names so even a final onHide flush can pick up the destination.
+    if (missing) missing = await this._syncPersistentSnapshot(roots, visitFiles);
+    if (missing) throw new Error(`Persistent file disappeared during sync: ${missing}`);
+  }
+
+  async _syncPersistentSnapshot(roots, visitFiles) {
     const { fs, userDataPath } = this._persistentHost("Persistent sync", "write");
     const paths = [...new Set(roots.map(_normalizeVirtualPath))];
     if (paths.length === 0 || typeof visitFiles !== "function") {
@@ -4064,7 +4076,7 @@ class GodotSDK {
         const result = await this._stat(fs, `${userDataPath}${path}`);
         return result.stats || result.stat || result;
       } catch (error) {
-        if (!/ENOENT|no such file(?: or directory)?|file not exist/i.test(error.message)) throw error;
+        if (!_isMissingHostPath(error)) throw error;
         return null;
       }
     };
@@ -4089,7 +4101,7 @@ class GodotSDK {
       try {
         await _fsCall(fs, "unlink", { filePath: `${userDataPath}${path}` });
       } catch (error) {
-        if (!/ENOENT|no such file(?: or directory)?|file not exist/i.test(error.message)) throw error;
+        if (!_isMissingHostPath(error)) throw error;
       }
       baseline.delete(path);
       uncertain.delete(path);
@@ -4101,7 +4113,7 @@ class GodotSDK {
         // An untracked host file may keep an old directory nonempty. Retain it
         // without recursive removal; a conflicting new file will fail clearly.
         if (/ENOTEMPTY|(?:directory |folder )?not empty/i.test(error.message)) return;
-        if (!/ENOENT|no such file(?: or directory)?|file not exist/i.test(error.message)) throw error;
+        if (!_isMissingHostPath(error)) throw error;
       }
       managedDirectories.delete(path);
     };
@@ -4111,7 +4123,16 @@ class GodotSDK {
       managedDirectories.add(path);
     }
     for (const [path, readFile] of snapshot) {
-      const bytes = _arrayBufferBytes(readFile());
+      let data;
+      try {
+        data = readFile();
+      } catch (error) {
+        // Emscripten FS.ErrnoError(44) is ENOENT. Defer deletions until a fresh
+        // walk finds the replacement, or confirms the file was removed.
+        if (error && error.errno === 44) return path;
+        throw error;
+      }
+      const bytes = _arrayBufferBytes(data);
       if (!bytes) throw new Error(`Invalid persistent file: ${path}`);
       const digest = await this._persistentDigest(bytes);
       if (baseline.get(path) === digest && !uncertain.has(path)) continue;
@@ -4162,7 +4183,11 @@ class GodotSDK {
     const filePath = `${userDataPath}${virtualPath}`;
     const data = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
 
-    if (typeof fs.writeFile === "function") {
+    // Some WeChat hosts reject zero-length writeFile data. Opening with w+
+    // creates or truncates an empty file without sending a write request.
+    const truncateWithOpen = data.byteLength === 0
+      && typeof fs.open === "function" && typeof fs.close === "function";
+    if (typeof fs.writeFile === "function" && !truncateWithOpen) {
       await _fsCall(fs, "writeFile", { filePath, data });
       return true;
     }
@@ -4172,7 +4197,7 @@ class GodotSDK {
       throw new Error(`FileSystemManager.open returned no fd for ${virtualPath}`);
     }
     try {
-      await _fsCall(fs, "write", { fd: opened.fd, data });
+      if (data.byteLength > 0) await _fsCall(fs, "write", { fd: opened.fd, data });
     } finally {
       await _fsCall(fs, "close", { fd: opened.fd });
     }
@@ -4210,7 +4235,16 @@ class GodotSDK {
 
     const { fs, userDataPath } = this._persistentHost("Persistent restore");
     const platformRoot = `${userDataPath}${root}`;
-    await this._accessOrMkdir(fs, platformRoot);
+    if (_isBlockedTikTokPersistentWrite()) {
+      try {
+        await _fsCall(fs, "access", { path: platformRoot });
+      } catch (error) {
+        if (_isMissingHostPath(error)) return 0;
+        throw error;
+      }
+    } else {
+      await this._accessOrMkdir(fs, platformRoot);
+    }
     const result = await _fsCall(fs, "readdir", { dirPath: platformRoot });
     const managedDirectories = this._persistentDirectories || (this._persistentDirectories = new Set());
     managedDirectories.add(root);

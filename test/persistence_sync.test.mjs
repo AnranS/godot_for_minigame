@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import { test } from "node:test";
 import vm from "node:vm";
 
 const projectRoot = path.resolve(import.meta.dirname, "..");
@@ -33,10 +34,10 @@ async function fixture({ host = new Map(), platform = "wechat" } = {}) {
   for (const name of ["wx", "tt", "TTMinis", "GameGlobal", "PlatformRuntime", "__godotMiniGamePlatformRuntime"]) {
     delete globalThis[name];
   }
-  if (!host.has("/host-data/userfs")) put(host, "/host-data/userfs", null);
+  if (!host.has("/host-data")) put(host, "/host-data", null);
   const virtual = new Map();
   put(virtual, "/userfs", null);
-  const calls = { writes: [], unlinks: [], rmdirs: [], reads: 0, manager: 0 };
+  const calls = { writes: [], mkdirs: [], unlinks: [], rmdirs: [], reads: 0, manager: 0 };
   const control = {};
   const complete = (options, action) => {
     try { options.success(action() || {}); } catch (error) { options.fail(error); }
@@ -46,6 +47,7 @@ async function fixture({ host = new Map(), platform = "wechat" } = {}) {
       complete(options, () => { if (!host.has(options.path)) throw isMissing(options.path); });
     },
     mkdir(options) {
+      calls.mkdirs.push(options.dirPath);
       complete(options, () => {
         let current = "";
         for (const part of options.dirPath.split("/").filter(Boolean)) {
@@ -59,6 +61,7 @@ async function fixture({ host = new Map(), platform = "wechat" } = {}) {
     stat(options) {
       complete(options, () => {
         const target = options.path || options.filePath;
+        if (control.stat) control.stat(target);
         if (!host.has(target)) throw isMissing(target);
         const directory = host.get(target) === null;
         return { stats: { isDirectory: () => directory, isFile: () => !directory } };
@@ -117,15 +120,22 @@ async function fixture({ host = new Map(), platform = "wechat" } = {}) {
       stat(target) { return { mode: virtual.get(target) === null ? "dir" : "file" }; },
       isDir: (mode) => mode === "dir",
       isFile: (mode) => mode === "file",
-      readFile(target) { calls.reads++; return virtual.get(target).slice(); },
+      readFile(target) {
+        calls.reads++;
+        if (!virtual.has(target)) throw isMissing(target);
+        return virtual.get(target).slice();
+      },
     },
   });
   sdk.set_engine({
     ensureFSDirectory(target) { put(virtual, target, null); },
-    copyToFS(target, bytes) { put(virtual, target, bytes); },
+    copyToFS(target, bytes) {
+      assert.equal(virtual.get(path.posix.dirname(target)), null, `missing restore directory for ${target}`);
+      put(virtual, target, bytes);
+    },
     copyFSToAdapter: (adapter, roots) => Module.copyFSToAdapter(adapter, roots),
   });
-  return { sdk, host, virtual, calls, control };
+  return { sdk, host, virtual, calls, control, manager };
 }
 
 async function testDigestMatchesSha256() {
@@ -355,4 +365,76 @@ await testRenameWriteFailurePreservesOldSave();
 await testTypeConflictsFailBeforeHostMutations();
 await testHashYieldsAndQueuedSyncCapturesMidHashChanges();
 await testTikTokWriteBoundary();
+
+await test("a nested save renamed during a flush survives restart", async () => {
+  const f = await fixture();
+  await f.sdk.restorePersistentPaths();
+  const saves = "/userfs/godot/app_userdata/Example/saves";
+  const temporary = `${saves}/slot.tres.tmp`;
+  const slot = `${saves}/slot.tres`;
+  const config = `${saves}/game.cfg`;
+  put(f.virtual, temporary, [7, 8, 9]);
+  put(f.virtual, config, [1, 2]);
+  f.control.stat = (target) => {
+    if (target !== hostPath(temporary) || !f.virtual.has(temporary)) return;
+    f.virtual.set(slot, f.virtual.get(temporary));
+    f.virtual.delete(temporary);
+    assert.deepEqual([...f.virtual.get(slot)], [7, 8, 9], "Godot can read its save before host writeback");
+    assert.equal(f.host.has(hostPath(slot)), false);
+  };
+
+  assert.equal(await f.sdk.syncfs(), true, "a single flush must capture the completed save");
+  assert.equal(f.host.has(hostPath(temporary)), false);
+  assert.deepEqual([...f.host.get(hostPath(slot))], [7, 8, 9]);
+  assert.deepEqual([...f.host.get(hostPath(config))], [1, 2]);
+
+  const restarted = await fixture({ host: f.host });
+  await restarted.sdk.restorePersistentPaths();
+  assert.deepEqual([...restarted.virtual.get(slot)], [7, 8, 9]);
+  assert.deepEqual([...restarted.virtual.get(config)], [1, 2]);
+});
+
+await test("an empty ConfigFile can be written without blocking later saves", async () => {
+  const f = await fixture();
+  const empty = "/userfs/saves/empty.cfg";
+  const slot = "/userfs/saves/slot.tres";
+  put(f.host, hostPath(empty), [1]);
+  await f.sdk.restorePersistentPaths();
+  put(f.virtual, empty, []);
+  put(f.virtual, slot, [7, 8, 9]);
+  f.control.write = (options, commit) => {
+    if (options.data.byteLength === 0) {
+      options.fail({ errCode: 1301002, errMsg: "writeFile:fail data to write is empty" });
+    } else commit();
+  };
+  f.manager.open = (options) => {
+    assert.equal(options.flag, "w+");
+    assert.equal(options.filePath, hostPath(empty));
+    f.host.set(options.filePath, new Uint8Array());
+    options.success({ fd: "empty" });
+  };
+  let closed = false;
+  f.manager.close = (options) => {
+    assert.equal(options.fd, "empty");
+    closed = true;
+    options.success({});
+  };
+
+  await f.sdk.syncfs();
+  assert.equal(closed, true);
+  const restarted = await fixture({ host: f.host });
+  await restarted.sdk.restorePersistentPaths();
+  assert.equal(restarted.virtual.get(empty).byteLength, 0);
+  assert.deepEqual([...restarted.virtual.get(slot)], [7, 8, 9]);
+});
+
+await test("TikTok starts with an empty virtual user directory when no host saves exist", async () => {
+  const f = await fixture({ platform: "tiktok" });
+  f.manager.access = (options) => options.fail({ errMsg: "access:fail file or directory does not exist" });
+  f.virtual.delete("/userfs");
+  assert.equal((await f.sdk.restorePersistentPaths()).entries, 0);
+  assert.equal(f.virtual.get("/userfs"), null);
+  assert.deepEqual(f.calls.mkdirs, []);
+});
+
 console.log("persistence_sync.test.mjs: ok");
