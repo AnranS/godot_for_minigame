@@ -562,9 +562,10 @@ func _export_mini_game_impl(
 		_log_template_candidate_errors()
 		return ERR_FILE_NOT_FOUND
 
-	err = _validate_template_sources(platform, bundle.javascript_path)
+	err = _validate_template_sources(platform)
 	if err != OK:
 		return err
+	_warn_if_template_lacks_js_bridge(bundle.javascript_path)
 	_warn_if_no_project_font()
 
 	var staging_dir := _make_sibling_temp_path(output_path, "export-staging")
@@ -702,18 +703,24 @@ func _validate_export_preset(preset_name: String) -> Error:
 	return ERR_FILE_NOT_FOUND
 
 
-func _validate_template_sources(platform: String, engine_js_path: String) -> Error:
-	if not _read_text(engine_js_path).contains("GodotJSWrapper"):
-		_log(
-			"[color=red]引擎模板的 godot.js 缺少 JavaScriptBridge (GodotJSWrapper)。"
-			+ "javascript_eval=no 会移除此接口，导致 MiniGameSDK 无法工作。"
-			+ "请下载并导入匹配的 r2 模板，或用 javascript_eval=yes 重建。\n"
-			+ "The engine template's godot.js is missing JavaScriptBridge (GodotJSWrapper). "
-			+ "Building with javascript_eval=no removes the bridge that MiniGameSDK requires. "
-			+ "Download and import the matching r2 template or rebuild with javascript_eval=yes.[/color]"
-		)
-		return ERR_FILE_CORRUPT
+## Templates built with javascript_eval=no (4.6.3 r1, 4.7.2 r1) lack Godot's
+## JavaScriptBridge, so MiniGameSDK can never reach the host APIs. The game
+## itself still runs, so warn loudly instead of blocking the export.
+func _warn_if_template_lacks_js_bridge(engine_js_path: String) -> bool:
+	if _read_text(engine_js_path).contains("GodotJSWrapper"):
+		return false
+	_log(
+		"  [color=red]⚠ 引擎模板的 godot.js 缺少 JavaScriptBridge (GodotJSWrapper)。"
+		+ "javascript_eval=no 会移除此接口，MiniGameSDK 将无法调用任何宿主 API（is_mini_game 始终为 false）。"
+		+ "请下载并导入匹配的 r2 模板，或用 javascript_eval=yes 重建。\n"
+		+ "  The engine template's godot.js is missing JavaScriptBridge (GodotJSWrapper). "
+		+ "Building with javascript_eval=no removes the bridge that MiniGameSDK requires, so every host API is unavailable. "
+		+ "Download and import the matching r2 template or rebuild with javascript_eval=yes.[/color]"
+	)
+	return true
 
+
+func _validate_template_sources(platform: String) -> Error:
 	var required := PackedStringArray()
 	for src_rel in COMMON_TEMPLATE_MAPPINGS:
 		required.append(TEMPLATES + "common/" + str(src_rel))

@@ -137,23 +137,22 @@ func _init() -> void:
 	_write(bridge_free_engine, engine_js.replace("GodotJSWrapper", "MissingBridge"))
 	var messages: Array[String] = []
 	exporter.log_callback = func(message: String) -> void: messages.append(message)
-	for platform in Exporter.SUPPORTED_PLATFORMS:
-		_assert_true(
-			exporter._validate_template_sources(platform, engine_source) == OK,
-			"%s should accept the original template with JavaScriptBridge" % platform,
-		)
-		messages.clear()
-		_assert_true(
-			exporter._validate_template_sources(platform, bridge_free_engine) == ERR_FILE_CORRUPT,
-			"%s must reject an engine missing JavaScriptBridge in pre-flight" % platform,
-		)
-		_assert_true(
-			messages.size() == 1 and messages[0].begins_with("[color=red]")
-			and messages[0].contains("MiniGameSDK") and messages[0].contains("r2")
-			and messages[0].contains("javascript_eval=no")
-			and messages[0].contains("javascript_eval=yes"),
-			"bridge pre-flight must log the build flag and how to replace the template",
-		)
+	_assert_true(
+		not exporter._warn_if_template_lacks_js_bridge(engine_source),
+		"the bundled template has JavaScriptBridge and must not warn",
+	)
+	_assert_true(messages.is_empty(), "a template with JavaScriptBridge must log nothing")
+	_assert_true(
+		exporter._warn_if_template_lacks_js_bridge(bridge_free_engine),
+		"an engine missing JavaScriptBridge must be reported before export",
+	)
+	_assert_true(
+		messages.size() == 1 and messages[0].contains("[color=red]")
+		and messages[0].contains("MiniGameSDK") and messages[0].contains("r2")
+		and messages[0].contains("javascript_eval=no")
+		and messages[0].contains("javascript_eval=yes"),
+		"bridge pre-flight must log the build flag and how to replace the template",
+	)
 	exporter.log_callback = Callable()
 
 	var tiktok_engine := _root.path_join("patched-tiktok.js")
