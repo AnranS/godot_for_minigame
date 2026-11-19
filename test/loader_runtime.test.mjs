@@ -120,14 +120,23 @@ async function loadLoaderFixture(platform = "wechat") {
   const clearedTimers = [];
   const windowListeners = new Map();
   let timerCount = 0;
+  let intervalHandler = null;
   let hideHandler = null;
   let fileSystemManagerCalls = 0;
   const adapterWindow = {
     innerWidth: 390,
     innerHeight: 844,
     devicePixelRatio: renderDpr,
-    setInterval() { timerCount += 1; return 101; },
-    clearInterval(id) { clearedTimers.push(id); },
+    setInterval(handler, delay) {
+      assert.equal(delay, 5000);
+      timerCount += 1;
+      intervalHandler = handler;
+      return 101;
+    },
+    clearInterval(id) {
+      clearedTimers.push(id);
+      intervalHandler = null;
+    },
     addEventListener(type, fn) {
       if (!windowListeners.has(type)) windowListeners.set(type, new Set());
       windowListeners.get(type).add(fn);
@@ -265,6 +274,7 @@ async function loadLoaderFixture(platform = "wechat") {
       for (const fn of windowListeners.get("resize") || []) fn({ type: "resize" });
     },
     windowListenerCount: (type) => windowListeners.get(type)?.size || 0,
+    triggerInterval: () => { if (intervalHandler) intervalHandler(); },
     triggerHide: () => { if (hideHandler) hideHandler(); },
   };
 }
@@ -445,7 +455,9 @@ async function testHideQueuesLatestSaveBehindInflightWrite() {
     hostFile = snapshot;
     return Promise.resolve();
   };
-  const pending = loader._flushPersistentFiles("interval");
+  fixture.triggerInterval();
+  const pending = loader._syncPromise;
+  assert.ok(pending, "the five-second timer must start a flush");
   while (!finishFirstWrite) await Promise.resolve();
   gameFile = new Uint8Array([2]);
   fixture.triggerHide();
