@@ -148,17 +148,18 @@ for (const [platform, expected] of [
 }
 
 const buildWorkflow = read(".github/workflows/build-template.yml");
+const templateBuildScript = read("scripts/build_wasm_template.sh");
+const verifier = read("scripts/verify_wasm_template.sh");
 for (const requiredFlag of [
   "wasm_simd=no",
   "threads=no",
   "dlink_enabled=no",
-  "javascript_eval=no",
 ]) {
   assert.ok(buildWorkflow.includes(requiredFlag), `template build must include ${requiredFlag}`);
 }
 assert.ok(!buildWorkflow.includes("use_exceptions=yes"), "unsupported pseudo-profile flags must not return");
 assert.ok(
-  read("scripts/verify_wasm_template.sh").includes("wasm-validate --disable-simd"),
+  verifier.includes("wasm-validate --disable-simd"),
   "the shared template verifier must reject SIMD",
 );
 assert.ok(
@@ -183,7 +184,11 @@ assert.ok(buildWorkflow.includes("GODOT_COPYRIGHT.txt"));
 assert.ok(buildWorkflow.includes("touch -t 198001010000"));
 assert.ok(buildWorkflow.includes("pip install scons==4.9.1"));
 assert.ok(!buildWorkflow.includes("head -1"), "CI must reject ambiguous stale build artifacts");
-for (const source of [buildWorkflow, read("scripts/build_wasm_template.sh")]) {
+for (const source of [buildWorkflow, templateBuildScript]) {
+  assert.ok(
+    source.includes("javascript_eval=yes") && !source.includes("javascript_eval=no"),
+    "template builds must enable JavaScriptBridge for MiniGameSDK; TikTok strips eval at export time",
+  );
   assert.ok(
     source.includes("godot.web.template_release.wasm32*.zip"),
     "templates must take godot.js from Godot's packaged web template, not the raw Emscripten module",
@@ -203,13 +208,13 @@ assert.ok(
   "CI must read editor commits from the verified official editor build",
 );
 assert.ok(
-  read("scripts/verify_wasm_template.sh").includes("Engine.prototype['copyToFS']"),
+  verifier.includes("Engine.prototype['copyToFS']"),
   "the shared verifier must reject a godot.js without the Engine wrapper",
 );
 assert.match(
   buildWorkflow,
   /template_revision:[\s\S]*?default: "2"/,
-  "eval-free CI templates must default to a new immutable revision",
+  "CI must default to revision 2 so repaired templates have new immutable tags",
 );
 
 const smokeWorkflow = read(".github/workflows/smoke-test-export.yml");
@@ -272,15 +277,9 @@ assert.ok(releaseScript.includes('git rev-parse --verify "refs/tags/$TAG"'));
 assert.ok(releaseScript.includes("git ls-remote --tags origin"));
 assert.ok(releaseScript.includes(".pluginVersion"), "release script must validate support-matrix.json before tagging");
 
-const templateBuildScript = read("scripts/build_wasm_template.sh");
-assert.ok(
-  templateBuildScript.includes("javascript_eval=no"),
-  "future local template builds must disable JavaScript eval",
-);
-assert.ok(!templateBuildScript.includes("javascript_eval=yes"));
 assert.ok(
   templateBuildScript.includes('TEMPLATE_REVISION="${TEMPLATE_REVISION:-2}"'),
-  "eval-free local templates must default to revision 2",
+  "local builds must default to revision 2 for the repaired templates",
 );
 assert.ok(templateBuildScript.includes("Bundle revision (default: 2)"));
 
@@ -301,19 +300,21 @@ assert.ok(
   "published checksum files must not expose an absolute build path",
 );
 
-const localBuildScript = read("scripts/build_wasm_template.sh");
-assert.ok(localBuildScript.includes("status --porcelain --untracked-files=all"));
-assert.ok(localBuildScript.includes("Expected exactly one packaged web template archive"));
-assert.ok(localBuildScript.includes("GODOT_COPYRIGHT.txt"));
-assert.ok(!localBuildScript.includes("head -1"), "local builds must reject stale ambiguous artifacts");
+assert.ok(templateBuildScript.includes("status --porcelain --untracked-files=all"));
+assert.ok(templateBuildScript.includes("Expected exactly one packaged web template archive"));
+assert.ok(templateBuildScript.includes("GODOT_COPYRIGHT.txt"));
+assert.ok(!templateBuildScript.includes("head -1"), "local builds must reject stale ambiguous artifacts");
 
-const verifier = read("scripts/verify_wasm_template.sh");
 for (const requiredContract of [
   "EXPECTED_BRIDGE_ABI",
   "EXPECTED_TEMPLATE_SCHEMA",
   ".emscriptenVersion",
   ".revision",
   "GODOT_COPYRIGHT.txt",
+  "GodotJSWrapper",
+  "WebAssembly.Module.imports",
+  "godot_js_wrapper_interface_get",
+  "godot_js_wrapper_create_cb",
 ]) {
   assert.ok(verifier.includes(requiredContract), `shared verifier must enforce ${requiredContract}`);
 }

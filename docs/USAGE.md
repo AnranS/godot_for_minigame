@@ -202,6 +202,11 @@ generated from `support-matrix.json`; it only offers a template whose version an
 source commit both match the editor. If GitHub is unreachable, the log links the
 release page so you can download the ZIP and use **Import Template** instead.
 
+The Godot 4.6.3 r1 and 4.7.2 r1 release templates were built with
+`javascript_eval=no`, which removes the JavaScriptBridge interface that
+MiniGameSDK needs to call platform APIs. Download and import the matching r2
+template once it is published, or [build it locally](#12-building-a-custom-engine-template).
+
 ### Import a new engine template
 
 Click **Import Template**, pick a zip:
@@ -1720,7 +1725,7 @@ and passes the generated platform smoke matrix. TikTok
 additionally remains behind the required `ttmg` and real-device release gates.
 
 ```bash
-# Default: Godot 4.6.1-stable + Emscripten 4.0.3
+# Default: Godot 4.6.1-stable + Emscripten 4.0.3, revision 2
 ./scripts/build_wasm_template.sh
 
 # Specific Godot version
@@ -1734,9 +1739,9 @@ Steps the script performs:
 
 1. Installs and activates the exact emsdk release (cache: `build_wasm/emsdk`, or the directory selected with `GODOT_MINIGAME_BUILD_DIR`).
 2. Clones the exact Godot tag and refuses a dirty or mismatched cached source tree.
-3. Temporarily enforces Emscripten longjmp mode, then builds the Web release template with `wasm_simd=no`, `threads=no`, dynamic linking disabled, and the WebRTC/XR modules disabled. The source patch is restored on exit.
+3. Temporarily enforces Emscripten longjmp mode, then builds the Web release template with `wasm_simd=no`, `threads=no`, `javascript_eval=yes`, dynamic linking disabled, and the WebRTC/XR modules disabled. `javascript_eval=yes` supplies JavaScriptBridge. TikTok export stubs `_godot_js_eval` and keeps the bridge interface. The source patch is restored on exit.
 4. Takes `godot.js` and `godot.wasm` from the web template archive Godot packages itself. Since 4.6 `bin/` also holds the raw Emscripten module and other JS files that cannot be shipped directly.
-5. Validates JavaScript syntax, the Engine wrapper, Brotli/WASM structure, disabled features, provenance, and hashes with the shared verifier.
+5. Validates JavaScript syntax, the Engine and JavaScriptBridge wrappers, the required JavaScriptBridge WASM imports, Brotli/WASM structure, disabled features, provenance, and hashes with the shared verifier.
 6. Produces `build_wasm/output/{tag}/emsdk-{version}/2d_full/release/abi-{abi}/r{revision}/godot_minigame_template_{tag}_emsdk-{version}_2d-full_release_abi-{abi}_r{revision}.zip`.
 7. Back in the editor, click **Import Template** in the dock and pick that ZIP.
 

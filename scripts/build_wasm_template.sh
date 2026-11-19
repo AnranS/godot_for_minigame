@@ -132,7 +132,7 @@ fi
         wasm_simd=no \
         threads=no \
         dlink_enabled=no \
-        javascript_eval=no \
+        javascript_eval=yes \
         module_webrtc_enabled=no \
         module_webxr_enabled=no \
         module_openxr_enabled=no \

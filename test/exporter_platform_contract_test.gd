@@ -132,8 +132,33 @@ func _init() -> void:
 	)
 
 	var engine_source := "res://addons/godot_mini_game/engine/godot.js"
+	var engine_js := _read(engine_source)
+	var bridge_free_engine := _root.path_join("bridge-free-engine.js")
+	_write(bridge_free_engine, engine_js.replace("GodotJSWrapper", "MissingBridge"))
+	var messages: Array[String] = []
+	exporter.log_callback = func(message: String) -> void: messages.append(message)
+	for platform in Exporter.SUPPORTED_PLATFORMS:
+		_assert_true(
+			exporter._validate_template_sources(platform, engine_source) == OK,
+			"%s should accept the original template with JavaScriptBridge" % platform,
+		)
+		messages.clear()
+		_assert_true(
+			exporter._validate_template_sources(platform, bridge_free_engine) == ERR_FILE_CORRUPT,
+			"%s must reject an engine missing JavaScriptBridge in pre-flight" % platform,
+		)
+		_assert_true(
+			messages.size() == 1 and messages[0].begins_with("[color=red]")
+			and messages[0].contains("MiniGameSDK") and messages[0].contains("r2")
+			and messages[0].contains("javascript_eval=no")
+			and messages[0].contains("javascript_eval=yes"),
+			"bridge pre-flight must log the build flag and how to replace the template",
+		)
+	exporter.log_callback = Callable()
+
 	var tiktok_engine := _root.path_join("patched-tiktok.js")
-	_copy(engine_source, tiktok_engine)
+	var eval_neighbor := "function miniGameEvalNeighbor(){return 42}"
+	_write(tiktok_engine, engine_js.replace("var IDHandler", eval_neighbor + "var IDHandler"))
 	var patch_error := exporter._patch_godot_js(tiktok_engine, "tiktok")
 	_assert_true(patch_error == OK, "certified godot.js should patch for TikTok")
 	var patched := _read(tiktok_engine)
@@ -151,6 +176,10 @@ func _init() -> void:
 		"var instantiateOperation=Module[\"instantiateWasm\"]",
 		"return operation;",
 		"godot_js_eval:_godot_js_disabled",
+		"GodotJSWrapper",
+		"godot_js_wrapper_interface_get:_godot_js_wrapper_interface_get",
+		"godot_js_wrapper_create_cb:_godot_js_wrapper_create_cb",
+		eval_neighbor,
 	]:
 		_assert_true(patched.contains(marker), "patched engine missing: %s" % marker)
 	_assert_true(
