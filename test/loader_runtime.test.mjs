@@ -95,7 +95,7 @@ function make2dContext() {
   };
 }
 
-async function loadLoaderFixture(platform = "wechat") {
+async function loadLoaderFixture(platform = "wechat", renderDpr = 3) {
   delete globalThis.wx;
   delete globalThis.tt;
   delete globalThis.TTMinis;
@@ -105,7 +105,6 @@ async function loadLoaderFixture(platform = "wechat") {
   delete globalThis.godotSdk;
   delete globalThis.godotMiniGameBridgeV1;
 
-  const renderDpr = platform === "tiktok" ? 3 : 1;
   const gl = makeWebGl(390 * renderDpr, 844 * renderDpr);
   const mainCanvas = {
     width: 390 * renderDpr,
@@ -269,19 +268,15 @@ async function loadLoaderFixture(platform = "wechat") {
   };
 }
 
-async function testLegacyCanvasSingleLoadAndDispose() {
+async function testWeChatCanvasSingleLoadAndDispose() {
   const fixture = await loadLoaderFixture();
   const loader = new fixture.Loader();
 
-  assert.equal(fixture.mainCanvas.width, 390, "legacy hosts must retain their logical backing width");
-  assert.equal(fixture.mainCanvas.height, 844, "legacy hosts must retain their logical backing height");
+  assert.equal(fixture.mainCanvas.width, 1170, "WeChat must preserve the physical backing width");
+  assert.equal(fixture.mainCanvas.height, 2532, "WeChat must preserve the physical backing height");
   assert.equal(fixture.loadingCanvas.width, 1170, "loading canvas must use physical DPR");
   assert.equal(fixture.loadingCanvas.height, 2532, "loading canvas must use physical DPR");
-  assert.deepEqual(
-    fixture.gl.viewportCalls,
-    [[0, 0, 390, 844]],
-    "loading texture dimensions must not be used as the destination viewport",
-  );
+  assert.deepEqual(fixture.gl.viewportCalls, [[0, 0, 1170, 2532]]);
   assert.equal(globalThis.GameGlobal.crypto, fixture.hostCrypto, "host crypto must not be replaced");
 
   const first = loader.load();
@@ -291,7 +286,7 @@ async function testLegacyCanvasSingleLoadAndDispose() {
 
   assert.ok(fixture.gl.viewportCalls.length >= 4, "each loading blit must refresh the viewport");
   for (const viewport of fixture.gl.viewportCalls) {
-    assert.deepEqual(viewport, [0, 0, 390, 844]);
+    assert.deepEqual(viewport, [0, 0, 1170, 2532]);
   }
 
   assert.equal(fixture.engineCalls.start, 1);
@@ -333,7 +328,8 @@ async function testLegacyCanvasSingleLoadAndDispose() {
 }
 
 async function testLoadingBlitTracksDrawingBufferResize() {
-  const fixture = await loadLoaderFixture();
+  // Give the destination a different scale from the loading texture.
+  const fixture = await loadLoaderFixture("wechat", 1);
   const loader = new fixture.Loader();
 
   assert.equal(fixture.windowListenerCount("resize"), 1);
@@ -389,8 +385,8 @@ function assertLoadingSurfaceReleased(loader, fixture) {
   for (const field of ["loadingCanvas", "loadingCtx", "bgImage", "logoImage", "screenTexture", "screenCtx", "cleanWebgl"]) {
     assert.equal(loader[field], null, `${field} must not retain loading resources`);
   }
-  assert.equal(fixture.mainCanvas.width, 390, "cleanup must not resize the engine canvas");
-  assert.equal(fixture.mainCanvas.height, 844);
+  assert.equal(fixture.mainCanvas.width, 1170, "cleanup must not resize the engine canvas");
+  assert.equal(fixture.mainCanvas.height, 2532);
   assert.equal(fixture.mainCanvas.getContext("webgl2"), fixture.gl, "the engine keeps its WebGL context");
   assert.equal(fixture.gl.deleteTextureCalls(), 1, "cleanup must release each loading texture once");
 }
@@ -527,7 +523,7 @@ async function testTikTokKeepsReadOnlyRestoreAndSkipsWriteback() {
   assert.deepEqual(fixture.clearedTimers, []);
 }
 
-await testLegacyCanvasSingleLoadAndDispose();
+await testWeChatCanvasSingleLoadAndDispose();
 await testLoadingBlitTracksDrawingBufferResize();
 await testLoadFailureIsObservableAndStable();
 await testDisposeBeforeLoadReleasesLoadingSurface();

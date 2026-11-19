@@ -5,6 +5,14 @@ import path from "node:path";
 const projectRoot = path.resolve(import.meta.dirname, "..");
 const adapterPath = path.join(projectRoot, "addons/godot_mini_game/templates/common/adapter.js");
 const runtimePath = path.join(projectRoot, "addons/godot_mini_game/templates/common/js/platform_runtime.js");
+const webGLDefaults = {
+  alpha: false,
+  antialias: false,
+  depth: true,
+  stencil: false,
+  premultipliedAlpha: true,
+  preserveDrawingBuffer: false,
+};
 
 function moduleUrl(source) {
   return `data:text/javascript;charset=utf-8,${encodeURIComponent(source)}#${Date.now()}-${Math.random()}`;
@@ -16,11 +24,14 @@ function makeCanvas() {
     width: 0,
     height: 0,
     style: {},
-    getContext(type) {
-      return {
-        type,
-        canvas: this,
-      };
+    contextCalls: [],
+    getContext(type, attrs) {
+      this.contextCalls.push({ type, attrs });
+      const ctx = { type, canvas: this };
+      if (type === "webgl" || type === "webgl2") {
+        ctx.getContextAttributes = () => ({ ...attrs });
+      }
+      return ctx;
     },
     addEventListener(type, fn) {
       if (!listeners.has(type)) listeners.set(type, []);
@@ -102,13 +113,78 @@ async function loadAdapter() {
   await import(moduleUrl(source));
 }
 
+async function testMainCanvasUsesGodotWebGLDefaults() {
+  const { mainCanvas } = installMiniGameGlobals();
+  await loadAdapter();
+
+  const canvas = globalThis.GameGlobal.__adapter.canvas;
+  assert.deepEqual(mainCanvas.contextCalls, [{ type: "webgl2", attrs: webGLDefaults }]);
+  const ctx = canvas.getContext("webgl2");
+  const warnings = [];
+  const originalWarn = console.warn;
+  console.warn = (message) => warnings.push(message);
+  try {
+    assert.equal(canvas.getContext("webgl2", webGLDefaults), ctx);
+    assert.deepEqual(warnings, []);
+
+    // A host can choose different attributes from those it was given.
+    ctx.getContextAttributes = () => ({ ...webGLDefaults, antialias: true });
+    assert.equal(canvas.getContext("webgl2", { antialias: false }), ctx);
+    assert.match(warnings[0], /antialias.*requested false, cached true/);
+
+    delete ctx.getContextAttributes;
+    assert.equal(canvas.getContext("webgl2", { alpha: true }), ctx);
+    assert.match(warnings[1], /alpha.*requested true, cached false/);
+    assert.equal(warnings.length, 2);
+  } finally {
+    console.warn = originalWarn;
+  }
+  assert.equal(mainCanvas.contextCalls.length, 1);
+}
+
+async function testBridgedCanvasUsesGodotWebGLDefaults() {
+  const { mainCanvas } = installMiniGameGlobals();
+  const bridgeCanvas = makeCanvas();
+  let hostCanvas = mainCanvas;
+  Object.defineProperty(globalThis.GameGlobal, "canvas", { get: () => hostCanvas });
+  // Expose a distinct canvas after the adapter has selected the main canvas.
+  const getWindowInfo = globalThis.wx.getWindowInfo;
+  globalThis.wx.getWindowInfo = () => {
+    hostCanvas = bridgeCanvas;
+    return getWindowInfo();
+  };
+  await loadAdapter();
+
+  const host = globalThis.GameGlobal;
+  assert.equal(host.__adapter.canvas, mainCanvas);
+  assert.equal(host.canvas, bridgeCanvas);
+  const ctx = host.canvas.getContext("webgl2");
+  assert.equal(host.canvas.getContext("webgl2", webGLDefaults), ctx);
+  assert.deepEqual(bridgeCanvas.contextCalls, [{ type: "webgl2", attrs: webGLDefaults }]);
+}
+
+async function testCreatedCanvasForwardsContextAttributes() {
+  installMiniGameGlobals();
+  await loadAdapter();
+
+  const { document } = globalThis.GameGlobal.__adapter;
+  const canvas = document.createElement("canvas");
+  const ctx = canvas.getContext("webgl", { alpha: true });
+  assert.deepEqual(ctx.getContextAttributes(), { ...webGLDefaults, alpha: true });
+
+  const canvas2d = document.createElement("canvas");
+  const attrs = { alpha: true };
+  assert.equal(canvas2d.getContext("2d", attrs).type, "2d");
+  assert.equal(canvas2d.contextCalls[0].attrs, attrs);
+}
+
 async function testCanvasSeparatesLogicalMetricsFromPhysicalBacking(platform) {
   const { hostCrypto, mainCanvas } = installMiniGameGlobals(platform);
   await loadAdapter();
 
   const adapter = globalThis.GameGlobal.__adapter;
   const rect = adapter.canvas.getBoundingClientRect();
-  const expectedDpr = platform === "tiktok" ? 3 : 1;
+  const expectedDpr = 3;
 
   assert.equal(mainCanvas.width, 390 * expectedDpr);
   assert.equal(mainCanvas.height, 844 * expectedDpr);
@@ -147,7 +223,7 @@ async function testResizeKeepsMetricsInTheSameCoordinateSpace(platform) {
   callbacks.resize({ size: { windowWidth: 430, windowHeight: 932 } });
   const adapter = globalThis.GameGlobal.__adapter;
   const rect = adapter.canvas.getBoundingClientRect();
-  const expectedDpr = platform === "tiktok" ? 3 : 1;
+  const expectedDpr = 3;
 
   assert.equal(mainCanvas.width, 430 * expectedDpr);
   assert.equal(mainCanvas.height, 932 * expectedDpr);
@@ -167,7 +243,8 @@ async function testTouchCoordinatesStayInCssPixels(platform) {
   await loadAdapter();
 
   const events = [];
-  globalThis.GameGlobal.__adapter.canvas.addEventListener("touchstart", (evt) => {
+  const { canvas } = globalThis.GameGlobal.__adapter;
+  canvas.addEventListener("touchstart", (evt) => {
     events.push(evt.changedTouches[0]);
   });
 
@@ -179,6 +256,10 @@ async function testTouchCoordinatesStayInCssPixels(platform) {
   assert.equal(events.length, 1);
   assert.equal(events[0].clientX, 100);
   assert.equal(events[0].clientY, 200);
+  const rect = canvas.getBoundingClientRect();
+  // Godot scales logical client coordinates into backing-store pixels.
+  assert.equal((events[0].clientX - rect.left) * canvas.width / rect.width, 300);
+  assert.equal((events[0].clientY - rect.top) * canvas.height / rect.height, 600);
 }
 
 async function testCanonicalTapDoesNotDoubleDispatch(platform) {
@@ -291,7 +372,7 @@ async function testModernWindowInfoAndOptionalTouchCancel(platform) {
   });
   await loadAdapter();
 
-  assert.equal(mainCanvas.width, platform === "tiktok" ? 1170 : 390);
+  assert.equal(mainCanvas.width, 1170);
   assert.equal(globalThis.GameGlobal.__adapter.window.navigator.platform, "devtools");
 }
 
@@ -365,6 +446,10 @@ async function testTiktokWebAssemblyShimCoversRuntimeRealms() {
     delete globalThis.TTWebAssembly;
   }
 }
+
+await testMainCanvasUsesGodotWebGLDefaults();
+await testBridgedCanvasUsesGodotWebGLDefaults();
+await testCreatedCanvasForwardsContextAttributes();
 
 for (const platform of ["wechat", "douyin", "tiktok"]) {
   await testCanvasSeparatesLogicalMetricsFromPhysicalBacking(platform);

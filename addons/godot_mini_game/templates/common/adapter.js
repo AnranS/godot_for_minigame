@@ -25,13 +25,12 @@ console.log("[Adapter] GameGlobal.canvas 存在:", !!_global.canvas, "类型:", 
 // and Godot engine will actually render to). Only create a new one as fallback.
 const _mainCanvas = _global.canvas || _api.createCanvas();
 const _winInfo = PlatformRuntime.getSystemInfo();
-// Mini-game window and touch APIs use logical pixels, while the WebGL backing
-// store must use physical pixels to stay sharp on high-DPI screens. TikTok's
-// native runtime is device-certified for this split; keep the established 1x
-// behavior on WeChat and Douyin until the same real-device gate is repeated.
+// Keep window metrics, canvas bounds, and touch coordinates in logical pixels.
+// The backing store uses host DPR for sharp rendering, and Godot maps input
+// into it using the ratio of the backing size to the logical canvas bounds.
+// Godot uses window.devicePixelRatio for its own canvas sizing when HiDPI is enabled.
 const _reportedDpr = Number(_winInfo.pixelRatio ?? _winInfo.devicePixelRatio ?? 1);
-const _hostDpr = Number.isFinite(_reportedDpr) && _reportedDpr > 0 ? _reportedDpr : 1;
-const _dpr = PlatformRuntime.platform === "tiktok" ? _hostDpr : 1;
+const _dpr = Number.isFinite(_reportedDpr) && _reportedDpr > 0 ? _reportedDpr : 1;
 let _viewportWidth = Number(_winInfo.windowWidth || _winInfo.screenWidth || _mainCanvas.width || 1);
 let _viewportHeight = Number(_winInfo.windowHeight || _winInfo.screenHeight || _mainCanvas.height || 1);
 
@@ -44,19 +43,54 @@ function _backingSize(value) {
 _mainCanvas.width = _backingSize(_viewportWidth);
 _mainCanvas.height = _backingSize(_viewportHeight);
 
+// The loader can create WebGL before Godot, and context attributes are fixed
+// at creation. Match Godot's Web defaults to keep letterboxing opaque and
+// avoid antialiasing changing the Compatibility renderer's framebuffer blit.
+const _WEBGL_CONTEXT_DEFAULTS = {
+  alpha: false,
+  antialias: false,
+  depth: true,
+  stencil: false,
+  premultipliedAlpha: true,
+  preserveDrawingBuffer: false,
+};
+
+function _isWebGLContext(type) {
+  return type === "webgl" || type === "webgl2";
+}
+
+function _getCachedContext(getContext, cache, type, attrs) {
+  const isWebGL = _isWebGLContext(type);
+  const cached = cache.get(type);
+  if (cached) {
+    if (isWebGL && attrs) {
+      let actual;
+      try { actual = cached.ctx.getContextAttributes?.(); } catch (_) {}
+      for (const [key, requested] of Object.entries(attrs)) {
+        const current = actual?.[key] ?? cached.attrs[key];
+        if (requested !== undefined && current !== undefined && requested !== current) {
+          console.warn("[Adapter] getContext('" + type + "') cannot change cached WebGL attribute " + key
+            + " (requested " + requested + ", cached " + current + ")");
+        }
+      }
+    }
+    return cached.ctx;
+  }
+  const contextAttrs = isWebGL ? { ..._WEBGL_CONTEXT_DEFAULTS, ...attrs } : attrs;
+  const ctx = getContext(type, contextAttrs);
+  if (ctx) cache.set(type, { ctx, attrs: contextAttrs });
+  return ctx;
+}
+
 // Mini-game canvas may only allow getContext to succeed once per type.
 // Cache the context so the loader's WebGL2 ctx is reused by Godot's Emscripten.
 // Native canvas .getContext may be non-configurable, so try multiple override methods.
-const _ctxCache = {};
+const _ctxCache = new Map();
 const _origGetContext = _mainCanvas.getContext.bind(_mainCanvas);
 const _wrappedGetContext = function (type, attrs) {
-  if (_ctxCache[type]) {
-    console.log("[Adapter] getContext('" + type + "') → 返回缓存");
-    return _ctxCache[type];
-  }
-  const ctx = _origGetContext(type, attrs);
-  console.log("[Adapter] getContext('" + type + "') → " + (ctx ? "成功" : "失败(null)"));
-  if (ctx) _ctxCache[type] = ctx;
+  const cached = _ctxCache.has(type);
+  const ctx = _getCachedContext(_origGetContext, _ctxCache, type, attrs);
+  console.log("[Adapter] getContext('" + type + "') → " + (cached ? "返回缓存" : ctx ? "成功" : "失败(null)"));
   return ctx;
 };
 try {
@@ -240,10 +274,16 @@ const _document = {
       const c = _api.createCanvas();
       const _origGetCtx = c.getContext?.bind(c);
       if (_origGetCtx) {
+        const cache = new Map();
         c.getContext = function (type, attrs) {
-          try { const ctx = _origGetCtx(type, attrs); if (ctx) return ctx; } catch {}
-          if (type === "webgl2" || type === "webgl") return {};
-          return null;
+          const isWebGL = _isWebGLContext(type);
+          try {
+            const ctx = isWebGL
+              ? _getCachedContext(_origGetCtx, cache, type, attrs)
+              : _origGetCtx(type, attrs);
+            if (ctx) return ctx;
+          } catch {}
+          return isWebGL ? {} : null;
         };
       }
       return c;
@@ -1136,14 +1176,11 @@ if (_global.canvas && _global.canvas !== _mainCanvas) {
   const _gc = _global.canvas;
 
   // Bridge getContext (cache WebGL contexts)
-  const _gcGetCtx = _gc.getContext?.bind(_gc);
-  if (_gcGetCtx && _gcGetCtx !== _wrappedGetContext) {
-    const _gcCache = {};
+  if (typeof _gc.getContext === "function" && _gc.getContext !== _wrappedGetContext) {
+    const _gcGetCtx = _gc.getContext.bind(_gc);
+    const _gcCache = new Map();
     _safeDefine(_gc, "getContext", function (type, attrs) {
-      if (_gcCache[type]) return _gcCache[type];
-      const ctx = _gcGetCtx(type, attrs);
-      if (ctx) _gcCache[type] = ctx;
-      return ctx;
+      return _getCachedContext(_gcGetCtx, _gcCache, type, attrs);
     });
   }
 
@@ -1166,7 +1203,7 @@ console.log("[Adapter] _mainCanvas === GameGlobal.canvas:", _mainCanvas === _glo
 console.log("[Adapter] _mainCanvas.id:", _mainCanvas.id);
 // Quick test
 try {
-  const _testCtx = _mainCanvas.getContext("webgl2");
+  const _testCtx = _wrappedGetContext("webgl2");
   console.log("[Adapter] 测试 getContext('webgl2'):", _testCtx ? "OK" : "FAILED");
 } catch (e) {
   console.error("[Adapter] 测试 getContext 异常:", e.message);

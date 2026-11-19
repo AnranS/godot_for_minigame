@@ -128,11 +128,6 @@ assert.ok(
   adapterSource.includes("_winInfo.pixelRatio ?? _winInfo.devicePixelRatio ?? 1"),
   "the adapter must derive its backing scale from the host-reported DPR",
 );
-assert.ok(!adapterSource.includes("const _dpr = 1;"));
-assert.ok(
-  adapterSource.includes('PlatformRuntime.platform === "tiktok" ? _hostDpr : 1'),
-  "high-DPI backing must remain gated to the TikTok runtime until other hosts are device-certified",
-);
 const projectConfig = read("project.godot");
 // Validate the committed CI/test fixture, never a developer's ignored preset.
 const exportPresets = read("test/fixtures/web_export_presets.cfg");
