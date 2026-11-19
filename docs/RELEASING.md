@@ -82,6 +82,14 @@ TikTok package from the release candidate, then:
 The TikTok HTML runtime is outside the v0.3 release scope. Do not substitute an
 HTML preview for the Native DevTool and real-device gate.
 
+Build engine templates with `javascript_eval=yes` to include the
+JavaScriptBridge object interface required by MiniGameSDK. TikTok's exporter
+stubs `_godot_js_eval` during export and preserves the object interface. The
+Godot 4.6.3 r1 and 4.7.2 r1 release templates used `javascript_eval=no` and
+lack that interface. Publish the repaired templates under new r2 tags, then
+update their pins and regenerate the catalog. Local and CI template builds
+default to revision 2.
+
 When the engine template changes, also validate the original artifact produced
 locally or by **Build Mini-Game WASM Template**:
 
@@ -91,6 +99,8 @@ locally or by **Build Mini-Game WASM Template**:
 
 The verifier accepts a ZIP or directory containing exactly `template.json`,
 `version.txt`, `godot.js`, `godot.wasm.br`, and `GODOT_COPYRIGHT.txt`.
+It requires `GodotJSWrapper` in `godot.js` and the bridge interface and callback
+function imports in the decompressed WASM.
 
 Commit the complete release source, push `main`, and wait for **Smoke Test
 Export** and **Deploy Website to GitHub Pages** to succeed.

@@ -115,6 +115,10 @@ if ! grep -qF "Engine.prototype['copyToFS'] = Engine.prototype.copyToFS;" "${PAC
     echo "godot.js does not contain the Godot Engine wrapper" >&2
     exit 1
 fi
+if ! grep -qF 'GodotJSWrapper' "${PACKAGE_DIR}/godot.js"; then
+    echo "godot.js is missing GodotJSWrapper. MiniGameSDK requires JavaScriptBridge; build with javascript_eval=yes." >&2
+    exit 1
+fi
 brotli --decompress --force --output="${TEMP_DIR}/godot.wasm" "${PACKAGE_DIR}/godot.wasm.br"
 if [ "$(xxd -p -l 4 "${TEMP_DIR}/godot.wasm")" != "0061736d" ]; then
     echo "Decompressed artifact is not a WebAssembly module" >&2
@@ -123,5 +127,19 @@ fi
 # WABT disables threads and exception handling by default. Explicitly disable
 # SIMD so the complete mini-game feature contract is enforced.
 wasm-validate --disable-simd "${TEMP_DIR}/godot.wasm"
+
+node - "${TEMP_DIR}/godot.wasm" <<'NODE'
+const { readFileSync } = require('node:fs');
+const wasm = new WebAssembly.Module(readFileSync(process.argv[2]));
+const functionImports = new Set(WebAssembly.Module.imports(wasm)
+    .filter(({ kind }) => kind === 'function')
+    .map(({ name }) => name));
+const requiredImports = ['godot_js_wrapper_interface_get', 'godot_js_wrapper_create_cb'];
+const missingImports = requiredImports.filter((name) => !functionImports.has(name));
+if (missingImports.length > 0) {
+    console.error(`godot.wasm is missing JavaScriptBridge function imports: ${missingImports.join(', ')}. Build with javascript_eval=yes.`);
+    process.exitCode = 1;
+}
+NODE
 
 echo "Template bundle is valid: Godot $MANIFEST_VERSION, bridge ABI $EXPECTED_BRIDGE_ABI"

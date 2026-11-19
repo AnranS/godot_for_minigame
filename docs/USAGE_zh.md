@@ -188,6 +188,10 @@ Dock 顶部的 **引擎模板** 栏显示当前查找结果。插件按以下顺
 `support-matrix.json` 生成，只收录版本号和源码提交都与编辑器一致的模板。无法访问 GitHub
 时，日志会给出 Release 页面链接，手动下载 ZIP 后点 **导入模板** 即可。
 
+Godot 4.6.3 r1 和 4.7.2 r1 的发行模板使用 `javascript_eval=no` 构建，移除了
+MiniGameSDK 调用平台 API 所需的 JavaScriptBridge 接口。请在对应的 r2 模板发布后下载并导入，
+或按[自定义引擎模板](#12-编译自定义引擎模板)一节自行编译。
+
 ### 导入新版引擎模板
 
 点 **导入模板**，选一个 zip：
@@ -1678,7 +1682,7 @@ Native 导出会禁用 JavaScript eval。TikTok 请通过
 TikTok 还要通过必需的 `ttmg` 与真机发布门禁。
 
 ```bash
-# 默认 Godot 4.6.1-stable + Emscripten 4.0.3
+# 默认 Godot 4.6.1-stable + Emscripten 4.0.3，修订版 r2
 ./scripts/build_wasm_template.sh
 
 # 指定 Godot 版本
@@ -1692,9 +1696,9 @@ TikTok 还要通过必需的 `ttmg` 与真机发布门禁。
 
 1. 安装并激活精确的 emsdk 版本（缓存默认位于 `build_wasm/emsdk`，也可用 `GODOT_MINIGAME_BUILD_DIR` 指定）。
 2. 克隆精确 Godot tag；缓存源码只要 tag 不符或存在本地改动，脚本就拒绝继续。
-3. 临时强制 Emscripten longjmp 模式，并用 `wasm_simd=no`、`threads=no`、禁用动态链接及 WebRTC/XR 模块等参数编译 Web release 模板；退出时自动恢复源码补丁。
+3. 临时强制 Emscripten longjmp 模式，并用 `wasm_simd=no`、`threads=no`、`javascript_eval=yes`、禁用动态链接及 WebRTC/XR 模块等参数编译 Web release 模板。`javascript_eval=yes` 提供 JavaScriptBridge 接口。TikTok 导出时用禁用版桩函数替换 `_godot_js_eval`，同时保留桥接接口。退出时自动恢复源码补丁。
 4. 从 Godot 自己打包的 Web 模板压缩包中取出 `godot.js` 与 `godot.wasm`（4.6 起 `bin/` 里还有原始 Emscripten 模块等多个 JS 文件，它们不能直接使用）。
-5. 使用共享校验器检查 JavaScript 语法、Engine 包装层、Brotli/WASM 结构、禁用特性、来源身份与哈希。
+5. 使用共享校验器检查 JavaScript 语法、Engine 和 JavaScriptBridge 包装层、WASM 必需的 JavaScriptBridge 导入、Brotli/WASM 结构、禁用特性、来源身份与哈希。
 6. 产物位于 `build_wasm/output/{tag}/emsdk-{version}/2d_full/release/abi-{abi}/r{revision}/godot_minigame_template_{tag}_emsdk-{version}_2d-full_release_abi-{abi}_r{revision}.zip`。
 7. 回到编辑器，点 Dock 里的 **导入模板** 选择该 ZIP。
 

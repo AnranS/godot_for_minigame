@@ -562,7 +562,7 @@ func _export_mini_game_impl(
 		_log_template_candidate_errors()
 		return ERR_FILE_NOT_FOUND
 
-	err = _validate_template_sources(platform)
+	err = _validate_template_sources(platform, bundle.javascript_path)
 	if err != OK:
 		return err
 	_warn_if_no_project_font()
@@ -702,7 +702,18 @@ func _validate_export_preset(preset_name: String) -> Error:
 	return ERR_FILE_NOT_FOUND
 
 
-func _validate_template_sources(platform: String) -> Error:
+func _validate_template_sources(platform: String, engine_js_path: String) -> Error:
+	if not _read_text(engine_js_path).contains("GodotJSWrapper"):
+		_log(
+			"[color=red]引擎模板的 godot.js 缺少 JavaScriptBridge (GodotJSWrapper)。"
+			+ "javascript_eval=no 会移除此接口，导致 MiniGameSDK 无法工作。"
+			+ "请下载并导入匹配的 r2 模板，或用 javascript_eval=yes 重建。\n"
+			+ "The engine template's godot.js is missing JavaScriptBridge (GodotJSWrapper). "
+			+ "Building with javascript_eval=no removes the bridge that MiniGameSDK requires. "
+			+ "Download and import the matching r2 template or rebuild with javascript_eval=yes.[/color]"
+		)
+		return ERR_FILE_CORRUPT
+
 	var required := PackedStringArray()
 	for src_rel in COMMON_TEMPLATE_MAPPINGS:
 		required.append(TEMPLATES + "common/" + str(src_rel))
@@ -1855,17 +1866,19 @@ func _patch_godot_js(path: String, platform: String = "wechat") -> Error:
 		)
 		modified = true
 
-	# TikTok's native package scan forbids real eval calls. Certified templates
-	# built with javascript_eval=no need no rewrite; older exact templates are
-	# converted to an explicit unsupported bridge without leaving an eval( token.
+	# TikTok's package scan forbids eval( tokens. Stub the eval function and
+	# redirect its import while preserving the JavaScriptBridge object interface.
 	if bool(PLATFORM_CONTRACTS[platform].forbids_javascript_eval):
 		if content.contains("eval("):
 			var eval_start := content.find("function _godot_js_eval(")
-			var eval_end := content.find("var IDHandler", eval_start)
+			var eval_tail := "break}return 0}"
+			var eval_tail_start := content.find(eval_tail, eval_start)
+			var bridge_start := content.find("var IDHandler", eval_start)
 			var eval_import := "godot_js_eval:_godot_js_eval"
 			if (
 				eval_start < 0
-				or eval_end <= eval_start
+				or eval_tail_start <= eval_start
+				or eval_tail_start >= bridge_start
 				or content.count(eval_import) != 1
 			):
 				_log("  [color=red]godot.js 的 JavaScript eval 实现不符合已认证结构[/color]")
@@ -1877,7 +1890,7 @@ func _patch_godot_js(path: String, platform: String = "wechat") -> Error:
 			content = (
 				content.substr(0, eval_start)
 				+ disabled_eval
-				+ content.substr(eval_end)
+				+ content.substr(eval_tail_start + eval_tail.length())
 			)
 			content = content.replace(
 				eval_import, "godot_js_eval:_godot_js_disabled")
