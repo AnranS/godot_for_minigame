@@ -1881,12 +1881,16 @@ func _patch_godot_js(path: String, platform: String = "wechat") -> Error:
 			var eval_tail := "break}return 0}"
 			var eval_tail_start := content.find(eval_tail, eval_start)
 			var bridge_start := content.find("var IDHandler", eval_start)
-			var eval_import := "godot_js_eval:_godot_js_eval"
+			# Godot 4.7+ minifies wasm import keys (e.g. "Ab:_godot_js_eval"),
+			# so match the import entry by its value, not by its key.
+			var eval_import := RegEx.create_from_string(
+				"(?<=[{,])[A-Za-z0-9_$]+:_godot_js_eval(?=[,}])")
+			var eval_imports := eval_import.search_all(content)
 			if (
 				eval_start < 0
 				or eval_tail_start <= eval_start
 				or eval_tail_start >= bridge_start
-				or content.count(eval_import) != 1
+				or eval_imports.size() != 1
 			):
 				_log("  [color=red]godot.js 的 JavaScript eval 实现不符合已认证结构[/color]")
 				return ERR_FILE_CORRUPT
@@ -1894,13 +1898,22 @@ func _patch_godot_js(path: String, platform: String = "wechat") -> Error:
 				"function _godot_js_disabled(){GodotRuntime.error("
 				+ "\"JavaScript eval is disabled for TikTok Mini Games\");return 0}"
 			)
+			var import_match: RegExMatch = eval_imports[0]
+			var import_entry := import_match.get_string()
+			var import_start := import_match.get_start()
+			content = (
+				content.substr(0, import_start)
+				+ import_entry.trim_suffix("_godot_js_eval") + "_godot_js_disabled"
+				+ content.substr(import_start + import_entry.length())
+			)
+			# Re-locate the body: the import rename may precede it.
+			eval_start = content.find("function _godot_js_eval(")
+			eval_tail_start = content.find(eval_tail, eval_start)
 			content = (
 				content.substr(0, eval_start)
 				+ disabled_eval
 				+ content.substr(eval_tail_start + eval_tail.length())
 			)
-			content = content.replace(
-				eval_import, "godot_js_eval:_godot_js_disabled")
 			modified = true
 		if content.contains("eval("):
 			_log("  [color=red]TikTok godot.js 仍包含禁止的 eval()[/color]")

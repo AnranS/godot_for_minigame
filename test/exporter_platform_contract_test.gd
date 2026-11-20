@@ -199,6 +199,22 @@ func _init() -> void:
 		"godot.js patching must be idempotent",
 	)
 
+	# Godot 4.7+ minifies wasm import keys; the eval import must still be found.
+	var minified_engine := _root.path_join("patched-tiktok-minified.js")
+	_write(minified_engine, engine_js.replace(
+		"godot_js_eval:_godot_js_eval", "Zq:_godot_js_eval"))
+	_assert_true(
+		exporter._patch_godot_js(minified_engine, "tiktok") == OK,
+		"TikTok patching must accept minified wasm import keys",
+	)
+	var minified_patched := _read(minified_engine)
+	_assert_true(
+		minified_patched.contains("Zq:_godot_js_disabled")
+		and not minified_patched.contains("eval(")
+		and minified_patched.contains("GodotJSWrapper"),
+		"a minified eval import must be redirected while keeping the bridge",
+	)
+
 	var wechat_engine := _root.path_join("patched-wechat.js")
 	_copy(engine_source, wechat_engine)
 	_assert_true(

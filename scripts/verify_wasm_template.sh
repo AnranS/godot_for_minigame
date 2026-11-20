@@ -128,14 +128,21 @@ fi
 # SIMD so the complete mini-game feature contract is enforced.
 wasm-validate --disable-simd "${TEMP_DIR}/godot.wasm"
 
-node - "${TEMP_DIR}/godot.wasm" <<'NODE'
+node - "${TEMP_DIR}/godot.wasm" "${PACKAGE_DIR}/godot.js" <<'NODE'
 const { readFileSync } = require('node:fs');
 const wasm = new WebAssembly.Module(readFileSync(process.argv[2]));
+const engine = readFileSync(process.argv[3], 'utf8');
 const functionImports = new Set(WebAssembly.Module.imports(wasm)
     .filter(({ kind }) => kind === 'function')
     .map(({ name }) => name));
+// Godot 4.7+ minifies wasm import names (e.g. "Ab"), so resolve each bridge
+// function through godot.js's import table instead of trusting the name.
 const requiredImports = ['godot_js_wrapper_interface_get', 'godot_js_wrapper_create_cb'];
-const missingImports = requiredImports.filter((name) => !functionImports.has(name));
+const missingImports = requiredImports.filter((name) => {
+    const keys = [...engine.matchAll(new RegExp(`(?<=[{,])([A-Za-z0-9_$]+):_${name}(?=[,}])`, 'g'))]
+        .map((match) => match[1]);
+    return keys.length !== 1 || !functionImports.has(keys[0]);
+});
 if (missingImports.length > 0) {
     console.error(`godot.wasm is missing JavaScriptBridge function imports: ${missingImports.join(', ')}. Build with javascript_eval=yes.`);
     process.exitCode = 1;
