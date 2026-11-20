@@ -189,8 +189,9 @@ Dock 顶部的 **引擎模板** 栏显示当前查找结果。插件按以下顺
 时，日志会给出 Release 页面链接，手动下载 ZIP 后点 **导入模板** 即可。
 
 Godot 4.6.3 r1 和 4.7.2 r1 的发行模板使用 `javascript_eval=no` 构建，移除了
-MiniGameSDK 调用平台 API 所需的 JavaScriptBridge 接口。请在对应的 r2 模板发布后下载并导入，
-或按[自定义引擎模板](#12-编译自定义引擎模板)一节自行编译。
+MiniGameSDK 调用平台 API 所需的 JavaScriptBridge 接口：用它们导出时日志会给出红色警告，
+`MiniGameSDK.is_mini_game` 始终为 `false`。插件 v0.3.2 固定了修复后的 r2 模板，
+已导入 r1 的项目请在导出面板里重新点一次 **下载** 替换。
 
 ### 导入新版引擎模板
 

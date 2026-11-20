@@ -204,8 +204,9 @@ release page so you can download the ZIP and use **Import Template** instead.
 
 The Godot 4.6.3 r1 and 4.7.2 r1 release templates were built with
 `javascript_eval=no`, which removes the JavaScriptBridge interface that
-MiniGameSDK needs to call platform APIs. Download and import the matching r2
-template once it is published, or [build it locally](#12-building-a-custom-engine-template).
+MiniGameSDK needs to call platform APIs: exports with them log a red warning
+and `MiniGameSDK.is_mini_game` stays `false`. Plugin v0.3.2 pins the repaired
+r2 templates; click **Download** in the dock again to replace an imported r1.
 
 ### Import a new engine template
 

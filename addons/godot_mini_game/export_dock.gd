@@ -146,8 +146,10 @@ func _refresh_template_status() -> void:
 			template_status.append_text("[color=green]✓ 兼容模板就绪[/color] (内置, %s)" % version_note)
 		"store":
 			template_status.append_text("[color=green]✓ 兼容模板就绪[/color] (模板库, %s)" % version_note)
+			_offer_newer_revision(status, template_revision)
 		"store_legacy":
 			template_status.append_text("[color=green]✓ 兼容模板就绪[/color] (旧模板库, %s)" % version_note)
+			_offer_newer_revision(status, template_revision)
 		_:
 			template_status.append_text("[color=red]✗ 未找到精确匹配的引擎模板[/color] (Godot %s)" % ver_key)
 			_download_entry = TemplateDownload.find_for_editor(
@@ -163,6 +165,23 @@ func _refresh_template_status() -> void:
 	download_btn.visible = not _download_entry.is_empty()
 	if download_btn.visible and not _active_download:
 		download_btn.text = "下载 %s 模板" % _short_version(str(_download_entry.godotVersion))
+
+
+## A store template can be an older revision of a certified one (for example
+## the 4.6.3/4.7.2 r1 builds that lack JavaScriptBridge). Offer the newer
+## certified revision; the store prefers the highest revision once imported.
+func _offer_newer_revision(status: Dictionary, installed_revision: int) -> void:
+	var entry := TemplateDownload.find_for_editor(
+		TemplateDownload.load_catalog(),
+		str(status.get("editor_version", "")),
+		str(status.get("editor_commit", "")),
+	)
+	if entry.is_empty() or int(entry.get("templateRevision", 0)) <= installed_revision:
+		return
+	_download_entry = entry
+	template_status.append_text(
+		"\n[color=yellow]已认证模板有新修订 r%d（当前 r%d），点击「下载」更新。[/color]"
+		% [int(entry.templateRevision), installed_revision])
 
 
 func _on_download_template() -> void:
