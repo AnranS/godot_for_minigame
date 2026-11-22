@@ -337,7 +337,7 @@ TikTok 的 WebAudio 没有 `createScriptProcessor()`，用其它节点模拟它�
 
 所有异步接口都通过 **信号** 回调，不要用 await；同步接口（`storage_*`、`vibrate_*`）直接返回。
 
-225 个公开方法和 84 个信号描述的是完整 Bridge 接口面，不代表三个平台全部兼容。
+230 个公开方法和 86 个信号描述的是完整 Bridge 接口面，不代表三个平台全部兼容。
 同名 API 只有在所选 `wx`、`tt` 或 `TTMinis.game` 宿主暴露对应能力时才会分发；
 支付等平台特有流程走显式映射。依赖某个接口前请调用 `can_i_use()`，并用目标宿主
 和目标版本实测。
@@ -1494,6 +1494,50 @@ func destroy_buttons() -> void:
 ```
 
 支持的 `button_type` 为 `"userInfo"`、`"openSetting"`、`"gameClub"`。`create_user_info_button()` 封装基础库 2.0.1 起支持的 `wx.createUserInfoButton`。`create_open_setting_button()` 封装基础库 2.0.7 起支持的 `wx.createOpenSettingButton`，但官方文档标注它从基础库 3.0.0 起停止维护，能用 `wx.openSetting` 时应优先用 `open_setting()`。`create_game_club_button()` 封装基础库 2.0.3 起支持的 `wx.createGameClubButton`；`openlink` 和 `hasRedDot` 从 2.30.3 开始支持。
+
+### 通过 OPENLINK 打开游戏圈（微信）
+
+SDK 封装了 `wx.createPageManager`，可以通过 `openlink` 打开游戏圈。PageManager 仅支持微信基础库 3.6.7 及以上版本。请从微信公众平台（MP）后台或对应渠道获取 `openlink`，例如游戏圈的 `openlink`。链接必须与小游戏的开发版、体验版或正式版匹配。[微信 PageManager 接口文档](https://developers.weixin.qq.com/minigame/dev/api/open-api/openlink/wx.createPageManager.html)
+
+将 Godot 按钮的点击信号连接到 `open_game_club()`，并将 `game_club_openlink` 设为渠道提供的链接。
+
+```gdscript
+@export var game_club_openlink: String
+
+func _ready() -> void:
+    MiniGameSDK.page_manager_operation.connect(_on_page_manager_operation)
+
+func open_game_club() -> void:
+    MiniGameSDK.page_manager_load(game_club_openlink)
+
+func _on_page_manager_operation(operation: String, ok: bool, result_json: String, error: String) -> void:
+    if not ok:
+        var details = JSON.parse_string(result_json) if not result_json.is_empty() else null
+        var code = details.get("errCode") if details is Dictionary else null
+        push_warning("PageManager %s 失败（%s）：%s" % [operation, code, error])
+        return
+
+    if operation == "PageManager.load":
+        MiniGameSDK.page_manager_show()
+    elif operation == "PageManager.show":
+        print("已打开游戏圈")
+```
+
+`page_manager_load()` 还接受可选的 `query` 和 `extra_data` 字典。也可以直接给 `page_manager_show()` 传入包含 `openlink` 的字典，按需加入 `query` 和 `extraData`。如果还未加载，微信会自动加载页面。成功时，`result_json` 可能包含渠道返回的数据。平台拒绝请求时，`result_json` 保留平台的错误详情，并在有错误码时通过 `errCode` 提供数值。不支持的运行环境也会通过 `page_manager_operation` 报告失败。
+
+可以用 `page_manager_on(event_name)` 订阅渠道事件（在 `load`/`show` 之前或之后调用都可以），事件通过 `page_manager_event(event_name, payload_json)` 返回。重复订阅同一事件会复用已有订阅。用 `page_manager_off(event_name)` 取消订阅，用 `page_manager_destroy()` 释放管理器。下次调用 `load` 或 `show` 时会创建新的管理器。
+
+| 错误码 | 含义 |
+|--------|------|
+| `0` | 成功 |
+| `-1` | `openlink` 无效 |
+| `-2` | 基础库不支持 |
+| `-3` | 设备不支持 |
+| `-4` | 渠道错误，详见 `errInfo` |
+| `-5` | 其他错误，详见 `errInfo` |
+| `-6` | 网络错误 |
+| `-7` | 调用过于频繁 |
+| `-8` | `openlink` 与小游戏的开发版、体验版或正式版不匹配 |
 
 ### 调试日志（微信）
 

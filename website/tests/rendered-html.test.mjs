@@ -52,7 +52,7 @@ test("exports the complete searchable API reference", async () => {
   const html = await readFile(new URL("../dist/client/api/index.html", import.meta.url), "utf8");
 
   assert.match(html, /MiniGameSDK API 参考/);
-  assert.match(html, /225/);
+  assert.match(html, /230/);
   assert.match(html, /http_request_with_id/);
   assert.match(html, /http_request_completed/);
   assert.match(html, /搜索 MiniGameSDK API/);
@@ -61,12 +61,15 @@ test("exports the complete searchable API reference", async () => {
   assert.match(html, /call_api/);
   assert.match(html, /add_shortcut/);
   assert.match(html, /tiktok_mission_result/);
+  assert.match(html, /id="method-page_manager_load"/);
+  assert.match(html, /id="signal-page_manager_operation"/);
+  assert.match(html, /id="signal-page_manager_event"/);
   assert.match(html, /is_mini_game/);
   assert.match(html, /bridge_initialization_failed/);
   assert.doesNotMatch(html, /TikTok Native|TikTok 使用 Native runtime/);
   assert.match(html, /跨宿主同名/);
   assert.match(html, /按平台映射/);
-  assert.match(html, /找到 <strong>309<\/strong> 项/);
+  assert.match(html, /找到 <strong>316<\/strong> 项/);
   assert.equal((html.match(/id="method-storage_set"/g) ?? []).length, 1);
   assert.equal((html.match(/id="signal-login_completed"/g) ?? []).length, 1);
   assert.ok(Buffer.byteLength(html) < 2_000_000, "API HTML should not duplicate entries across categories");

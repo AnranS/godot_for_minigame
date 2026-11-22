@@ -357,7 +357,7 @@ The plugin registers `MiniGameSDK` as an autoload. In non-mini-game environments
 
 Async calls deliver results via **signals** — no `await`. Sync calls (`storage_*`, `vibrate_*`) return immediately.
 
-The 225 public methods and 84 signals are the complete bridge surface, not a
+The 230 public methods and 86 signals are the complete bridge surface, not a
 blanket three-platform compatibility claim. Same-name APIs are dispatched to
 `wx`, `tt`, or `TTMinis.game` only when the selected host exposes the required
 capability. Payments and other platform-specific flows use explicit mappings;
@@ -1522,6 +1522,50 @@ func destroy_buttons() -> void:
 ```
 
 Supported button types are `"userInfo"`, `"openSetting"`, and `"gameClub"`. `create_user_info_button()` wraps WeChat `wx.createUserInfoButton` from base library 2.0.1. `create_open_setting_button()` wraps `wx.createOpenSettingButton` from 2.0.7, but the official docs mark it as no longer maintained from base library 3.0.0 and recommend `wx.openSetting` where possible. `create_game_club_button()` wraps `wx.createGameClubButton` from 2.0.3; `openlink` and `hasRedDot` start at 2.30.3.
+
+### Game Club via OPENLINK (WeChat)
+
+Use `wx.createPageManager` through the SDK to open the Game Club (游戏圈) with an `openlink`. PageManager requires WeChat base library 3.6.7 or later. Get the `openlink` for the channel from the WeChat MP console or from the channel itself. It must match your mini game's development, trial, or release version. [WeChat PageManager reference](https://developers.weixin.qq.com/minigame/dev/api/open-api/openlink/wx.createPageManager.html)
+
+Connect a Godot button to `open_game_club()` and set `game_club_openlink` to the channel's link.
+
+```gdscript
+@export var game_club_openlink: String
+
+func _ready() -> void:
+    MiniGameSDK.page_manager_operation.connect(_on_page_manager_operation)
+
+func open_game_club() -> void:
+    MiniGameSDK.page_manager_load(game_club_openlink)
+
+func _on_page_manager_operation(operation: String, ok: bool, result_json: String, error: String) -> void:
+    if not ok:
+        var details = JSON.parse_string(result_json) if not result_json.is_empty() else null
+        var code = details.get("errCode") if details is Dictionary else null
+        push_warning("PageManager %s failed (%s): %s" % [operation, code, error])
+        return
+
+    if operation == "PageManager.load":
+        MiniGameSDK.page_manager_show()
+    elif operation == "PageManager.show":
+        print("Game Club opened")
+```
+
+`page_manager_load()` also accepts optional `query` and `extra_data` dictionaries. You can call `page_manager_show()` directly with a dictionary containing `openlink` and optional `query` and `extraData` keys. WeChat loads the page automatically if it has yet to load. Success can include channel-specific data in `result_json`. On rejection, `result_json` preserves platform error details and exposes the numeric code as `errCode` when available. Unsupported runtimes also report failures through `page_manager_operation`.
+
+Use `page_manager_on(event_name)`, before or after `load`/`show`, to receive channel events through `page_manager_event(event_name, payload_json)`. Registering the same event again reuses its subscription. Use `page_manager_off(event_name)` to remove the subscription and `page_manager_destroy()` to release the manager. The next `load` or `show` creates a new one.
+
+| Code | Meaning |
+|------|---------|
+| `0` | Success |
+| `-1` | Invalid `openlink` |
+| `-2` | Unsupported base library |
+| `-3` | Unsupported device |
+| `-4` | Channel error. See `errInfo`. |
+| `-5` | Other error. See `errInfo`. |
+| `-6` | Network error |
+| `-7` | Too many calls |
+| `-8` | The `openlink` targets a different mini-game version (development, trial, or release). |
 
 ### Debug logging (WeChat)
 

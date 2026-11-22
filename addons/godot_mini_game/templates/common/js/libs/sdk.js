@@ -811,6 +811,137 @@ class GodotSDK {
     }
   }
 
+  // ── Page Manager ───────────────────────────────────────────────
+
+  _pageManagerAction(action, callback, run) {
+    const operation = `PageManager.${action}`;
+    if (PlatformRuntime.platform !== "wechat") {
+      callback(operation, false, "", _unsupported("createPageManager"));
+      return;
+    }
+    if (typeof _api.createPageManager !== "function") {
+      callback(operation, false, '{"errCode":-2}', `${_unsupported("createPageManager")} (requires base library 3.6.7 or later)`);
+      return;
+    }
+
+    const loadsPage = action === "load" || action === "show";
+    // Listeners may be registered before the first load/show, so "on" also
+    // creates the manager; "off" and "destroy" never create one.
+    const createsManager = loadsPage || action === "on";
+    const fail = (err) => {
+      if (!err || typeof err !== "object") {
+        callback(operation, false, "", _fmtErr(err));
+        return;
+      }
+      const { errInfo, errMsg, message } = err;
+      const data = Object.assign({}, err);
+      const code = err.errCode ?? err.code;
+      if (typeof code === "number" || (typeof code === "string" && code.trim())) {
+        const number = Number(code);
+        if (Number.isFinite(number)) data.errCode = number;
+      }
+      if (errInfo !== undefined) data.errInfo = errInfo;
+      if (errMsg !== undefined) data.errMsg = errMsg;
+      const details = _fmtErr({ ...data, message });
+      const info = typeof errInfo === "string" ? errInfo : _jsonSafe(errInfo);
+      callback(operation, false, _jsonSafe(data), info ? `${details} errInfo=${info}` : details);
+    };
+
+    let state = this._pageManager;
+    let result;
+    try {
+      if (!state && createsManager) {
+        const manager = _api.createPageManager();
+        if (!manager) throw new Error("wx.createPageManager returned no PageManager");
+        state = { manager, listeners: new Map(), pending: new Set(), destroying: false };
+        this._pageManager = state;
+      }
+      if (!state) throw new Error("No active PageManager");
+      if (state.destroying) throw new Error("PageManager is being destroyed");
+      if (typeof state.manager[action] !== "function") throw new Error(`${operation} is not supported`);
+      result = run(state);
+    } catch (err) {
+      fail(err);
+      return;
+    }
+
+    const succeed = (data) => callback(operation, true, _jsonSafe(data ?? {}), "");
+    if (!loadsPage) {
+      succeed(result);
+      return;
+    }
+
+    const finish = (complete, data) => {
+      if (state.pending.delete(cancel)) complete(data);
+    };
+    const cancel = () => {
+      if (state.pending.delete(cancel)) {
+        callback(operation, false, "", "PageManager was destroyed before the operation completed");
+      }
+    };
+    state.pending.add(cancel);
+    const completion = Promise.resolve(result).then(
+      (data) => finish(succeed, data),
+      (err) => finish(fail, err),
+    );
+    if (this._pageManager !== state) cancel();
+    return completion;
+  }
+
+  pageManagerLoad(optionsJson, callback) {
+    return this._pageManagerAction("load", callback, ({ manager }) => manager.load(_jsonObject(optionsJson)));
+  }
+
+  pageManagerShow(optionsJson, callback) {
+    return this._pageManagerAction("show", callback, ({ manager }) => manager.show(_jsonObject(optionsJson)));
+  }
+
+  pageManagerOn(eventName, callback, eventCallback) {
+    this._pageManagerAction("on", callback, (state) => {
+      if (state.listeners.has(eventName)) return;
+      const listener = (payload) => {
+        if (!state.destroying && state.listeners.get(eventName) === listener) {
+          eventCallback(eventName, _jsonSafe(payload === undefined ? {} : payload));
+        }
+      };
+      state.listeners.set(eventName, listener);
+      try {
+        state.manager.on(eventName, listener);
+      } catch (err) {
+        if (state.listeners.get(eventName) === listener) state.listeners.delete(eventName);
+        throw err;
+      }
+    });
+  }
+
+  pageManagerOff(eventName, callback) {
+    this._pageManagerAction("off", callback, ({ manager, listeners }) => {
+      const listener = listeners.get(eventName);
+      if (!listener) return;
+      manager.off(eventName, listener);
+      listeners.delete(eventName);
+    });
+  }
+
+  pageManagerDestroy(callback) {
+    let destroyed;
+    this._pageManagerAction("destroy", callback, (state) => {
+      state.destroying = true;
+      try {
+        state.manager.destroy();
+      } catch (err) {
+        state.destroying = false;
+        throw err;
+      }
+      state.listeners.clear();
+      this._pageManager = null;
+      destroyed = state;
+    });
+    if (destroyed) {
+      for (const cancel of destroyed.pending) cancel();
+    }
+  }
+
   // ── Debug Logging ──────────────────────────────────────────────
 
   _logArgs(argsJson) {

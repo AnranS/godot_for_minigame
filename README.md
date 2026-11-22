@@ -31,7 +31,7 @@
   <tr>
     <td align="center" width="25%"><h3>0 extra tools</h3><sub>No Node.js, Emscripten, Brotli, or Godot Web export templates to install</sub></td>
     <td align="center" width="25%"><h3>3 platforms</h3><sub>WeChat, Douyin, and TikTok from the same Godot project</sub></td>
-    <td align="center" width="25%"><h3>225 SDK methods</h3><sub>Plus 84 signals, each checked against the host before it runs</sub></td>
+    <td align="center" width="25%"><h3>230 SDK methods</h3><sub>Plus 86 signals, each checked against the host before it runs</sub></td>
     <td align="center" width="25%"><h3>3 Godot versions</h3><sub>4.6.1 · 4.6.3 · 4.7.2, each with an exactly matched engine</sub></td>
   </tr>
 </table>
@@ -66,7 +66,7 @@
   <tr>
     <td width="50%" valign="top">
       <h3>One SDK for three hosts</h3>
-      <p><code>MiniGameSDK</code> offers 225 methods and 84 signals over <code>wx</code>, <code>tt</code>,
+      <p><code>MiniGameSDK</code> offers 230 methods and 86 signals over <code>wx</code>, <code>tt</code>,
       and <code>TTMinis.game</code>. It checks what each host supports before calling it and stays safe
       to call while you develop in the editor.</p>
     </td>
@@ -157,7 +157,7 @@ var level := MiniGameSDK.storage_get("level", "1")
 MiniGameSDK.show_toast("Level %s" % level, "success")
 ```
 
-**[Browse all 225 methods and 84 signals →](https://anrans.github.io/godot_for_minigame/api/)**
+**[Browse all 230 methods and 86 signals →](https://anrans.github.io/godot_for_minigame/api/)**
 The reference lists the whole bridge; it is not a promise that every method
 works on every host. Shared names are capability-checked, and payments and
 other host-specific features use explicit per-platform mappings.

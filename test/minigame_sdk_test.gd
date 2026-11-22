@@ -99,6 +99,8 @@ func _init() -> void:
 		"authorization": [],
 		"native_button_operation": [],
 		"native_button_tap": [],
+		"page_manager_operation": [],
+		"page_manager_event": [],
 		"debug_operation": [],
 		"network_type": [],
 		"network_status": [],
@@ -187,6 +189,12 @@ func _init() -> void:
 	)
 	sdk.native_button_tapped.connect(func(button_type: String, data_json: String, error: String) -> void:
 		holder["native_button_tap"] = [button_type, data_json, error]
+	)
+	sdk.page_manager_operation.connect(func(operation: String, ok: bool, result_json: String, error: String) -> void:
+		holder["page_manager_operation"] = [operation, ok, result_json, error]
+	)
+	sdk.page_manager_event.connect(func(event_name: String, payload_json: String) -> void:
+		holder["page_manager_event"] = [event_name, payload_json]
 	)
 	sdk.debug_operation_result.connect(func(action: String, success: bool, data_json: String, error: String) -> void:
 		holder["debug_operation"] = [action, success, data_json, error]
@@ -434,6 +442,19 @@ func _init() -> void:
 	_assert_eq(holder["native_button_operation"], ["gameClub", "GameClubButton.offTap", false, "", MiniGameSDKScript.NOT_IN_RUNTIME], "stop_native_button_tap_listener fallback")
 	sdk.destroy_native_button("gameClub")
 	_assert_eq(holder["native_button_operation"], ["gameClub", "GameClubButton.destroy", false, "", MiniGameSDKScript.NOT_IN_RUNTIME], "destroy_native_button fallback")
+
+	sdk.page_manager_load("game-club-openlink", {"source": "home"}, {"entry": "menu"})
+	_assert_eq(holder["page_manager_operation"], ["PageManager.load", false, "", MiniGameSDKScript.NOT_IN_RUNTIME], "page_manager_load fallback")
+	sdk.page_manager_show()
+	_assert_eq(holder["page_manager_operation"], ["PageManager.show", false, "", MiniGameSDKScript.NOT_IN_RUNTIME], "page_manager_show fallback")
+	sdk.page_manager_on("close")
+	_assert_eq(holder["page_manager_operation"], ["PageManager.on", false, "", MiniGameSDKScript.NOT_IN_RUNTIME], "page_manager_on fallback")
+	sdk.page_manager_off("close")
+	_assert_eq(holder["page_manager_operation"], ["PageManager.off", false, "", MiniGameSDKScript.NOT_IN_RUNTIME], "page_manager_off fallback")
+	sdk.page_manager_destroy()
+	_assert_eq(holder["page_manager_operation"], ["PageManager.destroy", false, "", MiniGameSDKScript.NOT_IN_RUNTIME], "page_manager_destroy fallback")
+	_assert_eq(holder["page_manager_event"], [], "PageManager fallback emits no channel event")
+
 	sdk.set_enable_debug(false)
 	_assert_eq(holder["debug_operation"], ["setEnableDebug", false, "", MiniGameSDKScript.NOT_IN_RUNTIME], "set_enable_debug fallback")
 	sdk.get_log_manager(1)
@@ -819,6 +840,10 @@ func _init() -> void:
 	_assert_eq(holder["native_button_operation"], ["userInfo", "UserInfoButton.show", true, "{}", ""], "native button operation callback conversion")
 	sdk._on_native_button_tap(["userInfo", "{\"userInfo\":{\"nickName\":\"Ada\"}}", ""])
 	_assert_eq(holder["native_button_tap"], ["userInfo", "{\"userInfo\":{\"nickName\":\"Ada\"}}", ""], "native button tap callback conversion")
+	sdk._on_page_manager_operation(["PageManager.show", false, "{\"errCode\":-8}", "version mismatch"])
+	_assert_eq(holder["page_manager_operation"], ["PageManager.show", false, "{\"errCode\":-8}", "version mismatch"], "PageManager operation callback conversion")
+	sdk._on_page_manager_event(["close", "{\"source\":\"gameClub\"}"])
+	_assert_eq(holder["page_manager_event"], ["close", "{\"source\":\"gameClub\"}"], "PageManager event callback conversion")
 	sdk._on_debug_operation(["RealtimeLogManager.info", true, "{\"args\":[\"scene\"]}", ""])
 	_assert_eq(holder["debug_operation"], ["RealtimeLogManager.info", true, "{\"args\":[\"scene\"]}", ""], "debug operation callback conversion")
 	sdk._on_customer_service_result(["openCustomerServiceConversation", true, "{\"path\":\"pages/support\"}", ""])

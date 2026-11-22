@@ -25,6 +25,12 @@ signal native_button_operation_result(button_type: String, action: String, succe
 signal native_button_tapped(button_type: String, data_json: String, error: String)
 signal debug_operation_result(action: String, success: bool, data_json: String, error: String)
 
+## Reports the result of a PageManager operation. For load and show, result_json
+## carries the host response or rejection, including errCode when reported.
+signal page_manager_operation(operation: String, ok: bool, result_json: String, error: String)
+## Reports a channel-defined PageManager event and its JSON payload.
+signal page_manager_event(event_name: String, payload_json: String)
+
 signal ad_created(ad_type: String, success: bool, error: String)
 signal rewarded_ad_result(is_ended: bool, error: String)
 signal interstitial_ad_result(success: bool, error: String)
@@ -604,6 +610,79 @@ func _on_native_button_tap(args: Array) -> void:
 		_s(args[0]) if args.size() > 0 else "",
 		_s(args[1]) if args.size() > 1 else "",
 		_s(args[2]) if args.size() > 2 else "")
+
+
+# ── PageManager ────────────────────────────────────────────────────
+
+## Loads an OPENLINK using WeChat's PageManager (base library 3.6.7+).
+## The channel defines query and extra_data. Results arrive through
+## [signal page_manager_operation] with operation "PageManager.load".
+func page_manager_load(
+	openlink: String,
+	query: Dictionary = {},
+	extra_data: Dictionary = {}
+) -> void:
+	if not _sdk:
+		page_manager_operation.emit("PageManager.load", false, "", NOT_IN_RUNTIME)
+		return
+	var options := {"openlink": openlink}
+	if not query.is_empty():
+		options["query"] = query
+	if not extra_data.is_empty():
+		options["extraData"] = extra_data
+	_sdk.pageManagerLoad(JSON.stringify(options), _track_oneshot(_on_page_manager_operation))
+
+
+## Shows the loaded OPENLINK. To let WeChat load it on the first show,
+## pass openlink in options, with optional query and extraData dictionaries.
+## Results arrive through [signal page_manager_operation] as "PageManager.show".
+func page_manager_show(options: Dictionary = {}) -> void:
+	if not _sdk:
+		page_manager_operation.emit("PageManager.show", false, "", NOT_IN_RUNTIME)
+		return
+	_sdk.pageManagerShow(JSON.stringify(options), _track_oneshot(_on_page_manager_operation))
+
+
+## Listens for a channel-defined event; may be called before load or show.
+## Repeated registrations share one listener that emits [signal page_manager_event].
+func page_manager_on(event_name: String) -> void:
+	if not _sdk:
+		page_manager_operation.emit("PageManager.on", false, "", NOT_IN_RUNTIME)
+		return
+	_sdk.pageManagerOn(
+		event_name,
+		_track_oneshot(_on_page_manager_operation),
+		_track_persistent(_on_page_manager_event))
+
+
+## Removes the SDK listener for the named PageManager event.
+func page_manager_off(event_name: String) -> void:
+	if not _sdk:
+		page_manager_operation.emit("PageManager.off", false, "", NOT_IN_RUNTIME)
+		return
+	_sdk.pageManagerOff(event_name, _track_oneshot(_on_page_manager_operation))
+
+
+## Releases the PageManager and its listeners. The next load or show creates it again.
+func page_manager_destroy() -> void:
+	if not _sdk:
+		page_manager_operation.emit("PageManager.destroy", false, "", NOT_IN_RUNTIME)
+		return
+	_sdk.pageManagerDestroy(_track_oneshot(_on_page_manager_operation))
+
+
+func _on_page_manager_operation(args: Array) -> void:
+	page_manager_operation.emit(
+		_s(args[0]) if args.size() > 0 else "",
+		_b(args[1]) if args.size() > 1 else false,
+		_s(args[2]) if args.size() > 2 else "",
+		_s(args[3]) if args.size() > 3 else "")
+
+
+func _on_page_manager_event(args: Array) -> void:
+	page_manager_event.emit(
+		_s(args[0]) if args.size() > 0 else "",
+		_s(args[1]) if args.size() > 1 else "{}")
 
 
 # ── Debug Logging ─────────────────────────────────────────────────

@@ -31,7 +31,7 @@
   <tr>
     <td align="center" width="25%"><h3>0 额外依赖</h3><sub>不装 Node.js、Emscripten、Brotli，也不下载 Godot Web 导出模板</sub></td>
     <td align="center" width="25%"><h3>3 个平台</h3><sub>微信、抖音与 TikTok，同一个 Godot 项目导出</sub></td>
-    <td align="center" width="25%"><h3>225 个 SDK 方法</h3><sub>另有 84 个信号，调用前先检测宿主能力</sub></td>
+    <td align="center" width="25%"><h3>230 个 SDK 方法</h3><sub>另有 86 个信号，调用前先检测宿主能力</sub></td>
     <td align="center" width="25%"><h3>3 个 Godot 版本</h3><sub>4.6.1 · 4.6.3 · 4.7.2，引擎与编辑器精确匹配</sub></td>
   </tr>
 </table>
@@ -62,7 +62,7 @@
   <tr>
     <td width="50%" valign="top">
       <h3>一套 SDK 覆盖三个宿主</h3>
-      <p><code>MiniGameSDK</code> 通过 <code>wx</code>、<code>tt</code> 与 <code>TTMinis.game</code> 提供 225 个方法、84 个信号。调用前先检查宿主是否支持，在编辑器里开发时调用也不会报错。</p>
+      <p><code>MiniGameSDK</code> 通过 <code>wx</code>、<code>tt</code> 与 <code>TTMinis.game</code> 提供 230 个方法、86 个信号。调用前先检查宿主是否支持，在编辑器里开发时调用也不会报错。</p>
     </td>
     <td width="50%" valign="top">
       <h3>放心重复导出</h3>
@@ -140,7 +140,7 @@ var level := MiniGameSDK.storage_get("level", "1")
 MiniGameSDK.show_toast("Level %s" % level, "success")
 ```
 
-**[查看全部 225 个方法、84 个信号 →](https://anrans.github.io/godot_for_minigame/api/)**
+**[查看全部 230 个方法、86 个信号 →](https://anrans.github.io/godot_for_minigame/api/)**
 API 页面列出的是完整的桥接接口，不代表每个宿主都支持全部方法。同名能力会先检查宿主是否支持，支付等平台特有能力按平台分别映射。
 
 ## 已知限制

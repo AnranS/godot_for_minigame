@@ -1050,6 +1050,219 @@ async function testNativeButtonWrappersReportUnsupportedMethods() {
   ]);
 }
 
+async function testPageManagerListenerBeforeLoad() {
+  const calls = [];
+  let listeners;
+  const { GodotSDK } = await loadSdkWithApi({
+    createPageManager() {
+      calls.push("createPageManager");
+      listeners = new Map();
+      return {
+        load(options) { calls.push(["load", options.openlink]); return Promise.resolve({}); },
+        show() { calls.push("show"); return Promise.resolve({}); },
+        on(eventName, listener) { calls.push(["on", eventName]); listeners.set(eventName, listener); },
+        off() {},
+        destroy() {},
+      };
+    },
+  });
+  const sdk = new GodotSDK();
+  const operations = [];
+  const events = [];
+  sdk.pageManagerOn("close", (...args) => operations.push(args), (...args) => events.push(args));
+  await sdk.pageManagerLoad(JSON.stringify({ openlink: "club" }), (...args) => operations.push(args));
+  await sdk.pageManagerShow("{}", (...args) => operations.push(args));
+  listeners.get("close")({ from: "club" });
+  assert.deepEqual(calls, ["createPageManager", ["on", "close"], ["load", "club"], "show"],
+    "a listener registered first must create the manager that load/show then reuse");
+  assert.deepEqual(operations.map((op) => [op[0], op[1]]),
+    [["PageManager.on", true], ["PageManager.load", true], ["PageManager.show", true]]);
+  assert.deepEqual(events, [["close", JSON.stringify({ from: "club" })]]);
+}
+
+async function testPageManagerWrappers() {
+  const calls = [];
+  const listenersByInstance = [];
+  const loadResult = { errCode: 0, channelData: { ready: true } };
+  const { GodotSDK } = await loadSdkWithApi({
+    createPageManager(...args) {
+      const id = listenersByInstance.length;
+      const listeners = new Map();
+      listenersByInstance.push(listeners);
+      calls.push(["createPageManager", id, args]);
+      return {
+        load(options) {
+          calls.push(["load", id, options]);
+          return Promise.resolve(loadResult);
+        },
+        show(options) {
+          calls.push(["show", id, options]);
+          return Promise.resolve();
+        },
+        on(eventName, listener) {
+          calls.push(["on", id, eventName]);
+          listeners.set(eventName, listener);
+        },
+        off(eventName, listener) {
+          calls.push(["off", id, eventName]);
+          assert.equal(listener, listeners.get(eventName));
+          listeners.delete(eventName);
+        },
+        destroy() { calls.push(["destroy", id]); },
+      };
+    },
+  });
+  const sdk = new GodotSDK();
+  const operations = [];
+  const events = [];
+  const onResult = (...args) => operations.push(args);
+  const onEvent = (...args) => events.push(args);
+  const loadOptions = { openlink: "game-club-link", query: { topic: 3 }, extraData: { source: "menu" } };
+  const showOptions = { openlink: "another-link", query: { topic: 4 }, extraData: { source: "banner" } };
+
+  sdk.pageManagerOff("dismiss", onResult);
+  assert.deepEqual(calls, [], "removing a listener must not create a PageManager");
+  assert.deepEqual(operations.pop(), ["PageManager.off", false, "{}", "No active PageManager"]);
+
+  const loading = sdk.pageManagerLoad(JSON.stringify(loadOptions), onResult);
+  assert.deepEqual(operations, [], "load must wait for the host promise");
+  await loading;
+
+  sdk.pageManagerOn("dismiss", onResult, onEvent);
+  sdk.pageManagerOn("dismiss", onResult, () => assert.fail("duplicate listener invoked"));
+  const dismissed = listenersByInstance[0].get("dismiss");
+  dismissed({ reason: "done" });
+  const showing = sdk.pageManagerShow("{}", onResult);
+  assert.equal(operations.length, 3, "show must wait for the host promise");
+  await showing;
+  sdk.pageManagerOff("dismiss", onResult);
+  sdk.pageManagerOff("dismiss", onResult);
+  dismissed({ reason: "late event after off" });
+
+  sdk.pageManagerOn("dismiss", onResult, onEvent);
+  const oldDismissed = listenersByInstance[0].get("dismiss");
+  sdk.pageManagerDestroy(onResult);
+  await sdk.pageManagerShow(JSON.stringify(showOptions), onResult);
+  sdk.pageManagerOn("dismiss", onResult, onEvent);
+  oldDismissed({ reason: "late event after destroy" });
+  listenersByInstance[1].get("dismiss")(false);
+
+  assert.deepEqual(calls, [
+    ["createPageManager", 0, []],
+    ["load", 0, loadOptions],
+    ["on", 0, "dismiss"],
+    ["show", 0, {}],
+    ["off", 0, "dismiss"],
+    ["on", 0, "dismiss"],
+    ["destroy", 0],
+    ["createPageManager", 1, []],
+    ["show", 1, showOptions],
+    ["on", 1, "dismiss"],
+  ]);
+  assert.deepEqual(operations, [
+    ["PageManager.load", true, JSON.stringify(loadResult), ""],
+    ["PageManager.on", true, "{}", ""],
+    ["PageManager.on", true, "{}", ""],
+    ["PageManager.show", true, "{}", ""],
+    ["PageManager.off", true, "{}", ""],
+    ["PageManager.off", true, "{}", ""],
+    ["PageManager.on", true, "{}", ""],
+    ["PageManager.destroy", true, "{}", ""],
+    ["PageManager.show", true, "{}", ""],
+    ["PageManager.on", true, "{}", ""],
+  ]);
+  assert.deepEqual(events, [["dismiss", '{"reason":"done"}'], ["dismiss", "false"]]);
+}
+
+async function testPageManagerRejectionsPreserveHostErrorDetails() {
+  const loadError = {
+    errCode: -8,
+    errMsg: "PageManager.load:fail",
+    errInfo: { requiredVersion: "release" },
+    channel: "gameClub",
+  };
+  const showError = { code: "-6", errInfo: "Network unavailable" };
+  const { GodotSDK } = await loadSdkWithApi({
+    createPageManager() {
+      return {
+        load() { return Promise.reject(loadError); },
+        show() { return Promise.reject(showError); },
+      };
+    },
+  });
+  const sdk = new GodotSDK();
+  const operations = [];
+  const onResult = (...args) => operations.push(args);
+
+  await sdk.pageManagerLoad('{"openlink":"game-club-link"}', onResult);
+  await sdk.pageManagerShow("{}", onResult);
+
+  assert.deepEqual(operations, [
+    ["PageManager.load", false, JSON.stringify(loadError), 'code=-8 PageManager.load:fail errInfo={"requiredVersion":"release"}'],
+    ["PageManager.show", false, JSON.stringify({ ...showError, errCode: -6 }), "code=-6 errInfo=Network unavailable"],
+  ]);
+}
+
+async function testPageManagerDestroyCancelsPendingOperations() {
+  let resolveLoad;
+  let rejectShow;
+  let onDismiss;
+  const { GodotSDK } = await loadSdkWithApi({
+    createPageManager() {
+      return {
+        load() { return new Promise((resolve) => { resolveLoad = resolve; }); },
+        show() { return new Promise((_, reject) => { rejectShow = reject; }); },
+        on(_eventName, listener) { onDismiss = listener; },
+        destroy() { onDismiss({ duringDestroy: true }); },
+      };
+    },
+  });
+  const sdk = new GodotSDK();
+  const operations = [];
+  const onResult = (...args) => operations.push(args);
+  const load = sdk.pageManagerLoad('{"openlink":"game-club-link"}', onResult);
+  const show = sdk.pageManagerShow("{}", onResult);
+  sdk.pageManagerOn("dismiss", onResult, () => assert.fail("event fired during destroy"));
+  sdk.pageManagerDestroy(onResult);
+
+  const error = "PageManager was destroyed before the operation completed";
+  const expected = [
+    ["PageManager.on", true, "{}", ""],
+    ["PageManager.destroy", true, "{}", ""],
+    ["PageManager.load", false, "", error],
+    ["PageManager.show", false, "", error],
+  ];
+  assert.deepEqual(operations, expected, "destroy must immediately complete pending operations");
+
+  resolveLoad({ ready: true });
+  rejectShow({ errCode: -6 });
+  await Promise.all([load, show]);
+  assert.deepEqual(operations, expected, "late host settlements must not complete operations twice");
+}
+
+async function testPageManagerReportsUnsupportedHosts() {
+  for (const [platform, prefix] of [["wechat", "wx"], ["douyin", "tt"], ["tiktok", "TTMinis.game"]]) {
+    const api = platform === "wechat" ? {} : {
+      createPageManager() { assert.fail(`PageManager called on ${platform}`); },
+    };
+    const { GodotSDK } = await loadSdkWithApi(api, platform);
+    const sdk = new GodotSDK();
+    const operations = [];
+    const onResult = (...args) => operations.push(args);
+    sdk.pageManagerLoad("{}", onResult);
+    sdk.pageManagerShow("{}", onResult);
+    sdk.pageManagerOn("dismiss", onResult, () => {});
+    sdk.pageManagerOff("dismiss", onResult);
+    sdk.pageManagerDestroy(onResult);
+
+    const result = platform === "wechat" ? '{"errCode":-2}' : "";
+    const detail = platform === "wechat" ? " (requires base library 3.6.7 or later)" : "";
+    const error = `${prefix}.createPageManager is not supported${detail}`;
+    assert.deepEqual(operations, ["load", "show", "on", "off", "destroy"]
+      .map((action) => [`PageManager.${action}`, false, result, error]));
+  }
+}
+
 async function testDebugLoggingWrappers() {
   const calls = [];
   const logManager = {
@@ -4186,6 +4399,11 @@ await testNeedPrivacyAuthorizationListener();
 await testPrivacyWrappersReportUnsupportedMethods();
 await testSettingAndAuthorizeWrappers();
 await testNativeButtonWrappers();
+await testPageManagerWrappers();
+await testPageManagerListenerBeforeLoad();
+await testPageManagerRejectionsPreserveHostErrorDetails();
+await testPageManagerDestroyCancelsPendingOperations();
+await testPageManagerReportsUnsupportedHosts();
 await testDebugLoggingWrappers();
 await testAccountInfoWrapper();
 await testRuntimeCapabilityWrappers();
