@@ -24,6 +24,7 @@
   <a href="https://anrans.github.io/godot_for_minigame/guide/">接入指引</a> ·
   <a href="https://anrans.github.io/godot_for_minigame/api/">API 文档</a> ·
   <a href="https://github.com/AnranS/godot_for_minigame/releases/tag/promo-video-1">介绍视频</a> ·
+  <a href="#支持作者">支持作者</a> ·
   <a href="README.md">English</a>
 </p>
 
@@ -189,6 +190,15 @@ API 页面列出的是完整的桥接接口，不代表每个宿主都支持全�
 ## 参与贡献
 
 欢迎提交 Issue 和 Pull Request。平台差异应保持在共享 Runtime 与 Bridge 契约之后；提交前请运行 `./scripts/test.sh`（需要 Node.js 22+ 和匹配版本的 Godot，必要时设置 `GODOT_BIN`）。维护者请遵循不可变 Tag 的[发布流程](docs/RELEASING.md)。
+
+## 支持作者
+
+如果这个插件帮你省下了折腾引擎编译和小游戏适配的时间，欢迎点一个 Star，或者通过微信赞赏码请作者喝杯咖啡：
+
+<p align="center">
+  <img src="assets/sponsor-wechat.jpg" width="220" alt="微信赞赏码（给安然赞赏）" />
+</p>
+<p align="center"><sub>微信扫一扫 · 鼓励作者持续维护</sub></p>
 
 ## 许可证
 

@@ -24,6 +24,7 @@
   <a href="https://anrans.github.io/godot_for_minigame/guide/">Integration guide</a> ·
   <a href="https://anrans.github.io/godot_for_minigame/api/">API reference</a> ·
   <a href="https://github.com/AnranS/godot_for_minigame/releases/tag/promo-video-1">Intro video</a> ·
+  <a href="#support">Sponsor</a> ·
   <a href="README_zh.md">简体中文</a>
 </p>
 
@@ -214,6 +215,17 @@ Issues and pull requests are welcome. Keep platform-specific behavior behind the
 shared runtime and bridge contracts, and run `./scripts/test.sh` (Node.js 22+ and
 the matching Godot editor; set `GODOT_BIN` if needed) before submitting.
 Maintainers follow the immutable [release process](docs/RELEASING.md).
+
+## Support
+
+If this plugin saved you time building the engine or adapting your game for
+mini-game hosts, starring the repository helps a lot. You can also buy the
+author a coffee via WeChat Pay:
+
+<p align="center">
+  <img src="assets/sponsor-wechat.jpg" width="220" alt="WeChat appreciation QR code for Anran" />
+</p>
+<p align="center"><sub>Scan with WeChat to support ongoing maintenance</sub></p>
 
 ## License
 

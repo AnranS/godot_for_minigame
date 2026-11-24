@@ -21,6 +21,8 @@ test("exports a complete static homepage", async () => {
   assert.match(html, /douyin\.svg/);
   assert.match(html, /tiktok\.svg/);
   assert.match(html, /id="video"/);
+  assert.match(html, /id="sponsor"/);
+  assert.match(html, /sponsor-wechat\.jpg/);
   assert.match(html, /<video[^>]*preload="none"/);
   assert.match(html, /video\/promo-zh\.mp4/);
   assert.match(html, /promo-video-1/);
@@ -113,6 +115,7 @@ test("keeps required deployment and brand assets", async () => {
     access(new URL("public/douyin.svg", root)),
     access(new URL("public/tiktok.svg", root)),
     access(new URL("public/og.png", root)),
+    access(new URL("public/sponsor-wechat.jpg", root)),
     access(new URL("public/screenshots/wechat-simulator.webp", root)),
     access(new URL("public/screenshots/godot-editor-dock.webp", root)),
   ]);

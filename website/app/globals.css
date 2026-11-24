@@ -1289,6 +1289,100 @@ h3 {
   line-height: 1.8;
 }
 
+.sponsor-section {
+  padding: 76px 0 96px;
+  background: #0b1017;
+}
+
+.sponsor-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 56px;
+  padding: 40px 48px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 24px;
+  background:
+    radial-gradient(circle at 88% 50%, rgba(226, 179, 73, 0.12), transparent 44%),
+    radial-gradient(circle at 14% 0%, rgba(7, 193, 96, 0.1), transparent 48%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0.015));
+  box-shadow: 0 28px 70px rgba(2, 7, 14, 0.36), inset 0 1px rgba(255, 255, 255, 0.06);
+}
+
+.sponsor-copy {
+  max-width: 560px;
+}
+
+.sponsor-copy h2 {
+  margin: 0;
+  font-size: clamp(28px, 3vw, 38px);
+  line-height: 1.18;
+  letter-spacing: -0.035em;
+}
+
+.sponsor-copy > p:not(.section-kicker) {
+  margin: 16px 0 0;
+  color: #9baabd;
+  font-size: 14px;
+  line-height: 1.8;
+}
+
+.sponsor-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  margin-top: 22px;
+  padding: 8px 14px;
+  border: 1px solid rgba(7, 193, 96, 0.24);
+  border-radius: 999px;
+  background: rgba(7, 193, 96, 0.08);
+  color: #b7eed0;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.sponsor-meta img {
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+}
+
+.sponsor-qr {
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.06);
+  box-shadow: 0 20px 50px rgba(2, 7, 14, 0.45);
+}
+
+.sponsor-qr img {
+  display: block;
+  width: 196px;
+  height: 196px;
+  border-radius: 13px;
+}
+
+@media (max-width: 760px) {
+  .sponsor-section {
+    padding: 52px 0 72px;
+  }
+
+  .sponsor-card {
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 28px;
+    padding: 28px 22px;
+  }
+
+  .sponsor-qr img {
+    width: 184px;
+    height: 184px;
+  }
+}
+
 .final-cta {
   position: relative;
   isolation: isolate;

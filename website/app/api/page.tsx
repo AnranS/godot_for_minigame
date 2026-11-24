@@ -610,7 +610,7 @@ export default function ApiReference() {
           <strong>Godot <b>Mini Game</b></strong>
         </a>
         <p>API 数据在每次官网构建时从 MiniGameSDK.gd 自动生成。</p>
-        <nav><a href={sitePath("/")}>官网</a><a href={GUIDE}>指南</a><a href={REPO}>GitHub</a></nav>
+        <nav><a href={sitePath("/")}>官网</a><a href={GUIDE}>指南</a><a href={sitePath("/#sponsor")}>支持作者</a><a href={REPO}>GitHub</a></nav>
       </footer>
     </main>
   );

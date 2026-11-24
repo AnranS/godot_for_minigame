@@ -95,6 +95,7 @@ export function DocsShell({
           <a href={sitePath("/quick-start/")}>快速开始</a>
           <a href={sitePath("/guide/")}>接入指引</a>
           <a href={sitePath("/api/")}>API</a>
+          <a href={sitePath("/#sponsor")}>支持作者</a>
           <a href={`${REPO}/issues`} target="_blank" rel="noreferrer">Issues</a>
         </nav>
       </footer>

@@ -152,6 +152,12 @@ const copy = {
       ["中文显示成方块怎么办？", "小游戏环境没有系统字体，Godot 内置字体只含拉丁字母。在项目设置 → GUI → 主题 → 自定义字体里指定一个中文字体，并先按使用文档裁剪子集，避免包体过大。导出时如果项目没有设置字体，日志也会提示。"],
       ["微信开发者工具停在 33% 怎么办？", "v0.3.0 之前的插件版本，适配层会覆盖开发者工具加载分包所用的全局对象，引擎分包因此一直没有回调；升级到 v0.3.0 或更新版本后重新导出即可。如果报 loadSubpackage:fail module not found，通常是项目以游客模式运行，请换成当前账号有开发权限的 AppID。"],
     ],
+    sponsorKicker: "支持作者",
+    sponsorTitle: "如果它帮你省下了时间，|欢迎请作者喝杯咖啡",
+    sponsorBody: "Godot Mini Game 完全开源免费。你的 Star 和赞赏，会成为持续适配新版本 Godot 与各平台运行时的动力。",
+    sponsorHint: "微信扫一扫 · 赞赏作者",
+    sponsorAlt: "微信赞赏码（给安然赞赏）",
+    sponsorNav: "支持作者",
     finalTitle: "你的 Godot 游戏，|下一站是小游戏。",
     finalBody: "开源、透明、面向真实设备。现在就完成第一次导出。",
     footer: "为使用 Godot 的小游戏开发者打造。",
@@ -273,6 +279,12 @@ const copy = {
       ["Why does Chinese text show as boxes?", "Mini-game hosts have no system fonts, and Godot's built-in font only covers Latin text. Set a CJK font in Project Settings → GUI → Theme → Custom Font, subset it first as the usage guide describes, and the export log will remind you when no font is set."],
       ["Why does WeChat DevTools stop at 33%?", "Plugin versions before v0.3.0 replaced globals that DevTools uses to load subpackages, so the engine subpackage never reported completion. Upgrade to v0.3.0 or later and export again. If you see loadSubpackage:fail module not found instead, the project is usually running in tourist mode; use an AppID your account can develop."],
     ],
+    sponsorKicker: "Support",
+    sponsorTitle: "If this saved you time,|buy the author a coffee",
+    sponsorBody: "Godot Mini Game is free and open source. Your stars and tips help fund ongoing maintenance for new Godot versions and mini-game runtimes.",
+    sponsorHint: "Scan with WeChat to tip",
+    sponsorAlt: "WeChat appreciation QR code for Anran",
+    sponsorNav: "Sponsor",
     finalTitle: "Your Godot game belongs on mini-game platforms.",
     finalBody: "Open source, transparent, and built for real devices. Make your first export today.",
     footer: "Built for mini-game developers who use Godot.",
@@ -698,6 +710,25 @@ export default function Home() {
         </div>
       </section>
 
+      <section className="section sponsor-section" id="sponsor">
+        <div className="container">
+          <div className="sponsor-card reveal">
+            <div className="sponsor-copy">
+              <p className="section-kicker">{t.sponsorKicker}</p>
+              <h2><Phrases text={t.sponsorTitle} /></h2>
+              <p>{t.sponsorBody}</p>
+              <div className="sponsor-meta">
+                <img src={asset("/wechat.svg")} alt="" />
+                <span>{t.sponsorHint}</span>
+              </div>
+            </div>
+            <figure className="sponsor-qr">
+              <img src={asset("/sponsor-wechat.jpg")} width={200} height={200} alt={t.sponsorAlt} loading="lazy" />
+            </figure>
+          </div>
+        </div>
+      </section>
+
       <section className="final-cta">
         <div className="final-grid" aria-hidden="true" />
         <div className="container final-content reveal">
@@ -714,7 +745,7 @@ export default function Home() {
       <footer>
         <div className="container footer-main">
           <div><a className="brand" href="#top"><span className="brand-mark"><img src={asset("/godot.svg")} alt="" /></span><span>Godot <b>Mini Game</b></span></a><p>{t.footer}</p></div>
-          <nav aria-label="Footer navigation"><a href={sitePath("/quick-start/")}>{t.nav[4]}</a><a href={sitePath("/guide/")}>{t.nav[5]}</a><a href={sitePath("/api/")}>API</a><a href={REPO} target="_blank" rel="noreferrer">GitHub</a><a href={RELEASE} target="_blank" rel="noreferrer">Releases</a><a href={docsLink} target="_blank" rel="noreferrer">Docs</a><a href={`${REPO}/issues`} target="_blank" rel="noreferrer">Issues</a></nav>
+          <nav aria-label="Footer navigation"><a href={sitePath("/quick-start/")}>{t.nav[4]}</a><a href={sitePath("/guide/")}>{t.nav[5]}</a><a href={sitePath("/api/")}>API</a><a href="#sponsor">{t.sponsorNav}</a><a href={REPO} target="_blank" rel="noreferrer">GitHub</a><a href={RELEASE} target="_blank" rel="noreferrer">Releases</a><a href={docsLink} target="_blank" rel="noreferrer">Docs</a><a href={`${REPO}/issues`} target="_blank" rel="noreferrer">Issues</a></nav>
         </div>
         <div className="container footer-bottom"><span>© 2026 {t.copyright}</span><span>{t.notAffiliated}</span></div>
       </footer>
